@@ -1,11 +1,11 @@
 {
     "name": "ghul",
-    "displayName": "ghul",
-    "description": "ghul language support",
-    "version": "0.0.9",
-    "publisher": "no",
+    "displayName": "ghūl",
+    "description": "ghūl language support",
+    "version": "0.0.10",
+    "publisher": "degory",
     "engines": {
-        "vscode": "^1.13.0"
+        "vscode": "^1.16.1"
     },
     "categories": [
         "Languages"
