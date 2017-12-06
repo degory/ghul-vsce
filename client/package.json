@@ -21,7 +21,7 @@
     "contributes": {
         "languages": [{
             "id": "ghul",
-            "aliases": ["ghul", "ghul"],
+            "aliases": ["ghul", "ghūl"],
             "extensions": [".ghul"],
             "configuration": "./language-configuration.json"
         }],
