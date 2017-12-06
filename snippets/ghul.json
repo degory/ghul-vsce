@@ -6,7 +6,8 @@
 			"\t$2",
 			"si",
 			"$3"
-		]
+		],
+		"description": "namespace"
 	},
 	"class definition": {
 		"prefix": "class",
@@ -15,7 +16,8 @@
 			"\t$2",
 			"si",
 			"$3"
-		]
+		],
+		"description": "class"
 	},
 	"trait definition": {
 		"prefix": "trait",
@@ -24,7 +26,8 @@
 			"\t$2",
 			"si",
 			"$3"
-		]
+		],
+		"description": "trait"
 	},
 	"function definition": {
 		"prefix": "fn",
@@ -33,7 +36,8 @@
 			"\t$4",
 			"si",
 			"$5"
-		]
+		],
+		"description": "function"
 	},	
 	"for loop": {
 		"prefix": "for",
@@ -42,7 +46,8 @@
 			"\t$3",
 			"od",
 			"$4"
-		]
+		],
+		"description": "for loop"
 	},
 	"if statement": {
 		"prefix": "if",
@@ -51,7 +56,8 @@
 			"\t$2",
 			"fi",
 			"$3"
-		]
+		],
+		"description": "if statement"
 	},
 	"then clause": {
 		"prefix": "then",
@@ -60,28 +66,32 @@
 			"\t$2",
 			"fi",
 			"$3"
-		]
+		],
+		"description": "then clause"
 	},	
 	"elif clause": {
 		"prefix": "elif",
 		"body": [
 			"elif ${1:true} then",
 			"\t$2"
-		]
+		],
+		"description": "elif clause"
 	},	
 	"else clause": {
 		"prefix": "else",
 		"body": [
 			"else",
 			"\t$1"
-		]
+		],
+		"description": "else clause"
 	},
-	"fi clause": {
+	"fi keyword": {
 		"prefix": "fi",
 		"body": [
 			"fi",
 			"$1"
-		]
+		],
+		"description": "fi keyword"
 	},
 	"case statement": {
 		"prefix": "case",
@@ -92,7 +102,8 @@
 			"\t$3;",
 			"esac",
 			"$4"
-		]
+		],
+		"description": "case statement"
 	},
 	"when clause": {
 		"prefix": "when",
@@ -100,7 +111,8 @@
 			"when ${1:match}:",
 			"\t$2;",
 			"$3"
-		]
+		],
+		"description": "when clause"
 	},
 	"default clause": {
 		"prefix": "default",
@@ -108,7 +120,50 @@
 			"default",
 			"\t$2;",
 			"$3"
-		]
+		],
+		"description": "default clause"
+	},	
+	"esac keyword": {
+		"prefix": "esac",
+		"body": [
+			"esac",
+			"$1"
+		],
+		"description": "fi keyword"
+	},	
+	"try statement": {
+		"prefix": "try statement",
+		"body": [
+			"try",
+			"\t$1",
+			"yrt",
+			"$2"
+		],
+		"description": "try statement"
+	},
+	"catch clause": {
+		"prefix": "catch",
+		"body": [
+			"catch ${1:ex}: ${2:Exception}",
+			"\t$3"
+		],
+		"description": "catch clause"
+	},
+	"finally clause": {
+		"prefix": "finally clause",
+		"body": [
+			"finally",
+			"\t$1"
+		],
+		"description": "finally clause"
+	},
+	"yrt keyword": {
+		"prefix": "yrt",
+		"body": [
+			"yrt",
+			"$1"
+		],
+		"description": "fi keyword"
 	},	
 	"while statement": {
 		"prefix": "while",
@@ -117,15 +172,32 @@
 			"\t$2",
 			"od",
 			"$3"
-		]
+		],
+		"description": "while statement"
 	},
 	"do statement": {
 		"prefix": "do",
 		"body": [
 			"do",
-			"\t$2",
+			"\t$1",
 			"od",
-			"$3"
-		]		
-	}
+			"$2"
+		],
+		"description": "do statement"
+	},
+	"od keyword": {
+		"prefix": "od",
+		"body": [
+			"od",
+			"$1"
+		]
+	},
+	"si keyword": {
+		"prefix": "si",
+		"body": [
+			"si",
+			"$1"
+		],
+		"description": "si keyword"
+	},
 }
