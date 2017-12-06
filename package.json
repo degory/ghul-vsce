@@ -2,7 +2,7 @@
     "name": "ghul",
     "displayName": "ghūl",
     "description": "ghūl language support",
-    "version": "0.0.10",
+    "version": "0.0.11",
     "publisher": "degory",
     "engines": {
         "vscode": "^1.16.1"
@@ -21,6 +21,10 @@
             "language": "ghul",
             "scopeName": "source.ghul",
             "path": "./syntaxes/ghul.tmLanguage.json"
+        }],
+        "snippets": [{
+            "language": "ghul",
+            "path": "./snippets/ghul.json"
         }]
     }
 }

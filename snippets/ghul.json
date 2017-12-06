@@ -1,0 +1,131 @@
+{
+	"namespace definition": {
+		"prefix": "namespace",
+		"body": [
+			"namespace ${1:Name} is",
+			"\t$2",
+			"si",
+			"$3"
+		]
+	},
+	"class definition": {
+		"prefix": "class",
+		"body": [
+			"class ${1:Name} is",
+			"\t$2",
+			"si",
+			"$3"
+		]
+	},
+	"trait definition": {
+		"prefix": "trait",
+		"body": [
+			"trait ${1:Name} is",
+			"\t$2",
+			"si",
+			"$3"
+		]
+	},
+	"function definition": {
+		"prefix": "fn",
+		"body": [
+			"${1:function}($2)${3} is",
+			"\t$4",
+			"si",
+			"$5"
+		]
+	},	
+	"for loop": {
+		"prefix": "for",
+		"body": [
+			"for ${1:element} in ${2:iterable} do",
+			"\t$3",
+			"od",
+			"$4"
+		]
+	},
+	"if statement": {
+		"prefix": "if",
+		"body": [
+			"if ${1:true} then",
+			"\t$2",
+			"fi",
+			"$3"
+		]
+	},
+	"then clause": {
+		"prefix": "then",
+		"body": [
+			"then",
+			"\t$2",
+			"fi",
+			"$3"
+		]
+	},	
+	"elif clause": {
+		"prefix": "elif",
+		"body": [
+			"elif ${1:true} then",
+			"\t$2"
+		]
+	},	
+	"else clause": {
+		"prefix": "else",
+		"body": [
+			"else",
+			"\t$1"
+		]
+	},
+	"fi clause": {
+		"prefix": "fi",
+		"body": [
+			"fi",
+			"$1"
+		]
+	},
+	"case statement": {
+		"prefix": "case",
+		"body": [
+			"case ${1:expr}",
+			"when ${2:match}:",
+			"default",
+			"\t$3;",
+			"esac",
+			"$4"
+		]
+	},
+	"when clause": {
+		"prefix": "when",
+		"body": [
+			"when ${1:match}:",
+			"\t$2;",
+			"$3"
+		]
+	},
+	"default clause": {
+		"prefix": "default",
+		"body": [
+			"default",
+			"\t$2;",
+			"$3"
+		]
+	},	
+	"while statement": {
+		"prefix": "while",
+		"body": [
+			"while ${1:true} do",
+			"\t$2",
+			"od",
+			"$3"
+		]
+	},
+	"do statement": {
+		"prefix": "do",
+		"body": [
+			"do",
+			"\t$2",
+			"od",
+			"$3"
+		]		
+	}
+}
