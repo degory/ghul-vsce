@@ -1,30 +1,30 @@
 {
-    "name": "ghul",
-    "displayName": "ghūl",
-    "description": "ghūl language support",
-    "version": "0.0.11",
-    "publisher": "degory",
-    "engines": {
-        "vscode": "^1.16.1"
-    },
-    "categories": [
-        "Languages"
-    ],
-    "contributes": {
-        "languages": [{
-            "id": "ghul",
-            "aliases": ["ghul", "ghul"],
-            "extensions": [".ghul"],
-            "configuration": "./language-configuration.json"
-        }],
-        "grammars": [{
-            "language": "ghul",
-            "scopeName": "source.ghul",
-            "path": "./syntaxes/ghul.tmLanguage.json"
-        }],
-        "snippets": [{
-            "language": "ghul",
-            "path": "./snippets/ghul.json"
-        }]
-    }
+	"name": "ghul--lsp",
+	"displayName": "ghūl language server",
+	"description": "ghūl language server",
+	"author": "degory",
+	"version": "0.0.1",
+	"publisher": "degory",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/degory/ghul-lsp"
+	},
+	"scripts": {
+		"postinstall": "cd server && npm install && cd ../client && npm install && cd ..",
+		"compile": "tsc -p client/tsconfig.json && cd server && npm run installServer && cd .. && tsc -p server/tsconfig.json",
+		"compile:client": "tsc -p client/tsconfig.json",
+		"watch:client": "tsc -w -p client/tsconfig.json",
+		"compile:server": "cd server && npm run installServer && cd .. && tsc -p server/tsconfig.json",
+		"watch:server": "cd server && npm run installServer && cd .. && tsc -w -p server/tsconfig.json"
+	},
+	"devDependencies": {
+		"@types/mocha": "^2.2.42",
+		"@types/node": "^6.0.88",
+		"typescript": "^2.5.2"
+	},
+	"dependencies": {
+		"@types/file-url": "^2.0.0",
+		"file-uri-to-path": "^1.0.0",
+		"file-url": "^2.0.2"
+	}
 }

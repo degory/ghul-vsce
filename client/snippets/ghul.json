@@ -98,10 +98,11 @@
 		"body": [
 			"case ${1:expr}",
 			"when ${2:match}:",
+			"\t$3",
 			"default",
-			"\t$3;",
+			"\t$4;",
 			"esac",
-			"$4"
+			"$5"
 		],
 		"description": "case statement"
 	},
