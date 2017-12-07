@@ -144,7 +144,7 @@ export class ConnectionEventHandler {
     onCompletion(textDocumentPosition: TextDocumentPositionParams): Promise<CompletionItem[]> {
         console.log(">>>>>> COMPLETE: received completion request: " + JSON.stringify(textDocumentPosition));
 
-        this.edit_queue.sendQueued();
+        this.edit_queue.trySendQueued();
 
         // The pass parameter contains the position of the text document in 
         // which code complete got requested. For the example we ignore this
@@ -175,7 +175,7 @@ export class ConnectionEventHandler {
     onSignatureHelp(params: TextDocumentPositionParams): Promise<SignatureHelp> {
         console.log("received signature help request: " + params.textDocument.uri + "," + params.position.line + "," + params.position.character);
 
-        this.edit_queue.sendQueued();
+        this.edit_queue.trySendQueued();
         
         return this.requester.sendSignature(params.textDocument.uri, params.position.line, params.position.character);        
     }

@@ -1,21 +1,8 @@
-/* --------------------------------------------------------------------------------------------
- * Copyright (c) Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License. See License.txt in the project root for license information.
- * ------------------------------------------------------------------------------------------ */
 'use strict';
-
 
 import {
 	IPCMessageReader, IPCMessageWriter, createConnection, TextDocuments
 } from 'vscode-languageserver';
-
-/*
-import {
-	IPCMessageReader, IPCMessageWriter, createConnection, IConnection, TextDocuments, TextDocument, 
-	Diagnostic, DiagnosticSeverity, InitializeResult, TextDocumentPositionParams, CompletionItem, 
-	CompletionItemKind
-} from 'vscode-languageserver';
-*/
 
 import { ProblemStore } from './problem-store';
 
@@ -75,7 +62,7 @@ let documents: TextDocuments = new TextDocuments();
 // The content of a text document has changed. This event is emitted
 // when the text document first opened or when its content has changed.
 documents.onDidChangeContent((change) => {
-	console.log("on did change document: " + change.document.uri);
+	console.log("!!! onDidChangeDocument: " + change.document.uri);
 
 	console.log("doc version: " + change.document.version)
 

@@ -1,8 +1,8 @@
 {
-	"name": "ghul--lsp--server",
+	"name": "ghul-vsce",
 	"displayName": "ghūl language server",
 	"description": "ghul language server",
-	"version": "0.0.1",
+	"version": "0.0.14",
 	"author": "degory",
 	"engines": {
 		"node": "*"

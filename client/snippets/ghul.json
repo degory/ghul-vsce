@@ -38,6 +38,18 @@
 			"$5"
 		],
 		"description": "function"
+	},
+	"let variable definition": {
+		"prefix": "let",
+		"body": [
+			"let $1"
+		]	
+	},	
+	"var variable definition": {
+		"prefix": "var",
+		"body": [
+			"var $1"
+		]
 	},	
 	"for loop": {
 		"prefix": "for",
@@ -193,12 +205,22 @@
 			"$1"
 		]
 	},
+	"is keyword": {
+		"prefix": "is",
+		"body": [	
+			"is",
+			"\t$1",
+			"si",
+			"$2"
+		],
+		"description": "si keyword"
+	},	
 	"si keyword": {
 		"prefix": "si",
-		"body": [
+		"body": [			
 			"si",
 			"$1"
 		],
 		"description": "si keyword"
-	},
+	}
 }

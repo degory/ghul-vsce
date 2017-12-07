@@ -2,7 +2,7 @@
     "name": "ghul",
     "displayName": "ghūl",
     "description": "ghūl language support",
-    "version": "0.0.12",
+    "version": "0.0.14",
     "publisher": "degory",
 	"repository": {
 		"type": "git",

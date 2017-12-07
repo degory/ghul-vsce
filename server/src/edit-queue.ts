@@ -6,6 +6,7 @@ import { ProblemStore } from './problem-store'
 
 enum QueueState {
     IDLE,
+    SENDING,
     BUILDING,
     WAITING,
 }
@@ -66,10 +67,12 @@ export class EditQueue {
             console.log("queue idle, send queued");
             
             this.sendQueued();
-        } else {
+        } else if (this.state == QueueState.BUILDING || this.state == QueueState.WAITING) {
             console.log("queue not idle, enter waiting state");
             
             this.state = QueueState.WAITING;
+        } else {
+            throw "Unexpected queue state in queueEdit: " + QueueState[this.state];            
         }
     }
 
@@ -77,16 +80,48 @@ export class EditQueue {
         if (this.state == QueueState.WAITING) {
             console.log("build finished but changes queued: queuing another build");            
 
+            this.state = QueueState.IDLE;
+
             this.sendQueued();
-        } else {
+        } else if (this.state == QueueState.BUILDING) {
             console.log("build finished: entering idle state");            
             
             this.state = QueueState.IDLE;
+        } else {
+            throw "Unexpected queue state in buildFinished: " + QueueState[this.state];
+        }
+    }
+
+    trySendQueued() {
+        if (this.state == QueueState.IDLE) {
+            this.sendQueued();
+        } else {
+            let seen_any = false;
+            
+            for (let change of this.pending_changes.values()) {
+                if (change.is_pending) {
+                    seen_any = true;
+
+                    break;
+                }
+            }
+
+            if (seen_any) {
+                console.trace("Cannot send queued: compiler is not idle: " + QueueState[this.state]);
+                throw "Cannot send queued: compiler is not idle: " + QueueState[this.state];
+            }
         }
     }
 
     sendQueued() {
         console.log("send queued...");
+
+        if (this.state != QueueState.IDLE) {
+            console.trace("Unexpected queue state in sendQueued: " + QueueState[this.state]);
+            throw "Unexpected queue state in sendQueued: " + QueueState[this.state];
+        }
+
+        this.state = QueueState.SENDING;
 
         let seen_any = false;
 
@@ -103,15 +138,17 @@ export class EditQueue {
         }
 
         if (seen_any) {
+            this.state = QueueState.BUILDING;
+
             this.problems.clear_all_analysis_problems();
             
             this.requester.analyse();
             
             console.log("queued edits sent");
 
-            this.state = QueueState.BUILDING;
         } else {
             console.log("no queued edits found");
+            this.state = QueueState.IDLE;
         }
     }
 }
