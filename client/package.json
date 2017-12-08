@@ -1,72 +1,83 @@
 {
-    "name": "ghul",
-    "displayName": "ghūl",
-    "description": "ghūl language support",
-    "version": "0.0.14",
-    "publisher": "degory",
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/degory/ghul-vsce"
-	},
-    "engines": {
-        "vscode": "^1.16.1"
-    },
-    "categories": [
-        "Languages"
+  "name": "ghul",
+  "displayName": "ghūl",
+  "description": "ghūl language support",
+  "version": "0.0.14",
+  "publisher": "degory",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/degory/ghul-vsce"
+  },
+  "engines": {
+    "vscode": "^1.18.0"
+  },
+  "categories": [
+    "Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:ghul"
+  ],
+  "main": "./out/src/extension",
+  "contributes": {
+    "languages": [
+      {
+        "id": "ghul",
+        "aliases": [
+          "ghul",
+          "ghūl"
+        ],
+        "extensions": [
+          ".ghul"
+        ],
+        "configuration": "./language-configuration.json"
+      }
     ],
-	"activationEvents": [
-		"onLanguage:ghul"
-	],
-	"main": "./out/src/extension",
-    "contributes": {
-        "languages": [{
-            "id": "ghul",
-            "aliases": ["ghul", "ghūl"],
-            "extensions": [".ghul"],
-            "configuration": "./language-configuration.json"
-        }],
-        "grammars": [{
-            "language": "ghul",
-            "scopeName": "source.ghul",
-            "path": "./syntaxes/ghul.tmLanguage.json"
-        }],
-        "snippets": [{
-            "language": "ghul",
-            "path": "./snippets/ghul.json"
-		}],
-		"configuration": {
-			"type": "object",
-			"title": "Example configuration",
-			"properties": {
-				"lspSample.maxNumberOfProblems": {
-					"scope": "resource",
-					"type": "number",
-					"default": 100,
-					"description": "Controls the maximum number of problems produced by the server."
-				},
-				"lspSample.trace.server": {
-					"scope": "window",
-					"type": "string",
-					"enum": [
-						"off",
-						"messages",
-						"verbose"
-					],
-					"default": "off",
-					"description": "Traces the communication between VSCode and the language server."
-				}
-			}
-		}
-	},
-	"scripts": {
-		"vscode:prepublish": "tsc -p ./",
-		"compile": "tsc -p ./",
-		"watch": "tsc -w -p ./",
-		"update-vscode": "node ./node_modules/vscode/bin/install",
-		"postinstall": "node ./node_modules/vscode/bin/install"
-	},
-	"dependencies": {
-		"vscode": "^1.1.5",
-		"vscode-languageclient": "^3.4.2"
-	}
+    "grammars": [
+      {
+        "language": "ghul",
+        "scopeName": "source.ghul",
+        "path": "./syntaxes/ghul.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "ghul",
+        "path": "./snippets/ghul.json"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Example configuration",
+      "properties": {
+        "lspSample.maxNumberOfProblems": {
+          "scope": "resource",
+          "type": "number",
+          "default": 100,
+          "description": "Controls the maximum number of problems produced by the server."
+        },
+        "lspSample.trace.server": {
+          "scope": "window",
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Traces the communication between VSCode and the language server."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "tsc -p ./",
+    "compile": "tsc -p ./",
+    "watch": "tsc -w -p ./",
+    "update-vscode": "node ./node_modules/vscode/bin/install",
+    "postinstall": "node ./node_modules/vscode/bin/install"
+  },
+  "dependencies": {
+    "vscode": "^1.1.10",
+    "vscode-languageclient": "^4.0.0-next.1"
+  }
 }

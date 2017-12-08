@@ -62,7 +62,7 @@ let documents: TextDocuments = new TextDocuments();
 // The content of a text document has changed. This event is emitted
 // when the text document first opened or when its content has changed.
 documents.onDidChangeContent((change) => {
-	console.log("!!! onDidChangeDocument: " + change.document.uri);
+	console.log("XXX onDidChangeDocument: " + change.document.uri);
 
 	console.log("doc version: " + change.document.version)
 

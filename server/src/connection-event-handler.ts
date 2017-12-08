@@ -10,7 +10,8 @@ import {
     InitializedParams,
     TextDocuments,
     TextDocumentPositionParams,
-    SignatureHelp,    
+    SignatureHelp,
+    CompletionParams,    
 } from 'vscode-languageserver';
 
 import { getGhulConfig } from './ghul-config';
@@ -62,7 +63,7 @@ export class ConnectionEventHandler {
             this.onDidChangeWatchedFiles(change));
 
         connection.onCompletion(
-            (textDocumentPosition: TextDocumentPositionParams): Promise<CompletionItem[]> =>
+            (textDocumentPosition: CompletionParams): Promise<CompletionItem[]> =>
                 this.onCompletion(textDocumentPosition));
 
         connection.onCompletionResolve(
@@ -141,10 +142,12 @@ export class ConnectionEventHandler {
         console.log('We recevied an file change event');
     }
 
-    onCompletion(textDocumentPosition: TextDocumentPositionParams): Promise<CompletionItem[]> {
+    onCompletion(textDocumentPosition: CompletionParams): Promise<CompletionItem[]> {
         console.log(">>>>>> COMPLETE: received completion request: " + JSON.stringify(textDocumentPosition));
 
-        this.edit_queue.trySendQueued();
+        if (textDocumentPosition.context.triggerCharacter == '.') {
+            this.edit_queue.trySendQueued();
+        }
 
         // The pass parameter contains the position of the text document in 
         // which code complete got requested. For the example we ignore this
