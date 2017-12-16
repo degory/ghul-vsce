@@ -32,7 +32,7 @@ class ProblemList {
 	}
 
 	clear_analysis_problems() {
-		this.analysis = [];		
+		this.analysis = [];
 	}
 
 

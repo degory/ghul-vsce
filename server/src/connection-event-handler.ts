@@ -13,7 +13,9 @@ import {
     SignatureHelp,
     CompletionParams,
     DocumentSymbolParams,
-    SymbolInformation
+    SymbolInformation,
+    ReferenceParams,
+    Location
 } from 'vscode-languageserver';
 
 import { log } from './server';
@@ -88,7 +90,11 @@ export class ConnectionEventHandler {
 
         connection.onWorkspaceSymbol(
             (): Promise<SymbolInformation[]> =>
-                this.onWorkspaceSymbol());                        
+                this.onWorkspaceSymbol());
+
+        connection.onReferences(
+            (params: ReferenceParams): Promise<Location[]> =>
+                this.onReferences(params));        
     }
 
     onInitialize(params: any): InitializeResult {
@@ -120,6 +126,7 @@ export class ConnectionEventHandler {
                 workspaceSymbolProvider: true,
                 hoverProvider: true,
                 definitionProvider: true,
+                referencesProvider: true,
                 signatureHelpProvider: {
                     triggerCharacters: ["(", "["]
                 }
@@ -187,5 +194,11 @@ export class ConnectionEventHandler {
         log("############## onWorkspaceSymbol");
 
         return this.requester.sendWorkspaceSymbol();
+    }
+    
+    onReferences(params: ReferenceParams): Promise<Location[]> {
+        log("############## references");
+
+        return this.requester.sendReferences(params.textDocument.uri, params.position.line, params.position.character);
     }
 }

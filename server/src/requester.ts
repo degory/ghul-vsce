@@ -3,7 +3,8 @@ import {
     Definition,
     Hover,
     SignatureHelp,
-    SymbolInformation
+    SymbolInformation,
+    Location
 } from 'vscode-languageserver';
 
 import { log } from './server';
@@ -132,4 +133,17 @@ export class Requester {
             return null;
         }
     }
+
+    sendReferences(uri: string, line: number, character: number): Promise<Location[]> {
+        if (this.analysed) {
+            this.stream.write('REFERENCES\n');
+            this.stream.write(bodgeUri(uri) + '\n');
+            this.stream.write((line+1) + '\n');
+            this.stream.write((character) + '\n');
+
+            return this.response_handler.expectReferences();
+        } else {
+            return null;
+        }
+    }    
 }

@@ -1,4 +1,4 @@
-import { IConnection, CompletionItem, CompletionItemKind, Definition, SignatureHelp, SymbolKind, Hover, SignatureInformation, ParameterInformation, SymbolInformation } from 'vscode-languageserver';
+import { IConnection, CompletionItem, CompletionItemKind, Definition, SignatureHelp, SymbolKind, Hover, SignatureInformation, ParameterInformation, SymbolInformation, Location } from 'vscode-languageserver';
 
 import { log } from './server';
 
@@ -31,6 +31,9 @@ export class ResponseHandler {
 
     symbols_resolve: (value: SymbolInformation[]) => void;
     symbols_reject: (error: any) => void;
+
+    references_resolve: (value: Location[]) => void;
+    references_reject: (error: any) => void;
 
     constructor(
         connection: IConnection,
@@ -259,6 +262,46 @@ export class ResponseHandler {
         );
     }    
     
+    expectReferences(): Promise<Location[]> {
+        return new Promise<Location[]>((resolve, reject) => {
+            this.references_resolve = resolve;
+            this.references_reject = reject;
+        });
+    }
+
+    handleReferences(lines: string[]) {
+        let resolve = this.references_resolve;
+        this.references_resolve = null;
+
+        let locations: Location[] = [];
+
+        if (lines.length > 0) {
+            for (let i = 0; i < lines.length; i++) {
+                let line = lines[i];
+                let fields = line.split('\t');
+
+                let location: Location = {
+                    uri: fields[0],
+                    range: {
+                        start: {
+                            line: parseInt(fields[1]) - 1,
+                            character: parseInt(fields[2]) - 1
+                        },
+                        end: {
+                            line: parseInt(fields[3]) - 1,
+                            character: parseInt(fields[4]) - 1
+                        }
+                    }
+                };
+
+                locations.push(location);
+            }
+        }
+
+        resolve(
+            locations
+        );
+    }        
      
     handleUnexpected() {
         this.server_manager.abort();

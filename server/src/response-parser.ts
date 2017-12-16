@@ -100,6 +100,11 @@ export class ResponseParser {
             this.response_handler.handleExcept(lines);
             break;
 
+        case "REFERENCES":
+            log("REFERENCES received");
+            this.response_handler.handleReferences(lines);
+            break;                        
+
         default:
             log("unexpected command received: " + command);
             this.response_handler.handleUnexpected();
