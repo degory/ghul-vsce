@@ -33,6 +33,7 @@ export function log(message: string) {
 	// 012345678901234567890123
 	//           11111111112222
 
+	/*
 	let date_string = new Date().toISOString();
 
 	let log_date_string =
@@ -41,6 +42,7 @@ export function log(message: string) {
 		date_string.substring(11, 22);
 
 	appendFileSync("log.txt", log_date_string + ": " + message + "\n");
+	*/
 }
 
 let problems = new ProblemStore();

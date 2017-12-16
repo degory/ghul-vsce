@@ -70,10 +70,6 @@ export class ConnectionEventHandler {
             (textDocumentPosition: CompletionParams): Promise<CompletionItem[]> =>
                 this.onCompletion(textDocumentPosition));
 
-        connection.onCompletionResolve(
-            (item: CompletionItem): CompletionItem =>
-                this.onCompletionResolve(item));
-
         connection.onHover(
             (params: TextDocumentPositionParams): Promise<Hover> =>
                 this.onHover(params));
@@ -89,6 +85,10 @@ export class ConnectionEventHandler {
         connection.onDocumentSymbol(
             (params: DocumentSymbolParams): Promise<SymbolInformation[]> =>
                 this.onDocumentSymbol(params));
+
+        connection.onWorkspaceSymbol(
+            (): Promise<SymbolInformation[]> =>
+                this.onWorkspaceSymbol());                        
     }
 
     onInitialize(params: any): InitializeResult {
@@ -117,6 +117,7 @@ export class ConnectionEventHandler {
                     resolveProvider: false,
                 },
                 documentSymbolProvider: true,
+                workspaceSymbolProvider: true,
                 hoverProvider: true,
                 definitionProvider: true,
                 signatureHelpProvider: {
@@ -162,12 +163,6 @@ export class ConnectionEventHandler {
         return this.requester.sendCompletion(textDocumentPosition.textDocument.uri, textDocumentPosition.position.line, textDocumentPosition.position.character);
     }
 
-    // This handler resolve additional information for the item selected in
-    // the completion list.
-    onCompletionResolve(_item: CompletionItem): CompletionItem {
-        return null;
-    }
-
     onHover(params: TextDocumentPositionParams): Promise<Hover> {
         return this.requester.sendHover(params.textDocument.uri, params.position.line, params.position.character);
     }
@@ -186,5 +181,11 @@ export class ConnectionEventHandler {
         log("############## onDocumentSymbol: " + JSON.stringify(params));
 
         return this.requester.sendDocumentSymbol(params.textDocument.uri);
+    }
+
+    onWorkspaceSymbol(): Promise<SymbolInformation[]> {
+        log("############## onWorkspaceSymbol");
+
+        return this.requester.sendWorkspaceSymbol();
     }
 }

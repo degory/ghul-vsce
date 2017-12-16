@@ -120,5 +120,16 @@ export class Requester {
         } else {
             return null;
         }
-    }  
+    }
+
+    sendWorkspaceSymbol(): Promise<SymbolInformation[]> {
+        if (this.analysed) {
+            this.stream.write('SYMBOLS\n');
+            this.stream.write('\n');
+
+            return this.response_handler.expectSymbols();            
+        } else {
+            return null;
+        }
+    }
 }

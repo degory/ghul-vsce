@@ -90,6 +90,11 @@ export class ResponseParser {
             this.response_handler.handleSignature(lines);
             break;            
 
+        case "SYMBOLS":
+            log("SYMBOLS received");
+            this.response_handler.handleSymbols(lines);
+            break;            
+            
         case "EXCEPT":
             log("EXCEPT received: " + JSON.stringify(lines));
             this.response_handler.handleExcept(lines);

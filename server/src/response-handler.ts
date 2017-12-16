@@ -220,36 +220,40 @@ export class ResponseHandler {
         let symbols: SymbolInformation[] = [];
 
         if (lines.length > 0) {
-            let uri = lines[0];
-
+            let uri: string = "unknown";
+            
             for (let i = 1; i < lines.length; i++) {
-                let fields = lines[i].split('\t');
+                let line = lines[i];
+                let fields = line.split('\t');
 
-                let symbol: SymbolInformation = {
-                    name: fields[0],
-                    kind: <SymbolKind>parseInt(fields[1]),
-                    location: {
-                        uri: uri,
-                        range: {
-                            start: {
-                                line: parseInt(fields[2]),
-                                character: parseInt(fields[3])
-                            },
-                            end: {
-                                line: parseInt(fields[4]),
-                                character: parseInt(fields[5])
+                if (fields.length == 1) {
+                    uri = line;
+                } else {
+
+                    let symbol: SymbolInformation = {
+                        name: fields[0],
+                        kind: <SymbolKind>parseInt(fields[1]),
+                        location: {
+                            uri: uri,
+                            range: {
+                                start: {
+                                    line: parseInt(fields[2]) - 1,
+                                    character: parseInt(fields[3]) - 1
+                                },
+                                end: {
+                                    line: parseInt(fields[4]) - 1,
+                                    character: parseInt(fields[5]) - 1
+                                }
                             }
-                        }
-                    },
-                    containerName: fields[6]
-                };
+                        },
+                        containerName: fields[6]
+                    };
 
-                symbols.push(symbol);
+                    symbols.push(symbol);
+                }
             }
         }
 
-        log("document symbols\n" + JSON.stringify(symbols));
-        
         resolve(
             symbols
         );
