@@ -2,7 +2,8 @@ import {
     CompletionItem,
     Definition,
     Hover,
-    SignatureHelp
+    SignatureHelp,
+    SymbolInformation
 } from 'vscode-languageserver';
 
 import { log } from './server';
@@ -108,5 +109,16 @@ export class Requester {
         } else {
             return null;
         }
-    }    
+    }
+    
+    sendDocumentSymbol(uri: string): Promise<SymbolInformation[]> {
+        if (this.analysed) {
+            this.stream.write('SYMBOLS\n');
+            this.stream.write(bodgeUri(uri) + '\n');
+
+            return this.response_handler.expectSymbols();            
+        } else {
+            return null;
+        }
+    }  
 }

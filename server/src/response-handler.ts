@@ -1,4 +1,4 @@
-import { IConnection, CompletionItem, CompletionItemKind, Definition, SignatureHelp, /* SignatureInformation, */ Hover, SignatureInformation, ParameterInformation } from 'vscode-languageserver';
+import { IConnection, CompletionItem, CompletionItemKind, Definition, SignatureHelp, SymbolKind, Hover, SignatureInformation, ParameterInformation, SymbolInformation } from 'vscode-languageserver';
 
 import { log } from './server';
 
@@ -28,6 +28,9 @@ export class ResponseHandler {
 
     signature_resolve: (value: SignatureHelp) => void;
     signature_reject: (error: any) => void;
+
+    symbols_resolve: (value: SymbolInformation[]) => void;
+    symbols_reject: (error: any) => void;
 
     constructor(
         connection: IConnection,
@@ -157,7 +160,7 @@ export class ResponseHandler {
         });
     }
 
-    handleSignature(_lines: string[]) {
+    handleSignature(lines: string[]) {
         let resolve = this.signature_resolve;
         this.signature_resolve = null;
 
@@ -166,14 +169,14 @@ export class ResponseHandler {
 
         let signatures: SignatureInformation[] = [];
 
-        if (_lines.length > 0) {
-            active_signature = parseInt(_lines[0], 10);
-            active_parameter = parseInt(_lines[1], 10);
+        if (lines.length > 0) {
+            active_signature = parseInt(lines[0], 10);
+            active_parameter = parseInt(lines[1], 10);
 
-            for (let i = 2; i < _lines.length; i++) {
+            for (let i = 2; i < lines.length; i++) {
                 let parameters: ParameterInformation[] = [];
 
-                let params_raw = _lines[i].split('\t');
+                let params_raw = lines[i].split('\t');
 
                 let signature_label = params_raw[0];
 
@@ -202,6 +205,56 @@ export class ResponseHandler {
             result
         );
     }    
+
+    expectSymbols(): Promise<SymbolInformation[]> {
+        return new Promise<SymbolInformation[]>((resolve, reject) => {
+            this.symbols_resolve = resolve;
+            this.symbols_reject = reject;
+        });
+    }
+
+    handleSymbols(lines: string[]) {
+        let resolve = this.symbols_resolve;
+        this.symbols_resolve = null;
+
+        let symbols: SymbolInformation[] = [];
+
+        if (lines.length > 0) {
+            let uri = lines[0];
+
+            for (let i = 1; i < lines.length; i++) {
+                let fields = lines[i].split('\t');
+
+                let symbol: SymbolInformation = {
+                    name: fields[0],
+                    kind: <SymbolKind>parseInt(fields[1]),
+                    location: {
+                        uri: uri,
+                        range: {
+                            start: {
+                                line: parseInt(fields[2]),
+                                character: parseInt(fields[3])
+                            },
+                            end: {
+                                line: parseInt(fields[4]),
+                                character: parseInt(fields[5])
+                            }
+                        }
+                    },
+                    containerName: fields[6]
+                };
+
+                symbols.push(symbol);
+            }
+        }
+
+        log("document symbols\n" + JSON.stringify(symbols));
+        
+        resolve(
+            symbols
+        );
+    }    
+    
      
     handleUnexpected() {
         this.server_manager.abort();

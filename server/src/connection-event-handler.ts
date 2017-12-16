@@ -11,7 +11,9 @@ import {
     TextDocuments,
     TextDocumentPositionParams,
     SignatureHelp,
-    CompletionParams,    
+    CompletionParams,
+    DocumentSymbolParams,
+    SymbolInformation
 } from 'vscode-languageserver';
 
 import { log } from './server';
@@ -83,6 +85,10 @@ export class ConnectionEventHandler {
         connection.onSignatureHelp(
             (params: TextDocumentPositionParams): Promise<SignatureHelp> =>
                 this.onSignatureHelp(params));
+
+        connection.onDocumentSymbol(
+            (params: DocumentSymbolParams): Promise<SymbolInformation[]> =>
+                this.onDocumentSymbol(params));
     }
 
     onInitialize(params: any): InitializeResult {
@@ -97,6 +103,8 @@ export class ConnectionEventHandler {
         log("config: " + JSON.stringify(config));
 
         this.config_event_emitter.configAvailable(workspace, config);
+
+        log("starting up with documentSymbolProvider: true...");
         
         return {
             capabilities: {
@@ -108,7 +116,7 @@ export class ConnectionEventHandler {
                     triggerCharacters: ['.'],                    
                     resolveProvider: false,
                 },
-
+                documentSymbolProvider: true,
                 hoverProvider: true,
                 definitionProvider: true,
                 signatureHelpProvider: {
@@ -172,5 +180,11 @@ export class ConnectionEventHandler {
         this.edit_queue.trySendQueued();
         
         return this.requester.sendSignature(params.textDocument.uri, params.position.line, params.position.character);        
+    }
+
+    onDocumentSymbol(params: DocumentSymbolParams): Promise<SymbolInformation[]> {
+        log("############## onDocumentSymbol: " + JSON.stringify(params));
+
+        return this.requester.sendDocumentSymbol(params.textDocument.uri);
     }
 }
