@@ -2,6 +2,8 @@ import { EventEmitter } from 'events'
 
 import { ChildProcess } from 'child_process';
 
+import { log } from './server';
+
 export class ServerEventEmitter extends EventEmitter {
 	constructor(
 	) {
@@ -13,7 +15,7 @@ export class ServerEventEmitter extends EventEmitter {
     }
 
     running(child: ChildProcess) {
-        console.log("now running, have child process");
+        log("now running, have child process");
         this.emit('running', child);
 	}	
 	

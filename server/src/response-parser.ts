@@ -1,5 +1,7 @@
 import { ResponseHandler } from './response-handler';
 
+import { log } from './server';
+
 export class ResponseParser {
     buffer: string;
     response_handler: ResponseHandler;
@@ -25,7 +27,7 @@ export class ResponseParser {
 				if (section.length > 0) {
 					this.handleSection(section);
 				} else {
-					console.log("protocol error: empty section");
+					log("protocol error: empty section");
 					break;
 				}
 			}
@@ -38,7 +40,7 @@ export class ResponseParser {
         let lines = section.split('\n');
 
         if (lines.length < 2) {
-            console.log("protocol error: no command received");
+            log("protocol error: no command received");
             return;
         }
 
@@ -49,52 +51,52 @@ export class ResponseParser {
 
         switch (command) {
         case "LISTEN":
-            console.log("LISTEN received: compiler is listening");
+            log("LISTEN received: compiler is listening");
             this.response_handler.handleListen();
             break;
 
         case "DIAG PARSE":
-            console.log("DIAG PARSE received");
+            log("DIAG PARSE received");
             this.response_handler.handleDiagnostics('parse', lines);
             break;
 
         case "DIAG ANALYSIS":
-            console.log("DIAG ANALYSIS received");
+            log("DIAG ANALYSIS received");
             this.response_handler.handleDiagnostics('analyis', lines);
             break;
 
         case "ANALYSED":
-            console.log("ANALYSED received");
+            log("ANALYSED received");
             this.response_handler.handleAnalysed();
             break;            
 
         case "HOVER":
-            console.log("HOVER received");
+            log("HOVER received");
             this.response_handler.handleHover(lines);
             break;
 
         case "DEFINITION":
-            console.log("DEFINITION received");
+            log("DEFINITION received");
             this.response_handler.handleDefinition(lines);
             break;
 
         case "COMPLETION":
-            console.log("COMPLETION received");
+            log("COMPLETION received");
             this.response_handler.handleCompletion(lines);
             break;            
 
         case "SIGNATURE":
-            console.log("SIGNATURE received");
+            log("SIGNATURE received");
             this.response_handler.handleSignature(lines);
             break;            
 
         case "EXCEPT":
-            console.log("EXCEPT received: " + JSON.stringify(lines));
+            log("EXCEPT received: " + JSON.stringify(lines));
             this.response_handler.handleExcept(lines);
             break;
 
         default:
-            console.log("unexpected command received: " + command);
+            log("unexpected command received: " + command);
             this.response_handler.handleUnexpected();
         }
     }

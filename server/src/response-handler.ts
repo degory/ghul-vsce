@@ -1,5 +1,7 @@
 import { IConnection, CompletionItem, CompletionItemKind, Definition, SignatureHelp, /* SignatureInformation, */ Hover, SignatureInformation, ParameterInformation } from 'vscode-languageserver';
 
+import { log } from './server';
+
 import { bodgeUri } from './bodge-uri';
 
 import { ProblemStore } from './problem-store';
@@ -60,7 +62,7 @@ export class ResponseHandler {
 
         for (let l of lines) {
             error += l;
-            console.log(l);
+            log(l);
         }
 
         this.server_manager.abort();
@@ -121,6 +123,7 @@ export class ResponseHandler {
     }
 
     expectCompletion(): Promise<CompletionItem[]> {
+        log("response handler: returning promise for pending completion");
         return new Promise<CompletionItem[]>((resolve, reject) => {
             this.completion_resolve = resolve;
             this.completion_reject = reject;
@@ -193,7 +196,7 @@ export class ResponseHandler {
             activeParameter: active_parameter
         };
 
-        console.log("signature help\n" + JSON.stringify(result));
+        log("signature help\n" + JSON.stringify(result));
         
         resolve(
             result
@@ -235,18 +238,18 @@ export class ResponseHandler {
         // A text document got opened in VSCode.
         // params.uri uniquely identifies the document. For documents store on disk this is a file URI.
         // params.text the initial full content of the document.
-        connection.console.log(`${params.textDocument.uri} opened.`);
+        connection.log(`${params.textDocument.uri} opened.`);
     });
     connection.onDidChangeTextDocument((params) => {
         // The content of a text document did change in VSCode.
         // params.uri uniquely identifies the document.
         // params.contentChanges describe the content changes to the document.
-        connection.console.log(`${params.textDocument.uri} changed: ${JSON.stringify(params.contentChanges)}`);
+        connection.log(`${params.textDocument.uri} changed: ${JSON.stringify(params.contentChanges)}`);
     });
     connection.onDidCloseTextDocument((params) => {
         // A text document got closed in VSCode.
         // params.uri uniquely identifies the document.
-        connection.console.log(`${params.textDocument.uri} closed.`);
+        connection.log(`${params.textDocument.uri} closed.`);
     });
     */
 

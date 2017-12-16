@@ -5,6 +5,8 @@ import {
     SignatureHelp
 } from 'vscode-languageserver';
 
+import { log } from './server';
+
 import { ChildProcess } from 'child_process';
 
 import { bodgeUri } from './bodge-uri';
@@ -33,14 +35,14 @@ export class Requester {
         });
 
         server_event_emitter.onRunning((child: ChildProcess) => {
-            console.log("now running");
+            log("now running");
             this.stream = child.stdin;
-            console.log("queued requests sent");
+            log("queued requests sent");
         });        
     }
     
     sendDocument(uri: string, source: string) {
-        console.log("send document: " + bodgeUri(uri));
+        log("send document: " + bodgeUri(uri));
 
         this.stream.write('EDIT\n');
         this.stream.write(bodgeUri(uri) + '\n');
@@ -49,7 +51,7 @@ export class Requester {
     }
 
     analyse(): void {
-        console.log("analyse project");
+        log("analyse project");
         this.stream.write('ANALYSE\n');
     }
 
@@ -80,7 +82,7 @@ export class Requester {
     }
 
     sendCompletion(uri: string, line: number, character: number): Promise<CompletionItem[]> {
-        console.log("send complete request...");
+        log("send complete request...");
 
         if (this.analysed) {
             this.stream.write("COMPLETE\n");
@@ -90,6 +92,7 @@ export class Requester {
 
             return this.response_handler.expectCompletion();
         } else {
+            log("send completion: returning null");
             return null;
         }
     }    

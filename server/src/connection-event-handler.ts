@@ -14,6 +14,8 @@ import {
     CompletionParams,    
 } from 'vscode-languageserver';
 
+import { log } from './server';
+
 import { getGhulConfig } from './ghul-config';
 
 import { ConfigEventEmitter } from './config-event-emitter';
@@ -84,15 +86,15 @@ export class ConnectionEventHandler {
     }
 
     onInitialize(params: any): InitializeResult {
-        console.log("initialize...");
+        log("initialize...");
 
         let workspace: string = params.rootPath;
 
-        console.log("workspace: " + workspace);
+        log("workspace: " + workspace);
 
         let config = getGhulConfig(workspace);
 
-        console.log("config: " + JSON.stringify(config));
+        log("config: " + JSON.stringify(config));
 
         this.config_event_emitter.configAvailable(workspace, config);
         
@@ -117,12 +119,12 @@ export class ConnectionEventHandler {
     }
 
     onShutdown() {
-	    console.log("on shutdown: removing container");
+	    log("on shutdown: removing container");
 	    this.server_manager.kill();
     }
 
     onExit() {
-	    console.log("on exit");
+	    log("on exit");
     }
 
     onDidChangeConfiguration(_change: DidChangeConfigurationParams) {
@@ -139,45 +141,34 @@ export class ConnectionEventHandler {
     
     onDidChangeWatchedFiles(_change: DidChangeWatchedFilesParams) {
         // Monitored files have change in VSCode
-        console.log('We recevied an file change event');
+        log('We recevied an file change event');
     }
 
     onCompletion(textDocumentPosition: CompletionParams): Promise<CompletionItem[]> {
-        console.log(">>>>>> COMPLETE: received completion request: " + JSON.stringify(textDocumentPosition));
-
+        log("UI requests completion");
         if (textDocumentPosition.context.triggerCharacter == '.') {
             this.edit_queue.trySendQueued();
         }
+        log("after try send queued");
 
-        // The pass parameter contains the position of the text document in 
-        // which code complete got requested. For the example we ignore this
-        // info and always provide the same completion items.
         return this.requester.sendCompletion(textDocumentPosition.textDocument.uri, textDocumentPosition.position.line, textDocumentPosition.position.character);
     }
 
     // This handler resolve additional information for the item selected in
     // the completion list.
-    onCompletionResolve(item: CompletionItem): CompletionItem {
-        console.log(">>>>>> COMPLETE: received completion resolve request: " + JSON.stringify(item));
-
+    onCompletionResolve(_item: CompletionItem): CompletionItem {
         return null;
     }
 
     onHover(params: TextDocumentPositionParams): Promise<Hover> {
-        console.log("received hover request: " + params.textDocument.uri + "," + params.position.line + "," + params.position.character);
-
         return this.requester.sendHover(params.textDocument.uri, params.position.line, params.position.character);
     }
 
     onDefinition(params: TextDocumentPositionParams): Promise<Definition> {
-        console.log("received hover request: " + params.textDocument.uri + "," + params.position.line + "," + params.position.character);
-
         return this.requester.sendDefinition(params.textDocument.uri, params.position.line, params.position.character);
     }
     
     onSignatureHelp(params: TextDocumentPositionParams): Promise<SignatureHelp> {
-        console.log("received signature help request: " + params.textDocument.uri + "," + params.position.line + "," + params.position.character);
-
         this.edit_queue.trySendQueued();
         
         return this.requester.sendSignature(params.textDocument.uri, params.position.line, params.position.character);        

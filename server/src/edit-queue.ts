@@ -1,5 +1,7 @@
 import { TextDocumentChangeEvent } from 'vscode-languageserver'
 
+import { log } from './server';
+
 import { Requester } from './requester'
 
 import { ProblemStore } from './problem-store'
@@ -27,7 +29,17 @@ export class EditQueue {
     requester: Requester;
     problems: ProblemStore;
 
-    state: QueueState;
+    _state: QueueState;
+
+    get state(): QueueState {
+        log("state is: " + QueueState[this._state]);
+        return this._state;
+    }
+
+    set state(value: QueueState) {
+        this._state = value;
+        log("state now: " + QueueState[this._state]);
+    }
     
     constructor(
         requester: Requester,
@@ -42,7 +54,7 @@ export class EditQueue {
     }
 
     queueEdit(change: TextDocumentChangeEvent) {
-        console.log("queue edit...");
+        log("queue edit...");
 
         if (this.pending_changes.has(change.document.uri)) 
         {
@@ -50,18 +62,18 @@ export class EditQueue {
 
             if (existing.version == change.document.version &&
                 existing.text == change.document.getText()) {
-                console.log("ignore redundant edit " + change.document.version + " for " + change.document.uri);
+                log("ignore redundant edit " + change.document.version + " for " + change.document.uri);
                 
                 return;
             } else {
-                console.log("updated version of " + change.document.uri);
+                log("updated version of " + change.document.uri);
             }
         } else {
-            console.log("no existing change for: " + change.document.uri + " in: ");
-            console.log(JSON.stringify(this.pending_changes));
+            log("no existing change for: " + change.document.uri + " in: ");
+            log(JSON.stringify(this.pending_changes));
         }
 
-        console.log("queue edit " + change.document.uri);
+        log("queue edit " + change.document.uri);
         
         this.pending_changes.set(change.document.uri,
             {
@@ -72,16 +84,16 @@ export class EditQueue {
             });
 
         if (this.state == QueueState.IDLE) {
-            console.log("queue idle, starting timer");
+            log("queue idle, starting timer");
             this.state = QueueState.WAITING_FOR_MORE_EDITS;
             
             this.startTimer();
         } else if (this.state == QueueState.WAITING_FOR_MORE_EDITS) {
-            console.log("waiting for more edits, resetting timer: " + QueueState[this.state]);
+            log("waiting for more edits, resetting timer: " + QueueState[this.state]);
 
             this.resetTimer();            
         } else if (this.state == QueueState.BUILDING || this.state == QueueState.WAITING_FOR_BUILD) {
-            console.log("queue not idle, enter waiting state");
+            log("queue not idle, enter waiting state");
             
             this.state = QueueState.WAITING_FOR_BUILD;
         } else {
@@ -90,46 +102,48 @@ export class EditQueue {
     }
 
     onTimeout() {
-        console.log("on timeout: " + QueueState[this.state] + " (" + this.state + ")");
+        log("on timeout: " + QueueState[this.state] + " (" + this.state + ")");
         if (this.state == QueueState.WAITING_FOR_MORE_EDITS) {
-            console.log("was waiting for edits, will send queued...");            
+            log("was waiting for edits, will send queued...");            
 
             this.sendQueued();
         } else if (this.state == QueueState.WAITING_FOR_BUILD) {
-            console.log("was waiting for build, will reset timer...");            
+            log("was waiting for build, will reset timer...");            
         
             this.resetTimer();
         } else {
-            console.log("not waiting for edits: " + QueueState[this.state] + " (" + this.state + ")");
+            log("not waiting for edits: " + QueueState[this.state] + " (" + this.state + ")");
         }
     }
 
     resetTimer() {
-        console.log("reset timer...");            
+        log("reset timer...");            
         
         clearTimeout(this.timer);
         this.startTimer();
     }
 
     startTimer() {
-        console.log("start timer...");            
+        log("start timer...");            
         
         this.timer = setTimeout(() => { this.onTimeout() }, 500);
     }
 
     buildFinished() {
         if (this.state == QueueState.WAITING_FOR_BUILD) {
-            console.log("build finished but changes queued: queuing another build");            
+            log("build finished but changes queued: queuing another build");            
 
             this.state = QueueState.IDLE;
 
             this.sendQueued();
         } else if (this.state == QueueState.BUILDING) {
-            console.log("build finished: entering idle state");            
+            log("build finished: entering idle state");            
             
             this.state = QueueState.IDLE;
         } else {
-            throw "Unexpected queue state in buildFinished: " + QueueState[this.state];
+            log("Unexpected queue state in buildFinished: " + QueueState[this.state]);
+
+            this.state = QueueState.IDLE;
         }
     }
 
@@ -152,7 +166,7 @@ export class EditQueue {
                     console.trace("Send queued: compiler is building and did not expect to find changes: " + QueueState[this.state]);
                     throw "Send queued: compiler is building and did not expect to find changes: " + QueueState[this.state];
                 } else if (this.state == QueueState.WAITING_FOR_BUILD) {
-                    console.log("not ideal: sending edits while build is already running: " + QueueState[this.state]);
+                    log("not ideal: sending edits while build is already running: " + QueueState[this.state]);
 
                     this.state = QueueState.BUILDING;
                     
@@ -160,7 +174,7 @@ export class EditQueue {
                     
                     this.requester.analyse();
                     
-                    console.log("queued edits sent");                    
+                    log("queued edits sent");                    
                 } else {
                     console.trace("Unexpected queue state in trySendQueued: " + QueueState[this.state]);
                     throw "Unexpected queue state in trySendQueued: " + QueueState[this.state];                            
@@ -170,7 +184,7 @@ export class EditQueue {
     }
 
     sendQueued() {
-        console.log("send queued...");
+        log("send queued...");
 
         if (this.state == QueueState.WAITING_FOR_MORE_EDITS) {
             clearTimeout(this.timer);
@@ -188,7 +202,7 @@ export class EditQueue {
                 seen_any = true;
 
                 this.problems.clear_parse_problems(change.uri);
-                console.log("send queued: " + change.uri);
+                log("send queued: " + change.uri);
                 this.requester.sendDocument(change.uri, change.text);
 
                 change.is_pending = false;
@@ -202,10 +216,10 @@ export class EditQueue {
             
             this.requester.analyse();
             
-            console.log("queued edits sent");
+            log("queued edits sent");
 
         } else {
-            console.log("no queued edits found");
+            log("no queued edits found");
             this.state = QueueState.IDLE;
         }
     }

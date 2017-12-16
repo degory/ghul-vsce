@@ -1,5 +1,7 @@
 import { readFileSync } from 'fs';
 
+import { log } from './server';
+
 export interface GhulConfig {
 	use_docker: boolean,
 	ghul_lib: string,
@@ -11,7 +13,7 @@ export interface GhulConfig {
 export function getGhulConfig(workspace: string): GhulConfig {
 	let buffer = '' + readFileSync(workspace + "/ghul.json");
 	let config = <GhulConfig>JSON.parse(buffer);
-    console.log("config is: " + JSON.stringify(config));
+    log("config is: " + JSON.stringify(config));
     
     return config;
 }

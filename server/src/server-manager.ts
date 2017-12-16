@@ -4,6 +4,8 @@ import {
 	ChildProcess
 } from 'child_process';
 
+import { log } from './server';
+
 import { GhulConfig } from './ghul-config';
 
 import { ResponseParser } from './response-parser';
@@ -47,20 +49,20 @@ export class ServerManager {
 
 	start() {
 		if (this.ghul_config.use_docker) {
-			console.log("server manager kill any existing analyser");
+			log("server manager kill any existing analyser");
 			this.killQuiet();
 		}
 
-		console.log("server manager starting...");
+		log("server manager starting...");
 		this.event_emitter.starting();
 
 		this.server_state = ServerState.StartingUp;
 	
 		let ghul_compiler = this.ghul_config.ghul_compiler ? this.ghul_config.ghul_compiler : "./ghul";
 	
-		console.log("will use ghul compiler '" + ghul_compiler + "' (in container path)");
+		log("will use ghul compiler '" + ghul_compiler + "' (in container path)");
 	
-		console.log("starting server...");
+		log("starting server...");
 	
 		if (this.ghul_config.use_docker) {
 			this.child = spawn("docker", [
@@ -77,9 +79,9 @@ export class ServerManager {
 
 		this.event_emitter.running(this.child);
 	
-		console.log("after spawn");	
+		log("after spawn");	
 		this.child.stderr.on('data', (chunk: string) => {
-			console.log('' + chunk);
+			log('' + chunk);
 		});
 	
 		this.child.stdout.on('data', (chunk: string) => {
@@ -88,7 +90,7 @@ export class ServerManager {
 	
 		this.child.on('exit',
 			(_code: number, _signal: string) => {
-				console.log("compiler exited");
+				log("compiler exited");
 	
 				this.abort();
 
@@ -116,7 +118,7 @@ export class ServerManager {
 	kill() {
 		this.event_emitter.killing();
 
-		console.log("kill any running analyser...");
+		log("kill any running analyser...");
 		try {
 			let result = spawnSync("docker",
 				[
@@ -124,11 +126,11 @@ export class ServerManager {
 				]
 			);
 	
-			console.log("kill result is: " + result.status);
+			log("kill result is: " + result.status);
 
 			this.event_emitter.killed();
 		} catch (e) {
-			console.log("something went wrong killing running analyser: " + e);
+			log("something went wrong killing running analyser: " + e);
 			this.abort();
 		}
 	}
@@ -141,9 +143,9 @@ export class ServerManager {
 				]
 			);
 
-			console.log("kill result is: " + result.status);
+			log("kill result is: " + result.status);
 		} catch (e) {
-			console.log("something went wrong killing running analyser: " + e);			
+			log("something went wrong killing running analyser: " + e);			
 		}
 	}
 }

@@ -1,5 +1,7 @@
 import { Diagnostic } from 'vscode-languageserver';
 
+import { log } from './server';
+
 interface DiagnosticList {
 	uri: string;
 	diagnostics: Diagnostic[]
@@ -63,7 +65,7 @@ export class ProblemStore {
 		} else if (kind == 'analyis') {
 			this.add_analysis_problem(uri, diagnostic);
 		} else {
-			console.log("unknown diagnostic: " + kind);
+			log("unknown diagnostic: " + kind);
 		}
 	}
 
