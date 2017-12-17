@@ -104,6 +104,7 @@ export class ResponseHandler {
     }    
 
     handleListen() {
+        // this.edit_queue.listenReceived();
         this.server_manager.startListening();
     }
 
@@ -398,6 +399,12 @@ export class ResponseHandler {
             locations
         );
     }        
+
+    handleRestart() {
+        console.log("#### compiler requests restart");
+
+        this.edit_queue.restart();
+    }
      
     handleUnexpected() {
         this.server_manager.abort();

@@ -1,7 +1,5 @@
 import { readFileSync } from 'fs';
 
-import { log } from './server';
-
 export interface GhulConfig {
 	use_docker: boolean,
 	ghul_lib: string,

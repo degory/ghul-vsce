@@ -20,13 +20,12 @@ export class ResponseParser {
 			let lastIndex = sections.length - 1;
 
 			for (var i = 0; i < lastIndex; i++) {
-				let section = sections[i];
+                let section = sections[i];
 
 				if (section.length > 0) {
 					this.handleSection(section);
 				} else {
-					log("response parser: protocol error: empty section");
-					break;
+                    log("response parser: protocol error: empty section " + i + " of " + lastIndex);
 				}
 			}
 
@@ -101,7 +100,12 @@ export class ResponseParser {
         case "REFERENCES":
             log("response parser: REFERENCES received");
             this.response_handler.handleReferences(lines);
-            break;                        
+            break;
+
+        case "RESTART":
+            log("response parser: RESTART received");
+            this.response_handler.handleRestart();
+            break;
 
         default:
             log("response parser: unrecognized command received: " + command);

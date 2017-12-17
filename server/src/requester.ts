@@ -19,7 +19,6 @@ import { ResponseHandler } from './response-handler';
 
 export class Requester {
     analysed: boolean;
-    // queue: RequestQueue;
     stream: any;    
 
     response_handler: ResponseHandler;
@@ -30,11 +29,13 @@ export class Requester {
     ) {
         this.response_handler = response_handler;
 
-        this.analysed = false;
+        this.analysed = true;
 
+        /*
         server_event_emitter.onAnalysed(() => {
             this.analysed = true;
         });
+        */
 
         server_event_emitter.onRunning((child: ChildProcess) => {
             log("ghūl language server: compiler is running");
@@ -49,8 +50,12 @@ export class Requester {
         this.stream.write('\f');
     }
 
-    analyse(): void {
+    analyse(uris: string[]): void {
         this.stream.write('ANALYSE\n');
+        for (let uri of uris) {
+            this.stream.write(uri + '\t');
+        }
+        this.stream.write('\n');
     }
 
     sendHover(uri: string, line: number, character: number): Promise<Hover> {
@@ -140,5 +145,12 @@ export class Requester {
         } else {
             return null;
         }
-    }    
+    }
+
+    sendRestart() {
+        if (this.analysed) {
+            log("sending RESTART request to compiler...");
+            this.stream.write('RESTART\n');
+        }        
+    }
 }

@@ -115,7 +115,7 @@ export class ServerManager {
 
 		log("kill any running ghūl compiler container...");
 		try {
-			let result = spawnSync("docker",
+			spawnSync("docker",
 				[
 					"rm", "-f", "ghul-analyse",
 				]
@@ -130,7 +130,7 @@ export class ServerManager {
 
 	killQuiet() {
 		try {
-			let result = spawnSync("docker",
+			spawnSync("docker",
 				[
 					"rm", "-f", "ghul-analyse",
 				]

@@ -66,7 +66,7 @@ let requester = new Requester(server_event_emitter, response_handler);
 let edit_queue = new EditQueue(requester, problems);
 
 new GhulAnalyser(
-	requester,
+	edit_queue,
 	config_event_emitter,
 	server_event_emitter
 );
@@ -106,7 +106,6 @@ new ConnectionEventHandler(
 	requester,
 	edit_queue
 );
-
 
 documents.listen(connection);
 connection.listen();

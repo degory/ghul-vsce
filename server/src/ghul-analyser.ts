@@ -20,21 +20,23 @@ import { Requester } from './requester';
 import { ConfigEventEmitter } from './config-event-emitter';
 
 import { ServerEventEmitter } from './server-event-emitter';
+import { EditQueue } from './edit-queue';
 
 export class GhulAnalyser {
     server_event_emitter: ServerEventEmitter;
 
     workspace_root: string;
-    requester: Requester;
+    // requester: Requester;
+    edit_queue: EditQueue;
     ghul_config: GhulConfig;
 
     constructor(
-        requester: Requester,
+        edit_queue: EditQueue,
 
         config_event_emitter: ConfigEventEmitter,
         server_event_emitter: ServerEventEmitter
     ) {
-        this.requester = requester;
+        this.edit_queue = edit_queue;
 
         this.server_event_emitter = server_event_emitter;
 
@@ -85,13 +87,13 @@ export class GhulAnalyser {
         
                 sourceFiles.forEach((file: string) => {
                     let path = fileUriToPath(file);
-    
-                    this.requester.sendDocument(file, '' + readFileSync(path));
+
+                    this.edit_queue.queueEdit3(file, null, '' + readFileSync(path));
                 });
     
-                this.requester.analyse();
+                this.edit_queue.startAndSendQueued();;
     
-                this.server_event_emitter.analysed();
+                // this.server_event_emitter.analysed();
             }
         );
     }

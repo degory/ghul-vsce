@@ -2,8 +2,6 @@ import { EventEmitter } from 'events'
 
 import { ChildProcess } from 'child_process';
 
-import { log } from './server';
-
 export class ServerEventEmitter extends EventEmitter {
 	constructor(
 	) {
