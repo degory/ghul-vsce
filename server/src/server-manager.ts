@@ -4,7 +4,7 @@ import {
 	ChildProcess
 } from 'child_process';
 
-import { log } from './server';
+import { log, rejectAllAndThrow } from './server';
 
 import { GhulConfig } from './ghul-config';
 
@@ -49,22 +49,17 @@ export class ServerManager {
 
 	start() {
 		if (this.ghul_config.use_docker) {
-			log("server manager kill any existing analyser");
 			this.killQuiet();
 		}
 
-		log("server manager starting...");
 		this.event_emitter.starting();
 
 		this.server_state = ServerState.StartingUp;
 	
 		let ghul_compiler = this.ghul_config.ghul_compiler ? this.ghul_config.ghul_compiler : "./ghul";
-	
-		log("will use ghul compiler '" + ghul_compiler + "' (in container path)");
-	
-		log("starting server...");
-	
+		
 		if (this.ghul_config.use_docker) {
+			log("starting ghūl compiler '" + ghul_compiler + "' in container");
 			this.child = spawn("docker", [
 				"run", "--name", "ghul-analyse",
 				"--rm",
@@ -74,12 +69,12 @@ export class ServerManager {
 				ghul_compiler, "-A"
 			]);
 		} else {
+			log("starting ghūl compiler '" + ghul_compiler + "'");
 			this.child = spawn(ghul_compiler, [ "-A" ]);
 		} 
 
 		this.event_emitter.running(this.child);
 	
-		log("after spawn");	
 		this.child.stderr.on('data', (chunk: string) => {
 			log('' + chunk);
 		});
@@ -90,11 +85,11 @@ export class ServerManager {
 	
 		this.child.on('exit',
 			(_code: number, _signal: string) => {
-				log("compiler exited");
+				log("ghūl compiler exited - you will need to restart your IDE");
 	
 				this.abort();
 
-				throw "ghūl compiler exited unexpectedly";
+				rejectAllAndThrow("ghūl compiler exited unexpectedly");
 			}
 		);
 	}	
@@ -118,7 +113,7 @@ export class ServerManager {
 	kill() {
 		this.event_emitter.killing();
 
-		log("kill any running analyser...");
+		log("kill any running ghūl compiler container...");
 		try {
 			let result = spawnSync("docker",
 				[
@@ -126,11 +121,9 @@ export class ServerManager {
 				]
 			);
 	
-			log("kill result is: " + result.status);
-
 			this.event_emitter.killed();
 		} catch (e) {
-			log("something went wrong killing running analyser: " + e);
+			log("something went wrong killing ghūl compiler container: " + e);			
 			this.abort();
 		}
 	}
@@ -142,10 +135,8 @@ export class ServerManager {
 					"rm", "-f", "ghul-analyse",
 				]
 			);
-
-			log("kill result is: " + result.status);
 		} catch (e) {
-			log("something went wrong killing running analyser: " + e);			
+			log("something went wrong killing ghūl compiler container: " + e);			
 		}
 	}
 }

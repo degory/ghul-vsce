@@ -37,15 +37,12 @@ export class Requester {
         });
 
         server_event_emitter.onRunning((child: ChildProcess) => {
-            log("now running");
+            log("ghūl language server: compiler is running");
             this.stream = child.stdin;
-            log("queued requests sent");
         });        
     }
     
     sendDocument(uri: string, source: string) {
-        log("send document: " + bodgeUri(uri));
-
         this.stream.write('EDIT\n');
         this.stream.write(bodgeUri(uri) + '\n');
         this.stream.write(source);
@@ -53,7 +50,6 @@ export class Requester {
     }
 
     analyse(): void {
-        log("analyse project");
         this.stream.write('ANALYSE\n');
     }
 
@@ -94,7 +90,6 @@ export class Requester {
 
             return this.response_handler.expectCompletion();
         } else {
-            log("send completion: returning null");
             return null;
         }
     }    

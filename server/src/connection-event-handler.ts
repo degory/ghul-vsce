@@ -98,26 +98,21 @@ export class ConnectionEventHandler {
     }
 
     onInitialize(params: any): InitializeResult {
-        log("initialize...");
+        log("ghūl language server initializing...");
 
         let workspace: string = params.rootPath;
 
-        log("workspace: " + workspace);
+        log("project workspace: " + workspace);
 
         let config = getGhulConfig(workspace);
 
-        log("config: " + JSON.stringify(config));
+        log("project config: " + JSON.stringify(config));
 
         this.config_event_emitter.configAvailable(workspace, config);
-
-        log("starting up with documentSymbolProvider: true...");
         
         return {
             capabilities: {
-                // Tell the client that the server works in FULL text document sync mode
                 textDocumentSync: this.documents.syncKind,
-
-                // Tell the client that the server support code complete
                 completionProvider: {
                     triggerCharacters: ['.'],                    
                     resolveProvider: false,
@@ -135,12 +130,12 @@ export class ConnectionEventHandler {
     }
 
     onShutdown() {
-	    log("on shutdown: removing container");
+	    log("ghūl language server shutting down: kill compiler...");
 	    this.server_manager.kill();
     }
 
     onExit() {
-	    log("on exit");
+	    log("ghūl language server exit");
     }
 
     onDidChangeConfiguration(_change: DidChangeConfigurationParams) {
@@ -157,15 +152,13 @@ export class ConnectionEventHandler {
     
     onDidChangeWatchedFiles(_change: DidChangeWatchedFilesParams) {
         // Monitored files have change in VSCode
-        log('We recevied an file change event');
+        log('file change event received');
     }
 
     onCompletion(textDocumentPosition: CompletionParams): Promise<CompletionItem[]> {
-        log("UI requests completion");
         if (textDocumentPosition.context.triggerCharacter == '.') {
             this.edit_queue.trySendQueued();
         }
-        log("after try send queued");
 
         return this.requester.sendCompletion(textDocumentPosition.textDocument.uri, textDocumentPosition.position.line, textDocumentPosition.position.character);
     }
@@ -185,20 +178,14 @@ export class ConnectionEventHandler {
     }
 
     onDocumentSymbol(params: DocumentSymbolParams): Promise<SymbolInformation[]> {
-        log("############## onDocumentSymbol: " + JSON.stringify(params));
-
         return this.requester.sendDocumentSymbol(params.textDocument.uri);
     }
 
     onWorkspaceSymbol(): Promise<SymbolInformation[]> {
-        log("############## onWorkspaceSymbol");
-
         return this.requester.sendWorkspaceSymbol();
     }
     
     onReferences(params: ReferenceParams): Promise<Location[]> {
-        log("############## references");
-
         return this.requester.sendReferences(params.textDocument.uri, params.position.line, params.position.character);
     }
 }

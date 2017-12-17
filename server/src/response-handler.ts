@@ -1,6 +1,6 @@
 import { IConnection, CompletionItem, CompletionItemKind, Definition, SignatureHelp, SymbolKind, Hover, SignatureInformation, ParameterInformation, SymbolInformation, Location } from 'vscode-languageserver';
 
-import { log } from './server';
+import { log, rejectAllAndThrow } from './server';
 
 import { bodgeUri } from './bodge-uri';
 
@@ -43,11 +43,55 @@ export class ResponseHandler {
         this.problems = problems;
     }
 
+    rejectAllPendingPromises(message: string) {
+        if (this.hover_reject) {
+            this.hover_reject(message);
+
+            this.hover_resolve = null;
+            this.hover_reject = null;
+        }
+
+        if (this.definition_reject) {
+            this.definition_reject(message);
+
+            this.definition_resolve = null;
+            this.definition_reject = null;
+        }
+
+        if (this.completion_reject) {
+            this.completion_reject(message);
+
+            this.completion_resolve = null;
+            this.completion_reject = null;
+        }
+        
+        if (this.signature_reject) {
+            this.signature_reject(message);
+
+            this.signature_resolve = null;
+            this.signature_reject = null;
+        }        
+
+        if (this.symbols_reject) {
+            this.symbols_reject(message);
+
+            this.symbols_resolve = null;
+            this.symbols_reject = null;
+        }        
+
+        if (this.references_reject) {
+            this.references_reject(message);
+
+            this.references_resolve = null;
+            this.references_reject = null;
+        }        
+    }
+
     setServerManager(server_manager: ServerManager) {
         if (this.server_manager == null) {
             this.server_manager = server_manager;
         } else {
-            throw "replacing existing server manager in ResponseHandler";
+            rejectAllAndThrow("replacing existing server manager in ResponseHandler");
         }
     }
 
@@ -55,7 +99,7 @@ export class ResponseHandler {
         if (this.edit_queue == null) {
             this.edit_queue = edit_queue;
         } else {
-            throw "replacing existing server manager in ResponseHandler";
+            rejectAllAndThrow("replacing existing edit queue in ResponseHandler");
         }
     }    
 
@@ -90,6 +134,11 @@ export class ResponseHandler {
 
     expectHover(): Promise<Hover> {
         return new Promise<Hover>((resolve, reject) => {
+            if (this.hover_resolve) {
+                log("oops: overlapped hover request");
+                this.hover_resolve(null);
+            }
+
             this.hover_resolve = resolve;
             this.hover_reject = reject;
         });
@@ -105,6 +154,11 @@ export class ResponseHandler {
 
     expectDefinition(): Promise<Definition> {
         return new Promise<Definition>((resolve, reject) => {
+            if (this.definition_resolve) {
+                log("oops: overlapped definition request");
+                this.definition_resolve(null);
+            }
+
             this.definition_resolve = resolve;
             this.definition_reject = reject;
         });
@@ -129,88 +183,125 @@ export class ResponseHandler {
     }
 
     expectCompletion(): Promise<CompletionItem[]> {
-        log("response handler: returning promise for pending completion");
         return new Promise<CompletionItem[]>((resolve, reject) => {
+            if (this.completion_resolve) {
+                log("oops: overlapped completion request");
+                this.completion_resolve(null);
+            }
             this.completion_resolve = resolve;
             this.completion_reject = reject;
         });
     }
 
     handleCompletion(lines: string[]) {
-        let resolve = this.completion_resolve;
-        this.completion_resolve = null;
+        let reject = this.completion_reject;
+        try {
+            let resolve = this.completion_resolve;
 
-        let results: CompletionItem[] = [];
+            this.completion_resolve = null;
+            this.completion_reject = null;
 
-        for (let line of lines) {
-            let fields = line.split('\t');
-            results.push({
-                label: fields[0],
-                kind:  <CompletionItemKind>parseInt(fields[1]),
-                detail: fields[2]
-            });
+            let results: CompletionItem[] = [];
+
+            for (let line of lines) {
+                let fields = line.split('\t');
+
+                if (fields.length < 3) {
+                    log("unexpectedly short completion received (" + fields.length + ")");
+                }
+
+                results.push({
+                    label: fields[0],
+                    kind:  <CompletionItemKind>parseInt(fields[1]),
+                    detail: fields[2]
+                });
+            }
+            
+            if (resolve && typeof resolve === "function") {
+                resolve(
+                    results
+                )
+            } else {
+                log("weird: received completion but completion promise is null or not a function: " + resolve);
+            }
+        } catch(e) {
+            if (reject && typeof reject === "function") {
+                log("rejecting completion: " + e);
+                reject("" + e);
+            } else {
+                log(e);
+            }
         }
-        
-        resolve(
-            results
-        );
     }    
 
     expectSignature(): Promise<SignatureHelp> {
         return new Promise<SignatureHelp>((resolve, reject) => {
+            if (this.signature_resolve) {
+                log("oops: overlapped signature request");
+                this.signature_resolve(null);
+            }
             this.signature_resolve = resolve;
             this.signature_reject = reject;
         });
     }
 
     handleSignature(lines: string[]) {
-        let resolve = this.signature_resolve;
-        this.signature_resolve = null;
+        let reject = this.signature_reject;
 
-        let active_signature = 0;
-        let active_parameter = 0;
+        try {
+            let resolve = this.signature_resolve;
+            this.signature_resolve = null;
+            this.signature_resolve = null;
 
-        let signatures: SignatureInformation[] = [];
+            let active_signature = 0;
+            let active_parameter = 0;
 
-        if (lines.length > 0) {
-            active_signature = parseInt(lines[0], 10);
-            active_parameter = parseInt(lines[1], 10);
+            let signatures: SignatureInformation[] = [];
 
-            for (let i = 2; i < lines.length; i++) {
-                let parameters: ParameterInformation[] = [];
+            if (lines.length > 0) {
+                active_signature = parseInt(lines[0], 10);
+                active_parameter = parseInt(lines[1], 10);
 
-                let params_raw = lines[i].split('\t');
+                for (let i = 2; i < lines.length; i++) {
+                    let parameters: ParameterInformation[] = [];
 
-                let signature_label = params_raw[0];
+                    let params_raw = lines[i].split('\t');
 
-                for (let j = 1; j < params_raw.length; j++) {
-                    parameters.push({
-                        label: params_raw[j]
+                    let signature_label = params_raw[0];
+
+                    for (let j = 1; j < params_raw.length; j++) {
+                        parameters.push({
+                            label: params_raw[j]
+                        });
+                    }
+
+                    signatures.push({
+                        label: signature_label,
+                        parameters: parameters,
                     });
                 }
-
-                signatures.push({
-                    label: signature_label,
-                    parameters: parameters,
-                });
             }
+
+            let result: SignatureHelp = {
+                signatures: signatures,
+                activeSignature: active_signature,
+                activeParameter: active_parameter
+            };
+
+            resolve(
+                result
+            );
+        } catch(e) {
+            reject("" + e);
         }
-
-        let result: SignatureHelp = {
-            signatures: signatures,
-            activeSignature: active_signature,
-            activeParameter: active_parameter
-        };
-
-        log("signature help\n" + JSON.stringify(result));
-        
-        resolve(
-            result
-        );
     }    
 
     expectSymbols(): Promise<SymbolInformation[]> {
         return new Promise<SymbolInformation[]>((resolve, reject) => {
+            if (this.symbols_resolve) {
+                log("oops: overlapped symbols request");
+                this.symbols_resolve(null);
+            }
             this.symbols_resolve = resolve;
             this.symbols_reject = reject;
         });
@@ -264,6 +355,11 @@ export class ResponseHandler {
     
     expectReferences(): Promise<Location[]> {
         return new Promise<Location[]>((resolve, reject) => {
+            if (this.references_resolve) {
+                log("oops: overlapped references request");
+                this.references_resolve(null);
+            }
+            
             this.references_resolve = resolve;
             this.references_reject = reject;
         });

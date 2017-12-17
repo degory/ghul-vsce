@@ -7,8 +7,6 @@ export class ResponseParser {
     response_handler: ResponseHandler;
 
     constructor(response_handler: ResponseHandler) {
-
-        console.info("starting up");
         this.buffer = '';
         this.response_handler = response_handler;
     }
@@ -27,7 +25,7 @@ export class ResponseParser {
 				if (section.length > 0) {
 					this.handleSection(section);
 				} else {
-					log("protocol error: empty section");
+					log("response parser: protocol error: empty section");
 					break;
 				}
 			}
@@ -40,7 +38,7 @@ export class ResponseParser {
         let lines = section.split('\n');
 
         if (lines.length < 2) {
-            log("protocol error: no command received");
+            log("response parser: protocol error: no command received");
             return;
         }
 
@@ -51,62 +49,62 @@ export class ResponseParser {
 
         switch (command) {
         case "LISTEN":
-            log("LISTEN received: compiler is listening");
+            log("response parser: LISTEN received: compiler is listening");
             this.response_handler.handleListen();
             break;
 
         case "DIAG PARSE":
-            log("DIAG PARSE received");
+            log("response parser: DIAG PARSE received");
             this.response_handler.handleDiagnostics('parse', lines);
             break;
 
         case "DIAG ANALYSIS":
-            log("DIAG ANALYSIS received");
+            log("response parser: DIAG ANALYSIS received");
             this.response_handler.handleDiagnostics('analyis', lines);
             break;
 
         case "ANALYSED":
-            log("ANALYSED received");
+            log("response parser: ANALYSED received");
             this.response_handler.handleAnalysed();
             break;            
 
         case "HOVER":
-            log("HOVER received");
+            log("response parser: HOVER received");
             this.response_handler.handleHover(lines);
             break;
 
         case "DEFINITION":
-            log("DEFINITION received");
+            log("response parser: DEFINITION received");
             this.response_handler.handleDefinition(lines);
             break;
 
         case "COMPLETION":
-            log("COMPLETION received");
+            log("response parser: COMPLETION received");
             this.response_handler.handleCompletion(lines);
             break;            
 
         case "SIGNATURE":
-            log("SIGNATURE received");
+            log("response parser: SIGNATURE received");
             this.response_handler.handleSignature(lines);
             break;            
 
         case "SYMBOLS":
-            log("SYMBOLS received");
+            log("response parser: SYMBOLS received");
             this.response_handler.handleSymbols(lines);
             break;            
             
         case "EXCEPT":
-            log("EXCEPT received: " + JSON.stringify(lines));
+            log("response parser: EXCEPT received: " + JSON.stringify(lines));
             this.response_handler.handleExcept(lines);
             break;
 
         case "REFERENCES":
-            log("REFERENCES received");
+            log("response parser: REFERENCES received");
             this.response_handler.handleReferences(lines);
             break;                        
 
         default:
-            log("unexpected command received: " + command);
+            log("response parser: unrecognized command received: " + command);
             this.response_handler.handleUnexpected();
         }
     }

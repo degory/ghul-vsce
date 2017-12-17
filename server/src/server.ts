@@ -26,8 +26,10 @@ import { GhulAnalyser } from './ghul-analyser';
 
 import { ServerManager } from './server-manager';
 
+let real_console_log = console.log;
+
 export function log(message: string) {
-	console.log(message);
+	real_console_log(message);
 
 	// 2017-12-16T12:24:20.226Z
 	// 012345678901234567890123
@@ -44,6 +46,8 @@ export function log(message: string) {
 	appendFileSync("log.txt", log_date_string + ": " + message + "\n");
 	*/
 }
+
+console.log = log;
 
 let problems = new ProblemStore();
 
@@ -78,20 +82,19 @@ let server_manager = new ServerManager(
 response_handler.setServerManager(server_manager);
 response_handler.setEditQueue(edit_queue);
 
+export function rejectAllPendingPromises(message: string) {
+	response_handler.rejectAllPendingPromises(message);
+}
+
+export function rejectAllAndThrow(message: string) {
+	log(message);
+	rejectAllPendingPromises(message);
+	throw message;
+}
+
 let documents: TextDocuments = new TextDocuments();
  
-// The content of a text document has changed. This event is emitted
-// when the text document first opened or when its content has changed.
 documents.onDidChangeContent((change) => {
-	log("XXX onDidChangeDocument: " + change.document.uri);
-
-	log("doc version: " + change.document.version)
-
-	// TODO: if not listening then needs to be queued, but must be
-	// queued after initial whole workspace analyis. Otherwise server
-	// will attempt to analyse just this file, without the rest 
-	// of the workspace, and will crash due to missing Ghul namespace
-
 	edit_queue.queueEdit(change);
 });
 

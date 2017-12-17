@@ -51,33 +51,24 @@ export class GhulAnalyser {
     analyseEntireProject() {
         let config = this.ghul_config;
 
-        log("anaylse whole workspace: " + this.workspace_root);
-        
         let sourceFiles = <string[]>[];
     
         let directories = config.ghul_source;
         
         if (this.ghul_config.ghul_lib) {
-            log("ghul library is in " + config.ghul_lib);
             directories.push(path.resolve(config.ghul_lib));
         }
         
         let promises: Promise<String[]>[] = [];
-    
-        log("read source files from directories: " + JSON.stringify(directories));
-    
+        
         for (let i in directories) {
             promises.push(
                 readdir(directories[i])
             );
         }
     
-        log("awaiting read-dir results...");
-    
         Promise.all(promises).then(
-            (value: string[][]) => {
-                log("read-dir promises all resolved");
-    
+            (value: string[][]) => {    
                 for (let i in value) {
                     let results = value[i];
     
@@ -91,22 +82,15 @@ export class GhulAnalyser {
                         }
                     }
                 }
-    
-                log("source files is: " + JSON.stringify(sourceFiles));
-    
+        
                 sourceFiles.forEach((file: string) => {
-                    log("validate source file: " + file);
                     let path = fileUriToPath(file);
     
                     this.requester.sendDocument(file, '' + readFileSync(path));
                 });
     
-                log("all source files queued for parse.");
-    
                 this.requester.analyse();
     
-                log("analyse queued.");
-
                 this.server_event_emitter.analysed();
             }
         );

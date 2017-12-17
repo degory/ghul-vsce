@@ -15,7 +15,6 @@ export class ServerEventEmitter extends EventEmitter {
     }
 
     running(child: ChildProcess) {
-        log("now running, have child process");
         this.emit('running', child);
 	}	
 	
