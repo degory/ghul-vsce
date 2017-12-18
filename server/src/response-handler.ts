@@ -386,7 +386,7 @@ export class ResponseHandler {
                         },
                         end: {
                             line: parseInt(fields[3]) - 1,
-                            character: parseInt(fields[4]) - 1
+                            character: parseInt(fields[4])
                         }
                     }
                 };
