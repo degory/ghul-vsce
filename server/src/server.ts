@@ -4,7 +4,7 @@ import {
 	IPCMessageReader, IPCMessageWriter, createConnection, TextDocuments
 } from 'vscode-languageserver';
 
-import { appendFileSync } from 'fs';
+// import { appendFileSync } from 'fs';
 
 import { ProblemStore } from './problem-store';
 

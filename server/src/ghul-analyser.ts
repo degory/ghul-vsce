@@ -3,7 +3,7 @@ import {
 	readFileSync //, Stats
 } from 'fs';
 
-import { log } from './server';
+// import { log } from './server';
 
 import fileUrl = require('file-url');
 
@@ -15,7 +15,7 @@ import path = require('path');
 
 import { GhulConfig } from './ghul-config'; 
 
-import { Requester } from './requester';
+// import { Requester } from './requester';
 
 import { ConfigEventEmitter } from './config-event-emitter';
 

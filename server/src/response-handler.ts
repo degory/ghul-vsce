@@ -130,7 +130,7 @@ export class ResponseHandler {
             this.connection.sendDiagnostics(d);
         }
 
-        this.edit_queue.buildFinished();
+        this.edit_queue.onBuildFinished();
     }
 
     expectHover(): Promise<Hover> {
