@@ -10,8 +10,15 @@ import {
     InitializedParams,
     TextDocuments,
     TextDocumentPositionParams,
-    SignatureHelp,    
+    SignatureHelp,
+    CompletionParams,
+    DocumentSymbolParams,
+    SymbolInformation,
+    ReferenceParams,
+    Location
 } from 'vscode-languageserver';
+
+import { log } from './server';
 
 import { getGhulConfig } from './ghul-config';
 
@@ -62,12 +69,8 @@ export class ConnectionEventHandler {
             this.onDidChangeWatchedFiles(change));
 
         connection.onCompletion(
-            (textDocumentPosition: TextDocumentPositionParams): Promise<CompletionItem[]> =>
+            (textDocumentPosition: CompletionParams): Promise<CompletionItem[]> =>
                 this.onCompletion(textDocumentPosition));
-
-        connection.onCompletionResolve(
-            (item: CompletionItem): CompletionItem =>
-                this.onCompletionResolve(item));
 
         connection.onHover(
             (params: TextDocumentPositionParams): Promise<Hover> =>
@@ -80,34 +83,45 @@ export class ConnectionEventHandler {
         connection.onSignatureHelp(
             (params: TextDocumentPositionParams): Promise<SignatureHelp> =>
                 this.onSignatureHelp(params));
+
+        connection.onDocumentSymbol(
+            (params: DocumentSymbolParams): Promise<SymbolInformation[]> =>
+                this.onDocumentSymbol(params));
+
+        connection.onWorkspaceSymbol(
+            (): Promise<SymbolInformation[]> =>
+                this.onWorkspaceSymbol());
+
+        connection.onReferences(
+            (params: ReferenceParams): Promise<Location[]> =>
+                this.onReferences(params));        
     }
 
     onInitialize(params: any): InitializeResult {
-        console.log("initialize...");
+        log("ghūl language server initializing...");
 
         let workspace: string = params.rootPath;
 
-        console.log("workspace: " + workspace);
+        log("project workspace: " + workspace);
 
         let config = getGhulConfig(workspace);
 
-        console.log("config: " + JSON.stringify(config));
+        log("project config: " + JSON.stringify(config));
 
         this.config_event_emitter.configAvailable(workspace, config);
         
         return {
             capabilities: {
-                // Tell the client that the server works in FULL text document sync mode
                 textDocumentSync: this.documents.syncKind,
-
-                // Tell the client that the server support code complete
                 completionProvider: {
                     triggerCharacters: ['.'],                    
                     resolveProvider: false,
                 },
-
+                documentSymbolProvider: true,
+                workspaceSymbolProvider: true,
                 hoverProvider: true,
                 definitionProvider: true,
+                referencesProvider: true,
                 signatureHelpProvider: {
                     triggerCharacters: ["(", "["]
                 }
@@ -116,12 +130,12 @@ export class ConnectionEventHandler {
     }
 
     onShutdown() {
-	    console.log("on shutdown: removing container");
+	    log("ghūl language server shutting down: kill compiler...");
 	    this.server_manager.kill();
     }
 
     onExit() {
-	    console.log("on exit");
+	    log("ghūl language server exit");
     }
 
     onDidChangeConfiguration(_change: DidChangeConfigurationParams) {
@@ -138,45 +152,40 @@ export class ConnectionEventHandler {
     
     onDidChangeWatchedFiles(_change: DidChangeWatchedFilesParams) {
         // Monitored files have change in VSCode
-        console.log('We recevied an file change event');
+        log('file change event received');
     }
 
-    onCompletion(textDocumentPosition: TextDocumentPositionParams): Promise<CompletionItem[]> {
-        console.log(">>>>>> COMPLETE: received completion request: " + JSON.stringify(textDocumentPosition));
+    onCompletion(textDocumentPosition: CompletionParams): Promise<CompletionItem[]> {
+        if (textDocumentPosition.context.triggerCharacter == '.') {
+            this.edit_queue.trySendQueued();
+        }
 
-        this.edit_queue.trySendQueued();
-
-        // The pass parameter contains the position of the text document in 
-        // which code complete got requested. For the example we ignore this
-        // info and always provide the same completion items.
         return this.requester.sendCompletion(textDocumentPosition.textDocument.uri, textDocumentPosition.position.line, textDocumentPosition.position.character);
     }
 
-    // This handler resolve additional information for the item selected in
-    // the completion list.
-    onCompletionResolve(item: CompletionItem): CompletionItem {
-        console.log(">>>>>> COMPLETE: received completion resolve request: " + JSON.stringify(item));
-
-        return null;
-    }
-
     onHover(params: TextDocumentPositionParams): Promise<Hover> {
-        console.log("received hover request: " + params.textDocument.uri + "," + params.position.line + "," + params.position.character);
-
         return this.requester.sendHover(params.textDocument.uri, params.position.line, params.position.character);
     }
 
     onDefinition(params: TextDocumentPositionParams): Promise<Definition> {
-        console.log("received hover request: " + params.textDocument.uri + "," + params.position.line + "," + params.position.character);
-
         return this.requester.sendDefinition(params.textDocument.uri, params.position.line, params.position.character);
     }
     
     onSignatureHelp(params: TextDocumentPositionParams): Promise<SignatureHelp> {
-        console.log("received signature help request: " + params.textDocument.uri + "," + params.position.line + "," + params.position.character);
-
         this.edit_queue.trySendQueued();
         
         return this.requester.sendSignature(params.textDocument.uri, params.position.line, params.position.character);        
+    }
+
+    onDocumentSymbol(params: DocumentSymbolParams): Promise<SymbolInformation[]> {
+        return this.requester.sendDocumentSymbol(params.textDocument.uri);
+    }
+
+    onWorkspaceSymbol(): Promise<SymbolInformation[]> {
+        return this.requester.sendWorkspaceSymbol();
+    }
+    
+    onReferences(params: ReferenceParams): Promise<Location[]> {
+        return this.requester.sendReferences(params.textDocument.uri, params.position.line, params.position.character);
     }
 }

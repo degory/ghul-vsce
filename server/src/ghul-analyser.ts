@@ -3,6 +3,8 @@ import {
 	readFileSync //, Stats
 } from 'fs';
 
+// import { log } from './server';
+
 import fileUrl = require('file-url');
 
 import fileUriToPath = require('file-uri-to-path');
@@ -13,26 +15,28 @@ import path = require('path');
 
 import { GhulConfig } from './ghul-config'; 
 
-import { Requester } from './requester';
+// import { Requester } from './requester';
 
 import { ConfigEventEmitter } from './config-event-emitter';
 
 import { ServerEventEmitter } from './server-event-emitter';
+import { EditQueue } from './edit-queue';
 
 export class GhulAnalyser {
     server_event_emitter: ServerEventEmitter;
 
     workspace_root: string;
-    requester: Requester;
+    // requester: Requester;
+    edit_queue: EditQueue;
     ghul_config: GhulConfig;
 
     constructor(
-        requester: Requester,
+        edit_queue: EditQueue,
 
         config_event_emitter: ConfigEventEmitter,
         server_event_emitter: ServerEventEmitter
     ) {
-        this.requester = requester;
+        this.edit_queue = edit_queue;
 
         this.server_event_emitter = server_event_emitter;
 
@@ -49,33 +53,24 @@ export class GhulAnalyser {
     analyseEntireProject() {
         let config = this.ghul_config;
 
-        console.log("anaylse whole workspace: " + this.workspace_root);
-        
         let sourceFiles = <string[]>[];
     
         let directories = config.ghul_source;
         
         if (this.ghul_config.ghul_lib) {
-            console.log("ghul library is in " + config.ghul_lib);
             directories.push(path.resolve(config.ghul_lib));
         }
         
         let promises: Promise<String[]>[] = [];
-    
-        console.log("read source files from directories: " + JSON.stringify(directories));
-    
+        
         for (let i in directories) {
             promises.push(
                 readdir(directories[i])
             );
         }
     
-        console.log("awaiting read-dir results...");
-    
         Promise.all(promises).then(
-            (value: string[][]) => {
-                console.log("read-dir promises all resolved");
-    
+            (value: string[][]) => {    
                 for (let i in value) {
                     let results = value[i];
     
@@ -89,23 +84,16 @@ export class GhulAnalyser {
                         }
                     }
                 }
-    
-                console.log("source files is: " + JSON.stringify(sourceFiles));
-    
+        
                 sourceFiles.forEach((file: string) => {
-                    console.log("validate source file: " + file);
                     let path = fileUriToPath(file);
-    
-                    this.requester.sendDocument(file, '' + readFileSync(path));
+
+                    this.edit_queue.queueEdit3(file, null, '' + readFileSync(path));
                 });
     
-                console.log("all source files queued for parse.");
+                this.edit_queue.startAndSendQueued();;
     
-                this.requester.analyse();
-    
-                console.log("analyse queued.");
-
-                this.server_event_emitter.analysed();
+                // this.server_event_emitter.analysed();
             }
         );
     }

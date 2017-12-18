@@ -1,4 +1,6 @@
-import { IConnection, CompletionItem, CompletionItemKind, Definition, SignatureHelp, /* SignatureInformation, */ Hover, SignatureInformation, ParameterInformation } from 'vscode-languageserver';
+import { IConnection, CompletionItem, CompletionItemKind, Definition, SignatureHelp, SymbolKind, Hover, SignatureInformation, ParameterInformation, SymbolInformation, Location } from 'vscode-languageserver';
+
+import { log, rejectAllAndThrow } from './server';
 
 import { bodgeUri } from './bodge-uri';
 
@@ -27,6 +29,12 @@ export class ResponseHandler {
     signature_resolve: (value: SignatureHelp) => void;
     signature_reject: (error: any) => void;
 
+    symbols_resolve: (value: SymbolInformation[]) => void;
+    symbols_reject: (error: any) => void;
+
+    references_resolve: (value: Location[]) => void;
+    references_reject: (error: any) => void;
+
     constructor(
         connection: IConnection,
         problems: ProblemStore
@@ -35,11 +43,55 @@ export class ResponseHandler {
         this.problems = problems;
     }
 
+    rejectAllPendingPromises(message: string) {
+        if (this.hover_reject) {
+            this.hover_reject(message);
+
+            this.hover_resolve = null;
+            this.hover_reject = null;
+        }
+
+        if (this.definition_reject) {
+            this.definition_reject(message);
+
+            this.definition_resolve = null;
+            this.definition_reject = null;
+        }
+
+        if (this.completion_reject) {
+            this.completion_reject(message);
+
+            this.completion_resolve = null;
+            this.completion_reject = null;
+        }
+        
+        if (this.signature_reject) {
+            this.signature_reject(message);
+
+            this.signature_resolve = null;
+            this.signature_reject = null;
+        }        
+
+        if (this.symbols_reject) {
+            this.symbols_reject(message);
+
+            this.symbols_resolve = null;
+            this.symbols_reject = null;
+        }        
+
+        if (this.references_reject) {
+            this.references_reject(message);
+
+            this.references_resolve = null;
+            this.references_reject = null;
+        }        
+    }
+
     setServerManager(server_manager: ServerManager) {
         if (this.server_manager == null) {
             this.server_manager = server_manager;
         } else {
-            throw "replacing existing server manager in ResponseHandler";
+            rejectAllAndThrow("replacing existing server manager in ResponseHandler");
         }
     }
 
@@ -47,11 +99,12 @@ export class ResponseHandler {
         if (this.edit_queue == null) {
             this.edit_queue = edit_queue;
         } else {
-            throw "replacing existing server manager in ResponseHandler";
+            rejectAllAndThrow("replacing existing edit queue in ResponseHandler");
         }
     }    
 
     handleListen() {
+        // this.edit_queue.listenReceived();
         this.server_manager.startListening();
     }
 
@@ -60,7 +113,7 @@ export class ResponseHandler {
 
         for (let l of lines) {
             error += l;
-            console.log(l);
+            log(l);
         }
 
         this.server_manager.abort();
@@ -77,11 +130,16 @@ export class ResponseHandler {
             this.connection.sendDiagnostics(d);
         }
 
-        this.edit_queue.buildFinished();
+        this.edit_queue.onBuildFinished();
     }
 
     expectHover(): Promise<Hover> {
         return new Promise<Hover>((resolve, reject) => {
+            if (this.hover_resolve) {
+                log("oops: overlapped hover request");
+                this.hover_resolve(null);
+            }
+
             this.hover_resolve = resolve;
             this.hover_reject = reject;
         });
@@ -97,6 +155,11 @@ export class ResponseHandler {
 
     expectDefinition(): Promise<Definition> {
         return new Promise<Definition>((resolve, reject) => {
+            if (this.definition_resolve) {
+                log("oops: overlapped definition request");
+                this.definition_resolve(null);
+            }
+
             this.definition_resolve = resolve;
             this.definition_reject = reject;
         });
@@ -122,83 +185,226 @@ export class ResponseHandler {
 
     expectCompletion(): Promise<CompletionItem[]> {
         return new Promise<CompletionItem[]>((resolve, reject) => {
+            if (this.completion_resolve) {
+                log("oops: overlapped completion request");
+                this.completion_resolve(null);
+            }
             this.completion_resolve = resolve;
             this.completion_reject = reject;
         });
     }
 
     handleCompletion(lines: string[]) {
-        let resolve = this.completion_resolve;
-        this.completion_resolve = null;
+        let reject = this.completion_reject;
+        try {
+            let resolve = this.completion_resolve;
 
-        let results: CompletionItem[] = [];
+            this.completion_resolve = null;
+            this.completion_reject = null;
 
-        for (let line of lines) {
-            let fields = line.split('\t');
-            results.push({
-                label: fields[0],
-                kind:  <CompletionItemKind>parseInt(fields[1]),
-                detail: fields[2]
-            });
+            let results: CompletionItem[] = [];
+
+            for (let line of lines) {
+                let fields = line.split('\t');
+
+                if (fields.length < 3) {
+                    log("unexpectedly short completion received (" + fields.length + ")");
+                }
+
+                results.push({
+                    label: fields[0],
+                    kind:  <CompletionItemKind>parseInt(fields[1]),
+                    detail: fields[2]
+                });
+            }
+            
+            if (resolve && typeof resolve === "function") {
+                resolve(
+                    results
+                )
+            } else {
+                log("weird: received completion but completion promise is null or not a function: " + resolve);
+            }
+        } catch(e) {
+            if (reject && typeof reject === "function") {
+                log("rejecting completion: " + e);
+                reject("" + e);
+            } else {
+                log(e);
+            }
         }
-        
-        resolve(
-            results
-        );
     }    
 
     expectSignature(): Promise<SignatureHelp> {
         return new Promise<SignatureHelp>((resolve, reject) => {
+            if (this.signature_resolve) {
+                log("oops: overlapped signature request");
+                this.signature_resolve(null);
+            }
             this.signature_resolve = resolve;
             this.signature_reject = reject;
         });
     }
 
-    handleSignature(_lines: string[]) {
-        let resolve = this.signature_resolve;
-        this.signature_resolve = null;
+    handleSignature(lines: string[]) {
+        let reject = this.signature_reject;
 
-        let active_signature = 0;
-        let active_parameter = 0;
+        try {
+            let resolve = this.signature_resolve;
+            this.signature_resolve = null;
+            this.signature_resolve = null;
 
-        let signatures: SignatureInformation[] = [];
+            let active_signature = 0;
+            let active_parameter = 0;
 
-        if (_lines.length > 0) {
-            active_signature = parseInt(_lines[0], 10);
-            active_parameter = parseInt(_lines[1], 10);
+            let signatures: SignatureInformation[] = [];
 
-            for (let i = 2; i < _lines.length; i++) {
-                let parameters: ParameterInformation[] = [];
+            if (lines.length > 0) {
+                active_signature = parseInt(lines[0], 10);
+                active_parameter = parseInt(lines[1], 10);
 
-                let params_raw = _lines[i].split('\t');
+                for (let i = 2; i < lines.length; i++) {
+                    let parameters: ParameterInformation[] = [];
 
-                let signature_label = params_raw[0];
+                    let params_raw = lines[i].split('\t');
 
-                for (let j = 1; j < params_raw.length; j++) {
-                    parameters.push({
-                        label: params_raw[j]
+                    let signature_label = params_raw[0];
+
+                    for (let j = 1; j < params_raw.length; j++) {
+                        parameters.push({
+                            label: params_raw[j]
+                        });
+                    }
+
+                    signatures.push({
+                        label: signature_label,
+                        parameters: parameters,
                     });
                 }
+            }
 
-                signatures.push({
-                    label: signature_label,
-                    parameters: parameters,
-                });
+            let result: SignatureHelp = {
+                signatures: signatures,
+                activeSignature: active_signature,
+                activeParameter: active_parameter
+            };
+
+            resolve(
+                result
+            );
+        } catch(e) {
+            reject("" + e);
+        }
+    }    
+
+    expectSymbols(): Promise<SymbolInformation[]> {
+        return new Promise<SymbolInformation[]>((resolve, reject) => {
+            if (this.symbols_resolve) {
+                log("oops: overlapped symbols request");
+                this.symbols_resolve(null);
+            }
+            this.symbols_resolve = resolve;
+            this.symbols_reject = reject;
+        });
+    }
+
+    handleSymbols(lines: string[]) {
+        let resolve = this.symbols_resolve;
+        this.symbols_resolve = null;
+
+        let symbols: SymbolInformation[] = [];
+
+        if (lines.length > 0) {
+            let uri: string = "unknown";
+            
+            for (let i = 1; i < lines.length; i++) {
+                let line = lines[i];
+                let fields = line.split('\t');
+
+                if (fields.length == 1) {
+                    uri = line;
+                } else {
+
+                    let symbol: SymbolInformation = {
+                        name: fields[0],
+                        kind: <SymbolKind>parseInt(fields[1]),
+                        location: {
+                            uri: uri,
+                            range: {
+                                start: {
+                                    line: parseInt(fields[2]) - 1,
+                                    character: parseInt(fields[3]) - 1
+                                },
+                                end: {
+                                    line: parseInt(fields[4]) - 1,
+                                    character: parseInt(fields[5]) - 1
+                                }
+                            }
+                        },
+                        containerName: fields[6]
+                    };
+
+                    symbols.push(symbol);
+                }
             }
         }
 
-        let result: SignatureHelp = {
-            signatures: signatures,
-            activeSignature: active_signature,
-            activeParameter: active_parameter
-        };
-
-        console.log("signature help\n" + JSON.stringify(result));
-        
         resolve(
-            result
+            symbols
         );
     }    
+    
+    expectReferences(): Promise<Location[]> {
+        return new Promise<Location[]>((resolve, reject) => {
+            if (this.references_resolve) {
+                log("oops: overlapped references request");
+                this.references_resolve(null);
+            }
+            
+            this.references_resolve = resolve;
+            this.references_reject = reject;
+        });
+    }
+
+    handleReferences(lines: string[]) {
+        let resolve = this.references_resolve;
+        this.references_resolve = null;
+
+        let locations: Location[] = [];
+
+        if (lines.length > 0) {
+            for (let i = 0; i < lines.length; i++) {
+                let line = lines[i];
+                let fields = line.split('\t');
+
+                let location: Location = {
+                    uri: fields[0],
+                    range: {
+                        start: {
+                            line: parseInt(fields[1]) - 1,
+                            character: parseInt(fields[2]) - 1
+                        },
+                        end: {
+                            line: parseInt(fields[3]) - 1,
+                            character: parseInt(fields[4])
+                        }
+                    }
+                };
+
+                locations.push(location);
+            }
+        }
+
+        resolve(
+            locations
+        );
+    }        
+
+    handleRestart() {
+        console.log("#### compiler requests restart");
+
+        this.edit_queue.restart();
+    }
      
     handleUnexpected() {
         this.server_manager.abort();
@@ -235,18 +441,18 @@ export class ResponseHandler {
         // A text document got opened in VSCode.
         // params.uri uniquely identifies the document. For documents store on disk this is a file URI.
         // params.text the initial full content of the document.
-        connection.console.log(`${params.textDocument.uri} opened.`);
+        connection.log(`${params.textDocument.uri} opened.`);
     });
     connection.onDidChangeTextDocument((params) => {
         // The content of a text document did change in VSCode.
         // params.uri uniquely identifies the document.
         // params.contentChanges describe the content changes to the document.
-        connection.console.log(`${params.textDocument.uri} changed: ${JSON.stringify(params.contentChanges)}`);
+        connection.log(`${params.textDocument.uri} changed: ${JSON.stringify(params.contentChanges)}`);
     });
     connection.onDidCloseTextDocument((params) => {
         // A text document got closed in VSCode.
         // params.uri uniquely identifies the document.
-        connection.console.log(`${params.textDocument.uri} closed.`);
+        connection.log(`${params.textDocument.uri} closed.`);
     });
     */
 

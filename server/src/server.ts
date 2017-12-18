@@ -4,6 +4,8 @@ import {
 	IPCMessageReader, IPCMessageWriter, createConnection, TextDocuments
 } from 'vscode-languageserver';
 
+// import { appendFileSync } from 'fs';
+
 import { ProblemStore } from './problem-store';
 
 import { ConnectionEventHandler } from './connection-event-handler';
@@ -24,6 +26,29 @@ import { GhulAnalyser } from './ghul-analyser';
 
 import { ServerManager } from './server-manager';
 
+let real_console_log = console.log;
+
+export function log(message: string) {
+	real_console_log(message);
+
+	// 2017-12-16T12:24:20.226Z
+	// 012345678901234567890123
+	//           11111111112222
+
+	/*
+	let date_string = new Date().toISOString();
+
+	let log_date_string =
+		date_string.substring(0, 10) +
+		' ' +
+		date_string.substring(11, 22);
+
+	appendFileSync("log.txt", log_date_string + ": " + message + "\n");
+	*/
+}
+
+console.log = log;
+
 let problems = new ProblemStore();
 
 let server_event_emitter = new ServerEventEmitter();
@@ -41,7 +66,7 @@ let requester = new Requester(server_event_emitter, response_handler);
 let edit_queue = new EditQueue(requester, problems);
 
 new GhulAnalyser(
-	requester,
+	edit_queue,
 	config_event_emitter,
 	server_event_emitter
 );
@@ -57,20 +82,19 @@ let server_manager = new ServerManager(
 response_handler.setServerManager(server_manager);
 response_handler.setEditQueue(edit_queue);
 
+export function rejectAllPendingPromises(message: string) {
+	response_handler.rejectAllPendingPromises(message);
+}
+
+export function rejectAllAndThrow(message: string) {
+	log(message);
+	rejectAllPendingPromises(message);
+	throw message;
+}
+
 let documents: TextDocuments = new TextDocuments();
  
-// The content of a text document has changed. This event is emitted
-// when the text document first opened or when its content has changed.
 documents.onDidChangeContent((change) => {
-	console.log("!!! onDidChangeDocument: " + change.document.uri);
-
-	console.log("doc version: " + change.document.version)
-
-	// TODO: if not listening then needs to be queued, but must be
-	// queued after initial whole workspace analyis. Otherwise server
-	// will attempt to analyse just this file, without the rest 
-	// of the workspace, and will crash due to missing Ghul namespace
-
 	edit_queue.queueEdit(change);
 });
 
@@ -82,7 +106,6 @@ new ConnectionEventHandler(
 	requester,
 	edit_queue
 );
-
 
 documents.listen(connection);
 connection.listen();

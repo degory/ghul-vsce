@@ -1,29 +1,29 @@
 {
-	"name": "ghul-vsce",
-	"displayName": "ghūl language server",
-	"description": "ghul language server",
-	"version": "0.0.14",
-	"author": "degory",
-	"engines": {
-		"node": "*"
-	},
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/degory/ghul-lsp"
-	},
-	"dependencies": {
-		"@types/file-url": "^2.0.0",
-		"@types/recursive-readdir": "^2.2.0",
-		"bindings": "^1.3.0",
-		"file-uri-to-path": "^1.0.0",
-		"file-url": "^2.0.2",
-		"recursive-readdir": "^2.2.1",
-		"typescript-definition-of-eventemitter-with-keyof": "git+https://github.com/kimamula/TypeScript-definition-of-EventEmitter-with-keyof.git",
-		"vscode-languageserver": "^3.4.2"
-	},
-	"scripts": {
-		"installServer": "installServerIntoExtension ../client ./package.json ./tsconfig.json",
-		"compile": "installServerIntoExtension ../client ./package.json ./tsconfig.json && tsc -p .",
-		"watch": "installServerIntoExtension ../client ./package.json ./tsconfig.json && tsc -w -p ."
-	}
+  "name": "ghul-vsce",
+  "displayName": "ghūl language server",
+  "description": "ghul language server",
+  "version": "0.0.14",
+  "author": "degory",
+  "engines": {
+    "node": "*"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/degory/ghul-lsp"
+  },
+  "dependencies": {
+    "@types/file-url": "^2.0.0",
+    "@types/recursive-readdir": "^2.2.0",
+    "bindings": "^1.3.0",
+    "file-uri-to-path": "^1.0.0",
+    "file-url": "^2.0.2",
+    "recursive-readdir": "^2.2.1",
+    "typescript-definition-of-eventemitter-with-keyof": "git+https://github.com/kimamula/TypeScript-definition-of-EventEmitter-with-keyof.git",
+    "vscode-languageserver": "^4.0.0-next.1"
+  },
+  "scripts": {
+    "installServer": "installServerIntoExtension ../client ./package.json ./tsconfig.json",
+    "compile": "installServerIntoExtension ../client ./package.json ./tsconfig.json && tsc -p .",
+    "watch": "installServerIntoExtension ../client ./package.json ./tsconfig.json && tsc -w -p ."
+  }
 }
