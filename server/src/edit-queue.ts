@@ -24,6 +24,8 @@ interface Document {
 }
 
 export class EditQueue {
+    can_build_all: boolean;
+
     timeout: number;
     timer: NodeJS.Timer;
 
@@ -55,6 +57,7 @@ export class EditQueue {
         problems: ProblemStore
     ) {
         this.timeout = 250;
+        this.can_build_all = true;
         this.requester = requester;
         this.problems = problems;
 
@@ -70,6 +73,8 @@ export class EditQueue {
             this.requester.sendRestart();
 
             this.state = QueueState.START;
+
+            this.can_build_all = true;
         }        
     }
 
@@ -154,7 +159,12 @@ export class EditQueue {
             build_time = Date.now() - this.analyse_start_time;
             this.timeout = 0.75 * this.timeout + 0.25 * build_time;
 
-            log("edit timeout adjusted to: " + this.timeout + " milliseconds");            
+            log("edit timeout adjusted to: " + this.timeout + " milliseconds");
+
+            if (build_time > 125 && this.can_build_all) {
+                log("build time exceded 125 milliseconds: disabling full build per edit");
+                this.can_build_all = false;
+            }
         }
 
         this.pending_compile_count = this.pending_compile_count - 1;
@@ -248,7 +258,7 @@ export class EditQueue {
 
                     this.analyse_start_time = Date.now();                    
                     
-                    this.requester.analyse(to_analyse);
+                    this.requester.analyse(this.can_build_all ? ["all"] : to_analyse);
                 } else {
                     rejectAllAndThrow("try send queued: unexpected queue state: " + QueueState[this.state]);
                 }
@@ -298,7 +308,7 @@ export class EditQueue {
 
             this.pending_compile_count = this.pending_compile_count + 1;
 
-            this.requester.analyse(to_analyse);
+            this.requester.analyse(this.can_build_all ? ["all"] : to_analyse);
         } else {
             this.state = QueueState.IDLE;
         }
