@@ -21,7 +21,7 @@ export function activate(context: ExtensionContext) {
 	
 	// Options to control the language client
 	let clientOptions: LanguageClientOptions = {
-		// Register the server for plain text documents
+		// Register the server for ghul source files
 		documentSelector: [{scheme: 'file', language: 'ghul'}],
 		synchronize: {
 			// Synchronize the setting section 'languageServerExample' to the server

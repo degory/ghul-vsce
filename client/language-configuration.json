@@ -26,5 +26,11 @@
         ["(", ")"],
         ["\"", "\""],
         ["'", "'"]
-    ]
+    ],
+    "indentationRules": {
+        "increaseIndentPattern": 
+            "(\\bis\\b$|\\bthen\\b$|\\bdo\\b$|^\\s+try$|^\\s+catch\\s|^\\s+finally$|^\\s+else$|^\\s+case\\s|^\\s+when\\s.*:$|^\\s+default$)",
+        "decreaseIndentPattern":
+            "(^\\s+si$|^\\s+fi$|^\\sod$|^\\syrt$|^\\s+else$|^\\scatch\\s|^\\s+elif\\s|^\\s+when\\s|^\\s+default$|^\\s+esac$)"
+    }
 }

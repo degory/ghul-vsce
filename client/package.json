@@ -12,7 +12,8 @@
     "vscode": "^1.18.0"
   },
   "categories": [
-    "Languages"
+    "Languages",
+    "Snippets"
   ],
   "activationEvents": [
     "onLanguage:ghul"
@@ -44,6 +45,28 @@
         "language": "ghul",
         "path": "./snippets/ghul.json"
       }
+    ],
+    "problemMatchers": [
+      {
+        "name": "ghul",
+        "owner": "ghul",
+        "fileLocation": [
+          "relative",
+          "${workspaceRoot}"
+        ],
+        "pattern": [
+          {
+            "regexp": "^(.*):\\s+(\\d+),(\\d+)\\.\\.(\\d+),(\\d+):\\s+(info|warn|error):\\s+(.*)$",
+            "file": 1,
+            "line": 2,
+            "column": 3,
+            "endLine": 4,
+            "endColumn": 5,
+            "severity": 6,
+            "message": 7
+          }
+        ]
+      }      
     ],
     "configuration": {
       "type": "object",

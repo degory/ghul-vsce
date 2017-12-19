@@ -75,9 +75,7 @@
 		"prefix": "then",
 		"body": [
 			"then",
-			"\t$2",
-			"fi",
-			"$3"
+			"\t$2"
 		],
 		"description": "then clause"
 	},	
@@ -109,12 +107,9 @@
 		"prefix": "case",
 		"body": [
 			"case ${1:expr}",
-			"when ${2:match}:",
-			"\t$3",
-			"default",
-			"\t$4;",
+			"\t$2",
 			"esac",
-			"$5"
+			"$3"
 		],
 		"description": "case statement"
 	},

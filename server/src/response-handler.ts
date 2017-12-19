@@ -5,7 +5,7 @@ import { log, rejectAllAndThrow } from './server';
 import { bodgeUri } from './bodge-uri';
 
 import { ProblemStore } from './problem-store';
-import { SeverityMap } from './severity-map';
+import { SeverityMapper } from './severity-map';
 
 import { ServerManager } from './server-manager';
 
@@ -423,7 +423,7 @@ export class ResponseHandler {
             let uri = bodgeUri(fields[0]);
 
             let problem = {
-                severity: SeverityMap.get(fields[5]),
+                severity: SeverityMapper.getSeverity(fields[5], kind),
                 range: {
                     start: { line: Number(fields[1]) - 1, character: Number(fields[2]) - 1 },
                     end: { line: Number(fields[3]) - 1, character: Number(fields[4]) - 1 }
