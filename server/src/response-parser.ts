@@ -1,6 +1,6 @@
 import { ResponseHandler } from './response-handler';
 
-import { log } from './server';
+import { log, rejectAllPendingPromises } from './server';
 
 export class ResponseParser {
     buffer: string;
@@ -26,6 +26,7 @@ export class ResponseParser {
 					this.handleSection(section);
 				} else {
                     log("response parser: protocol error: empty section " + i + " of " + lastIndex);
+                    rejectAllPendingPromises("response parser: protocol error: empty section " + i + " of " + lastIndex);
 				}
 			}
 
@@ -38,6 +39,7 @@ export class ResponseParser {
 
         if (lines.length < 2) {
             log("response parser: protocol error: no command received");
+            rejectAllPendingPromises("response parser: protocol error: no command received");
             return;
         }
 
@@ -53,27 +55,27 @@ export class ResponseParser {
             break;
 
         case "DIAG PARSE":
-            log("response parser: DIAG PARSE received");
+            // log("response parser: DIAG PARSE received");
             this.response_handler.handleDiagnostics('parse', lines);
             break;
 
         case "DIAG ANALYSIS":
-            log("response parser: DIAG ANALYSIS received");
+            // log("response parser: DIAG ANALYSIS received");
             this.response_handler.handleDiagnostics('analyis', lines);
             break;
 
         case "ANALYSED":
-            log("response parser: ANALYSED received");
+            // log("response parser: ANALYSED received");
             this.response_handler.handleAnalysed();
             break;            
 
         case "HOVER":
-            log("response parser: HOVER received");
+            // log("response parser: HOVER received");
             this.response_handler.handleHover(lines);
             break;
 
         case "DEFINITION":
-            log("response parser: DEFINITION received");
+            // log("response parser: DEFINITION received");
             this.response_handler.handleDefinition(lines);
             break;
 
