@@ -29,6 +29,26 @@
 		],
 		"description": "trait"
 	},
+	"struct definition": {
+		"prefix": "struct",
+		"body": [
+			"struct ${1:Name} is",
+			"\t$2",
+			"si",
+			"$3"
+		],
+		"description": "class"
+	},	
+	"enum definition": {
+		"prefix": "enum",
+		"body": [
+			"enum ${1:Name} is",
+			"\t$2",
+			"si",
+			"$3"
+		],
+		"description": "class"
+	},		
 	"function definition": {
 		"prefix": "fn",
 		"body": [

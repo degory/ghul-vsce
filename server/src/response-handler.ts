@@ -148,9 +148,14 @@ export class ResponseHandler {
     handleHover(lines: string[]) {
         let resolve = this.hover_resolve;
         this.hover_resolve = null;
-        resolve({
-            contents: { language: 'ghul', value: lines[0] }
-        });
+
+        if (lines.length > 0 && lines[0] != null && lines[0].length > 0) {
+            resolve({
+                contents: { language: 'ghul', value: lines[0] }
+            });
+        } else {
+            resolve(null);
+        }
     }
 
     expectDefinition(): Promise<Definition> {
@@ -207,15 +212,13 @@ export class ResponseHandler {
             for (let line of lines) {
                 let fields = line.split('\t');
 
-                if (fields.length < 3) {
-                    log("unexpectedly short completion received (" + fields.length + ")");
+                if (fields.length >= 3) {
+                    results.push({
+                        label: fields[0],
+                        kind:  <CompletionItemKind>parseInt(fields[1]),
+                        detail: fields[2]
+                    });
                 }
-
-                results.push({
-                    label: fields[0],
-                    kind:  <CompletionItemKind>parseInt(fields[1]),
-                    detail: fields[2]
-                });
             }
             
             if (resolve && typeof resolve === "function") {
