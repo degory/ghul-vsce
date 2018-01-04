@@ -50,20 +50,6 @@ export class EditQueue {
     analyse_start_time: number;
 
     state: QueueState;
-
-    /*
-    _state: QueueState;
-
-    get state(): QueueState {
-        log("current edit queue state: " + QueueState[this._state]);
-        return this._state;
-    }
-
-    set state(value: QueueState) {
-        this._state = value;
-        log("enter edit queue state: " + QueueState[this._state]);
-    }
-    */
     
     constructor(
         requester: Requester,
@@ -100,7 +86,6 @@ export class EditQueue {
 
     queueEdit3(uri: string, version: number, text: string) {
         if (version == null || version < 0) {
-            // log("queue edit: forced " + uri);
             version = -1;
         } else if (this.pending_changes.has(uri)) {
             let existing = this.pending_changes.get(uri);
@@ -108,14 +93,9 @@ export class EditQueue {
             // Visual Studio Code seems to needlessly resend the same edits occasionally: 
             if (existing.version == version &&
                 existing.text == text) {
-                // log("queue edit: ignore redundant edit: version " + version + " of " + uri);
                 
                 return;
             }
-
-            // log("queue edit: version " + version + " of " + uri + " replaces version " + version);
-        } else {
-            // log("queue edit: previously unseen version " + version + " of " + uri);
         }        
 
         this.pending_changes.set(uri,
@@ -129,17 +109,12 @@ export class EditQueue {
         if (this.state == QueueState.START) {
             // log("queue edit: starting up");
         } else if (this.state == QueueState.IDLE) {
-            // log("queue edit: idle, will wait for more edits");
             this.state = QueueState.WAITING_FOR_MORE_EDITS;
             
             this.startEditTimer();
         } else if (this.state == QueueState.WAITING_FOR_MORE_EDITS) {
-            // log("queue edit: will continue to wait for more edits");
-
             this.resetEditTimer();            
         } else if (this.state == QueueState.BUILDING || this.state == QueueState.WAITING_FOR_BUILD) {
-            // log("queue edit: building, will wait for build to complete");
-            
             this.state = QueueState.WAITING_FOR_BUILD;
         } else {
             rejectAllAndThrow("queue edit: unexpected queue state: " + QueueState[this.state]);
@@ -148,12 +123,8 @@ export class EditQueue {
 
     onEditTimeout() {
         if (this.state == QueueState.WAITING_FOR_MORE_EDITS) {
-            // log("timer expired: was waiting for more edits, will send queued edits");
-
             this.sendQueued();
         } else if (this.state == QueueState.WAITING_FOR_BUILD) {
-            // log("timer expired: was waiting for build to complete, will reset timer and continue to wait");            
-        
             this.resetEditTimer();
         } else {
             log("timer expired: not waiting for edits: " + QueueState[this.state] + " (" + this.state + ")");
@@ -196,7 +167,6 @@ export class EditQueue {
         if (this.pending_builds.length > 0) {
              this.last_build_type = this.pending_builds.shift();
              last_build_type_string = BuildType[this.last_build_type].toLowerCase();
-             // log("build " + BuildType[this.last_build_type] + " complete");
         } else {
             log("oops: unexpected build just finished");
             last_build_type_string = "unexpected";
@@ -207,8 +177,6 @@ export class EditQueue {
 
             if (this.last_build_type != BuildType.FULL) {
                 this.edit_timeout = 0.75 * this.edit_timeout + 0.25 * build_time;
-
-                // log("edit timeout adjusted to: " + this.edit_timeout + " milliseconds");
 
                 if (build_time > 125 && this.can_build_all) {
                     log(last_build_type_string + " build time exceded 125 milliseconds: disabling full build per edit");
@@ -244,7 +212,6 @@ export class EditQueue {
         }
 
         if (this.last_build_type == BuildType.LIMITED && this.state == QueueState.IDLE) {
-            // log("reached idle state after limited build: will queue a full build after delay");
             this.startOrResetFullBuildTimer();
         }
     }
@@ -283,7 +250,6 @@ export class EditQueue {
                         seen_any = true;
         
                         this.problems.clear_parse_problems(change.uri);
-                        // log("send queued: version " + change.version + " of " + change.uri);
                         this.requester.sendDocument(change.uri, change.text);
         
                         to_analyse.push(change.uri);
@@ -328,7 +294,6 @@ export class EditQueue {
                 seen_any = true;
 
                 this.problems.clear_parse_problems(change.uri);
-                // log("send queued: version " + change.version + " of " + change.uri);
                 this.requester.sendDocument(change.uri, change.text);
 
                 to_analyse.push(change.uri);
@@ -339,10 +304,6 @@ export class EditQueue {
 
         if (seen_any) {
             this.state = QueueState.BUILDING;
-
-            // let time_to_send = Date.now() - this.send_start_time;
-
-            // log("edit queue: changed documents sent in " + time_to_send + " milliseconds");
 
             this.queueAnalyse(to_analyse);
         } else {

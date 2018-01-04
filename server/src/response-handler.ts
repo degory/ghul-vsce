@@ -173,19 +173,24 @@ export class ResponseHandler {
     handleDefinition(lines: string[]) {
         let resolve = this.definition_resolve;
         this.definition_resolve = null;
-        resolve({
-            uri: lines[0],
-            range: {
-                start: {
-                    line: parseInt(lines[1], 10) - 1,
-                    character: parseInt(lines[2], 10) - 1
-                },
-                end: {
-                    line: parseInt(lines[3], 10) - 1,
-                    character: parseInt(lines[4], 10) - 1
+        if (lines.length >= 5) {
+
+            resolve({
+                uri: lines[0],
+                range: {
+                    start: {
+                        line: parseInt(lines[1], 10) - 1,
+                        character: parseInt(lines[2], 10) - 1
+                    },
+                    end: {
+                        line: parseInt(lines[3], 10) - 1,
+                        character: parseInt(lines[4], 10) - 1
+                    }
                 }
-            }
-        });
+            });
+        } else {
+            resolve(null);
+        }
     }
 
     expectCompletion(): Promise<CompletionItem[]> {
@@ -432,7 +437,7 @@ export class ResponseHandler {
                     end: { line: Number(fields[3]) - 1, character: Number(fields[4]) - 1 }
                 },
                 message: fields[6],
-                source: 'ghul'
+                source: 'ghūl'
             }
 
             this.problems.add(kind, uri, problem);
