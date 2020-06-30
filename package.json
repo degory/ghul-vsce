@@ -3,7 +3,7 @@
 	"displayName": "ghūl language server",
 	"description": "ghūl language server",
 	"author": "degory",
-	"version": "0.0.28",
+	"version": "0.0.29",
 	"publisher": "degory",
 	"repository": {
 		"type": "git",

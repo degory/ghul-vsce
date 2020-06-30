@@ -71,12 +71,15 @@ export class ServerManager {
 		} else {
 			log("starting ghūl compiler '" + ghul_compiler + "'");
 			this.child = spawn(ghul_compiler, [ "-A" ]);
+
+			// this.child = spawn("valgrind", ["--leak-check=full", "--track-origins=yes", "--log-file=./valgrind-%p.txt", "/home/degory/src/ghul/ghul", "-A"])
 		} 
 
 		this.event_emitter.running(this.child);
 	
 		this.child.stderr.on('data', (chunk: string) => {
-			log('' + chunk);
+			process.stderr.write(chunk);
+			// log('' + chunk);
 		});
 	
 		this.child.stdout.on('data', (chunk: string) => {

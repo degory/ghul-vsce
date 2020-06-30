@@ -85,8 +85,6 @@ export class Requester {
     }
 
     sendCompletion(uri: string, line: number, character: number): Promise<CompletionItem[]> {
-        log("send complete request...");
-
         if (this.analysed) {
             this.stream.write("COMPLETE\n");
             this.stream.write(bodgeUri(uri) + '\n');
@@ -149,7 +147,6 @@ export class Requester {
 
     sendRestart() {
         if (this.analysed) {
-            log("sending RESTART request to compiler...");
             this.stream.write('RESTART\n');
         }        
     }

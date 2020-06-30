@@ -145,7 +145,7 @@ export class EditQueue {
 
         if (this.last_build_type == BuildType.LIMITED && this.state == QueueState.IDLE) {
             this.state = QueueState.BUILDING;
-            log("requesting full build");            
+            // log("requesting full build");            
             this.queueAnalyse();
         }
     }
@@ -187,21 +187,21 @@ export class EditQueue {
 
         if (this.state == QueueState.WAITING_FOR_BUILD) {
             if (this.pending_builds.length == 0) {
-                log(last_build_type_string + " build finished in " + build_time + " milliseconds: more changes queued, will start another build");
+                // log(last_build_type_string + " build finished in " + build_time + " milliseconds: more changes queued, will start another build");
 
                 this.state = QueueState.IDLE;
 
                 this.sendQueued();
-            } else {
-                log(last_build_type_string + " build finished in " + build_time + " milliseconds: more changes queued, but " + this.pending_builds.length + " builds still in queue, will continue to wait");
+            // } else {
+            //    log(last_build_type_string + " build finished in " + build_time + " milliseconds: more changes queued, but " + this.pending_builds.length + " builds still in queue, will continue to wait");
             }
         } else if (this.state == QueueState.BUILDING) {
             if (this.pending_builds.length == 0) {
-                log(last_build_type_string + " build finished in " + build_time + " milliseconds: queue is now idle");            
+                // log(last_build_type_string + " build finished in " + build_time + " milliseconds: queue is now idle");            
             
                 this.state = QueueState.IDLE;
-            } else {
-                log(last_build_type_string + " build finished in " + build_time + " milliseconds: " + this.pending_builds.length + " builds still in queue, will continue to wait");                
+            // } else {
+            //    log(last_build_type_string + " build finished in " + build_time + " milliseconds: " + this.pending_builds.length + " builds still in queue, will continue to wait");                
             }
         } else {
             log(last_build_type_string + " build finished: unexpected queue state: " + QueueState[this.state]);

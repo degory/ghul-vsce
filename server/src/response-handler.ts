@@ -409,7 +409,7 @@ export class ResponseHandler {
     }        
 
     handleRestart() {
-        console.log("#### compiler requests restart");
+        console.log("compiler requested restart");
 
         this.edit_queue.restart();
     }

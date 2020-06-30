@@ -50,7 +50,7 @@ export class ResponseParser {
 
         switch (command) {
         case "LISTEN":
-            log("response parser: LISTEN received: compiler is listening");
+            // log("response parser: LISTEN received: compiler is listening");
             this.response_handler.handleListen();
             break;
 
@@ -80,32 +80,32 @@ export class ResponseParser {
             break;
 
         case "COMPLETION":
-            log("response parser: COMPLETION received");
+            // log("response parser: COMPLETION received");
             this.response_handler.handleCompletion(lines);
             break;            
 
         case "SIGNATURE":
-            log("response parser: SIGNATURE received");
+            // log("response parser: SIGNATURE received");
             this.response_handler.handleSignature(lines);
             break;            
 
         case "SYMBOLS":
-            log("response parser: SYMBOLS received");
+            // log("response parser: SYMBOLS received");
             this.response_handler.handleSymbols(lines);
             break;            
             
         case "EXCEPT":
-            log("response parser: EXCEPT received: " + JSON.stringify(lines));
+            // log("response parser: EXCEPT received: " + JSON.stringify(lines));
             this.response_handler.handleExcept(lines);
             break;
 
         case "REFERENCES":
-            log("response parser: REFERENCES received");
+            // log("response parser: REFERENCES received");
             this.response_handler.handleReferences(lines);
             break;
 
         case "RESTART":
-            log("response parser: RESTART received");
+            /// log("response parser: RESTART received");
             this.response_handler.handleRestart();
             break;
 
