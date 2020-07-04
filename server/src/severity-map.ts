@@ -7,9 +7,9 @@ let SeverityMapParse = new Map<string,DiagnosticSeverity>([
 ]);	
 
 let SeverityMapOther = new Map<string,DiagnosticSeverity>([
-	['info', DiagnosticSeverity.Hint],
-	['warn', DiagnosticSeverity.Information],
-	['error', DiagnosticSeverity.Warning]
+	['info', DiagnosticSeverity.Information],
+	['warn', DiagnosticSeverity.Warning],
+	['error', DiagnosticSeverity.Error]
 ]);	
 
 export class SeverityMapper {
