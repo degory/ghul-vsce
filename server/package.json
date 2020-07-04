@@ -2,7 +2,7 @@
   "name": "ghul-vsce",
   "displayName": "ghūl language server",
   "description": "ghul language server",
-  "version": "0.0.30",
+  "version": "0.0.31",
   "author": "degory",
   "license": "GPL-3.0",
   "engines": {

@@ -137,7 +137,7 @@ export class EditQueue {
     }
 
     startEditTimer() {
-        this.edit_timer = setTimeout(() => { this.onEditTimeout() }, this.edit_timeout * 0.75);
+        this.edit_timer = setTimeout(() => { this.onEditTimeout() }, this.edit_timeout * 2);
     }
 
     onFullBuildTimeout() {
