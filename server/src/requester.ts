@@ -44,14 +44,14 @@ export class Requester {
     }
     
     sendDocument(uri: string, source: string) {
-        this.stream.write('EDIT\n');
+        this.stream.write('#EDIT#\n');
         this.stream.write(bodgeUri(uri) + '\n');
         this.stream.write(source);
         this.stream.write('\f');
     }
 
     analyse(uris: string[]): void {
-        this.stream.write('ANALYSE\n');
+        this.stream.write('#ANALYSE#\n');
         for (let uri of uris) {
             this.stream.write(uri + '\t');
         }
@@ -60,7 +60,7 @@ export class Requester {
 
     sendHover(uri: string, line: number, character: number): Promise<Hover> {
         if (this.analysed) {
-            this.stream.write('HOVER\n');
+            this.stream.write('#HOVER#\n');
             this.stream.write(bodgeUri(uri) + '\n');
             this.stream.write((line+1) + '\n');
             this.stream.write((character) + '\n');
@@ -73,7 +73,7 @@ export class Requester {
 
     sendDefinition(uri: string, line: number, character: number): Promise<Definition> {
         if (this.analysed) {
-            this.stream.write('DEFINITION\n');
+            this.stream.write('#DEFINITION#\n');
             this.stream.write(bodgeUri(uri) + '\n');
             this.stream.write((line+1) + '\n');
             this.stream.write((character+1) + '\n');
@@ -86,7 +86,7 @@ export class Requester {
 
     sendCompletion(uri: string, line: number, character: number): Promise<CompletionItem[]> {
         if (this.analysed) {
-            this.stream.write("COMPLETE\n");
+            this.stream.write("#COMPLETE#\n");
             this.stream.write(bodgeUri(uri) + '\n');
             this.stream.write((line+1) + '\n');
             this.stream.write((character+1) + '\n');
@@ -99,7 +99,7 @@ export class Requester {
 
     sendSignature(uri: string, line: number, character: number): Promise<SignatureHelp> {
         if (this.analysed) {
-            this.stream.write('SIGNATURE\n');
+            this.stream.write('#SIGNATURE#\n');
             this.stream.write(bodgeUri(uri) + '\n');
             this.stream.write((line+1) + '\n');
             this.stream.write((character+1) + '\n');
@@ -112,7 +112,7 @@ export class Requester {
     
     sendDocumentSymbol(uri: string): Promise<SymbolInformation[]> {
         if (this.analysed) {
-            this.stream.write('SYMBOLS\n');
+            this.stream.write('#SYMBOLS#\n');
             this.stream.write(bodgeUri(uri) + '\n');
 
             return this.response_handler.expectSymbols();            
@@ -123,7 +123,7 @@ export class Requester {
 
     sendWorkspaceSymbol(): Promise<SymbolInformation[]> {
         if (this.analysed) {
-            this.stream.write('SYMBOLS\n');
+            this.stream.write('#SYMBOLS#\n');
             this.stream.write('\n');
 
             return this.response_handler.expectSymbols();            
@@ -134,7 +134,7 @@ export class Requester {
 
     sendReferences(uri: string, line: number, character: number): Promise<Location[]> {
         if (this.analysed) {
-            this.stream.write('REFERENCES\n');
+            this.stream.write('#REFERENCES#\n');
             this.stream.write(bodgeUri(uri) + '\n');
             this.stream.write((line+1) + '\n');
             this.stream.write((character) + '\n');
@@ -147,7 +147,7 @@ export class Requester {
 
     sendRestart() {
         if (this.analysed) {
-            this.stream.write('RESTART\n');
+            this.stream.write('#RESTART#\n');
         }        
     }
 }

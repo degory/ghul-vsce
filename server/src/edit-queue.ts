@@ -71,13 +71,15 @@ export class EditQueue {
     }
 
     restart() {
-        if (this.state == QueueState.IDLE) {
-            this.requester.sendRestart();
+        this.problems.clear();
+        this.pending_builds = [];
+        this.pending_changes.clear();
 
-            this.state = QueueState.START;
+        // this.requester.sendRestart();
 
-            this.can_build_all = true;
-        }        
+        this.state = QueueState.IDLE;
+        
+        this.can_build_all = true;
     }
 
     queueEdit(change: TextDocumentChangeEvent) {

@@ -77,6 +77,10 @@ export class ProblemStore {
 		this.get_problem_list_for(uri).add_analysis_problem(diagnostic);
 	}
 
+	clear() {
+		this.problems.clear();
+	}
+
 	clear_parse_problems(uri: string) {
 		let pl = this.get_problem_list_for(uri);
 
