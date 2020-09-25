@@ -147,6 +147,12 @@ export class ResponseHandler {
 
     handleHover(lines: string[]) {
         let resolve = this.hover_resolve;
+
+        if (!resolve) {
+            log("oops: unexpected hover response: ignoring");
+            return;
+        }
+
         this.hover_resolve = null;
 
         if (lines.length > 0 && lines[0] != null && lines[0].length > 0) {
@@ -161,7 +167,7 @@ export class ResponseHandler {
     expectDefinition(): Promise<Definition> {
         return new Promise<Definition>((resolve, reject) => {
             if (this.definition_resolve) {
-                log("oops: overlapped definition request");
+                log("oops: overlapped definition request: cancelling");
                 this.definition_resolve(null);
             }
 
@@ -172,6 +178,12 @@ export class ResponseHandler {
 
     handleDefinition(lines: string[]) {
         let resolve = this.definition_resolve;
+
+        if (!resolve) {
+            log("oops: unexpected definition response: ignoring");
+            return;
+        }
+
         this.definition_resolve = null;
         if (lines.length >= 5) {
 
@@ -196,7 +208,7 @@ export class ResponseHandler {
     expectCompletion(): Promise<CompletionItem[]> {
         return new Promise<CompletionItem[]>((resolve, reject) => {
             if (this.completion_resolve) {
-                log("oops: overlapped completion request");
+                log("oops: overlapped completion request: cancelling");
                 this.completion_resolve(null);
             }
             this.completion_resolve = resolve;
@@ -212,6 +224,11 @@ export class ResponseHandler {
             this.completion_resolve = null;
             this.completion_reject = null;
 
+            if (!resolve) {
+                log("oops: unexpected completion response: ignoring");
+                return;
+            }
+    
             let results: CompletionItem[] = [];
 
             for (let line of lines) {
@@ -226,13 +243,7 @@ export class ResponseHandler {
                 }
             }
             
-            if (resolve && typeof resolve === "function") {
-                resolve(
-                    results
-                )
-            } else {
-                log("weird: received completion but completion promise is null or not a function: " + resolve);
-            }
+            resolve(results)
         } catch(e) {
             if (reject && typeof reject === "function") {
                 log("rejecting completion: " + e);
@@ -246,9 +257,10 @@ export class ResponseHandler {
     expectSignature(): Promise<SignatureHelp> {
         return new Promise<SignatureHelp>((resolve, reject) => {
             if (this.signature_resolve) {
-                log("oops: overlapped signature request");
+                log("oops: overlapped signature request: cancelling");
                 this.signature_resolve(null);
             }
+
             this.signature_resolve = resolve;
             this.signature_reject = reject;
         });
@@ -259,6 +271,12 @@ export class ResponseHandler {
 
         try {
             let resolve = this.signature_resolve;
+
+            if (!resolve) {
+                log("oops: unexpected signature response: ignoring");
+                return;
+            }
+    
             this.signature_resolve = null;
             this.signature_resolve = null;
 
@@ -308,7 +326,7 @@ export class ResponseHandler {
     expectSymbols(): Promise<SymbolInformation[]> {
         return new Promise<SymbolInformation[]>((resolve, reject) => {
             if (this.symbols_resolve) {
-                log("oops: overlapped symbols request");
+                log("oops: overlapped symbols request: cancelling");
                 this.symbols_resolve(null);
             }
             this.symbols_resolve = resolve;
@@ -318,6 +336,12 @@ export class ResponseHandler {
 
     handleSymbols(lines: string[]) {
         let resolve = this.symbols_resolve;
+
+        if (!resolve) {
+            log("oops: unexpected symbols response: ignoring");
+            return;
+        }
+
         this.symbols_resolve = null;
 
         let symbols: SymbolInformation[] = [];
@@ -365,7 +389,7 @@ export class ResponseHandler {
     expectReferences(): Promise<Location[]> {
         return new Promise<Location[]>((resolve, reject) => {
             if (this.references_resolve) {
-                log("oops: overlapped references request");
+                log("oops: overlapped references request: cancelling");
                 this.references_resolve(null);
             }
             
@@ -376,6 +400,12 @@ export class ResponseHandler {
 
     handleReferences(lines: string[]) {
         let resolve = this.references_resolve;
+
+        if (!resolve) {
+            log("oops: unexpected references response: ignoring");
+            return;
+        }
+
         this.references_resolve = null;
 
         let locations: Location[] = [];

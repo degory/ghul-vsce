@@ -11,7 +11,7 @@ import fileUriToPath = require('file-uri-to-path');
 
 import readdir = require('recursive-readdir');
 
-import path = require('path');
+// import path = require('path');
 
 import { GhulConfig } from './ghul-config'; 
 
@@ -55,12 +55,8 @@ export class GhulAnalyser {
 
         let sourceFiles = <string[]>[];
     
-        let directories = config.ghul_source;
-        
-        if (this.ghul_config.ghul_lib) {
-            directories.push(path.resolve(config.ghul_lib));
-        }
-        
+        let directories = config.source;
+               
         let promises: Promise<String[]>[] = [];
         
         for (let i in directories) {
