@@ -56,7 +56,9 @@ export class ServerManager {
 
 		this.server_state = ServerState.StartingUp;
 	
-		let ghul_compiler = this.ghul_config.ghul_compiler ? this.ghul_config.ghul_compiler : "./ghul";
+		let ghul_compiler = this.ghul_config.compiler;
+
+		let other_flags = this.ghul_config.other_flags;
 		
 		if (this.ghul_config.use_docker) {
 			log("starting ghūl compiler '" + ghul_compiler + "' in container");
@@ -70,16 +72,13 @@ export class ServerManager {
 			]);
 		} else {
 			log("starting ghūl compiler '" + ghul_compiler + "'");
-			this.child = spawn(ghul_compiler, [ "-A" ]);
-
-			// this.child = spawn("valgrind", ["--leak-check=full", "--track-origins=yes", "--log-file=./valgrind-%p.txt", "/home/degory/src/ghul/ghul", "-A"])
+			this.child = spawn(ghul_compiler, [ "-A", ...other_flags ]);
 		} 
 
 		this.event_emitter.running(this.child);
 	
 		this.child.stderr.on('data', (chunk: string) => {
 			process.stderr.write(chunk);
-			// log('' + chunk);
 		});
 	
 		this.child.stdout.on('data', (chunk: string) => {
