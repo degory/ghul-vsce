@@ -2,7 +2,7 @@
   "name": "ghul",
   "displayName": "ghūl",
   "description": "ghūl language support",
-  "version": "0.0.32",
+  "version": "0.0.35",
   "publisher": "degory",
   "license": "GPL-3.0",
   "repository": {
@@ -47,9 +47,28 @@
         "path": "./snippets/ghul.json"
       }
     ],
-    "problemMatchers": [
+    "problemMatchers": [      
       {
-        "name": "ghul",
+        "name": "ghūl",
+        "owner": "ghul",
+        "fileLocation": [
+          "absolute"
+        ],
+        "pattern": [
+          {
+            "regexp": "^/(.*):\\s+(\\d+),(\\d+)\\.\\.(\\d+),(\\d+):\\s+(info|warn|error):\\s+(.*)$",
+            "file": 1,
+            "line": 2,
+            "column": 3,
+            "endLine": 4,
+            "endColumn": 5,
+            "severity": 6,
+            "message": 7
+          }
+        ]
+      },      
+      {
+        "name": "ghūl",
         "owner": "ghul",
         "fileLocation": [
           "relative",

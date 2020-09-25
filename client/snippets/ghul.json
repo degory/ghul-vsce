@@ -228,7 +228,7 @@
 			"si",
 			"$2"
 		],
-		"description": "si keyword"
+		"description": "is keyword"
 	},	
 	"si keyword": {
 		"prefix": "si",
