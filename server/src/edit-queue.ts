@@ -35,6 +35,8 @@ export class EditQueue {
     edit_timeout: number;
     edit_timer: NodeJS.Timer;
 
+    build_count: number;
+
     full_build_timeout: number;
     full_build_timer: NodeJS.Timer;
 
@@ -55,9 +57,11 @@ export class EditQueue {
         requester: Requester,
         problems: ProblemStore
     ) {
-        this.edit_timeout = 250;
+        this.edit_timeout = 125;
 
-        this.full_build_timeout = 5000;
+        this.build_count = 0;
+
+        this.full_build_timeout = this.edit_timeout * 5;
 
         this.can_build_all = true;
         this.requester = requester;
@@ -163,6 +167,8 @@ export class EditQueue {
     onBuildFinished() {
         let build_time: number = 0;
 
+        this.build_count++;
+
         this.last_build_type = BuildType.LIMITED;
         let last_build_type_string: string;
 
@@ -178,10 +184,10 @@ export class EditQueue {
             build_time = Date.now() - this.analyse_start_time;
 
             if (this.last_build_type != BuildType.FULL) {
-                this.edit_timeout = 0.75 * this.edit_timeout + 0.25 * build_time;
+                this.edit_timeout = 0.8 * this.edit_timeout + 0.2 * build_time;
 
-                if (build_time > 125 && this.can_build_all) {
-                    log(last_build_type_string + " build time exceded 125 milliseconds: disabling full build per edit");
+                if (this.edit_timeout > 500 && this.can_build_all && this.build_count > 10) {
+                    log("average build time " + build_time + " exceeds 500 milliseconds: disabling full build per edit");
                     this.can_build_all = false;
                 }
             }
