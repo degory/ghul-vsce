@@ -30,7 +30,7 @@ export function getGhulConfig(workspace: string): GhulConfig {
 
 	let target = config.target ?? "dotnet";
 
-	let prefix = config.prefix ?? "/usr/lib/";
+	let prefix = config.prefix ?? "/usr/lib/ghul/";
 
 	if (!prefix.endsWith('/')) {
 		prefix = prefix + '/';
