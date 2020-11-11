@@ -105,12 +105,12 @@ export class ResponseParser {
             break;
 
         case "RESTART":
-            /// log("response parser: RESTART received");
+            // log("response parser: RESTART received");
             this.response_handler.handleRestart();
             break;
 
         default:
-            log("response parser: unrecognized command received: " + command);
+            // log("response parser: unrecognized command received: " + command);
             this.response_handler.handleUnexpected();
         }
     }

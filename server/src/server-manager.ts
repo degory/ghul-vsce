@@ -72,7 +72,12 @@ export class ServerManager {
 			]);
 		} else {
 			log("starting ghūl compiler '" + ghul_compiler + "'");
-			this.child = spawn(ghul_compiler, [ "-A", ...other_flags ]);
+
+			if (ghul_compiler.endsWith(".exe")) {
+				this.child = spawn("mono", [ ghul_compiler, "-A", ...other_flags ]);
+			} else {
+				this.child = spawn(ghul_compiler, [ "-A", ...other_flags ]);
+			}
 		} 
 
 		this.event_emitter.running(this.child);
@@ -102,6 +107,8 @@ export class ServerManager {
 
 	startListening() {
 		this.server_state = ServerState.Listening;
+
+		console.log("emit listening event");
 
 		this.event_emitter.listening();
 	}

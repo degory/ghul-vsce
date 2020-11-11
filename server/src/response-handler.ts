@@ -104,7 +104,6 @@ export class ResponseHandler {
     }    
 
     handleListen() {
-        // this.edit_queue.listenReceived();
         this.server_manager.startListening();
     }
 

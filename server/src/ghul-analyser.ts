@@ -46,6 +46,7 @@ export class GhulAnalyser {
         });
 
         server_event_emitter.onListening(() => {
+            console.log("on listening");
             this.analyseEntireProject();
         });
     }
@@ -86,7 +87,7 @@ export class GhulAnalyser {
 
                     this.edit_queue.queueEdit3(file, null, '' + readFileSync(path));
                 });
-    
+
                 this.edit_queue.startAndSendQueued();;
     
                 // this.server_event_emitter.analysed();

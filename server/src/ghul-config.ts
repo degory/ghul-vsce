@@ -17,7 +17,6 @@ interface GhulConfigJson {
 	prefix?: string
 }
 
-
 export function getGhulConfig(workspace: string): GhulConfig {
 	let config: GhulConfigJson;
 
@@ -58,6 +57,8 @@ export function getGhulConfig(workspace: string): GhulConfig {
 
 	console.log("source including libraries is: ", source);
 
+	console.log("compiler is: " + config.compiler);
+
 	let other_flags = config.other_flags ?? [];
 
 	if (typeof other_flags == "string") {
@@ -70,7 +71,7 @@ export function getGhulConfig(workspace: string): GhulConfig {
     
     return {
 		use_docker: false,
-		compiler: "/usr/bin/ghul",
+		compiler: config.compiler ?? "ghul",
 		source,
 		other_flags
 	};
