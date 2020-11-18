@@ -10,8 +10,12 @@ import { SeverityMapper } from './severity-map';
 import { ServerManager } from './server-manager';
 
 import { EditQueue } from './edit-queue';
+import { ConfigEventEmitter } from './config-event-emitter';
+import { GhulConfig } from './ghul-config';
 
 export class ResponseHandler {
+    want_plaintext_hover: boolean;
+
     server_manager: ServerManager;
     connection: IConnection;
     problems: ProblemStore;
@@ -37,10 +41,15 @@ export class ResponseHandler {
 
     constructor(
         connection: IConnection,
-        problems: ProblemStore
+        problems: ProblemStore,
+        config_event_source: ConfigEventEmitter
     ) {
         this.connection = connection;
         this.problems = problems;
+
+		config_event_source.onConfigAvailable((_workspace: string, config: GhulConfig) => {
+            this.want_plaintext_hover = config.want_plaintext_hover;
+		});
     }
 
     rejectAllPendingPromises(message: string) {
@@ -155,9 +164,15 @@ export class ResponseHandler {
         this.hover_resolve = null;
 
         if (lines.length > 0 && lines[0] != null && lines[0].length > 0) {
-            resolve({
-                contents: { language: 'ghul', value: lines[0] }
-            });
+            if (this.want_plaintext_hover) {
+                resolve({
+                    contents: { kind: "plaintext", value: lines[0] }
+                });
+            } else {
+                resolve({
+                    contents: { language: "ghul", value: lines[0] }
+                });    
+            }
         } else {
             resolve(null);
         }

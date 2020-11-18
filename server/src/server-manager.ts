@@ -1,10 +1,9 @@
 import {
 	spawn,
-	spawnSync,
 	ChildProcess
 } from 'child_process';
 
-import { log, rejectAllAndThrow } from './server';
+import { log, rejectAllPendingPromises } from './server';
 
 import { GhulConfig } from './ghul-config';
 
@@ -48,10 +47,6 @@ export class ServerManager {
 	}
 
 	start() {
-		if (this.ghul_config.use_docker) {
-			this.killQuiet();
-		}
-
 		this.event_emitter.starting();
 
 		this.server_state = ServerState.StartingUp;
@@ -60,25 +55,9 @@ export class ServerManager {
 
 		let other_flags = this.ghul_config.other_flags;
 		
-		if (this.ghul_config.use_docker) {
-			log("starting ghūl compiler '" + ghul_compiler + "' in container");
-			this.child = spawn("docker", [
-				"run", "--name", "ghul-analyse",
-				"--rm",
-				"-v", this.workspace_root + ":/home/dev/source",
-				"-w", "/home/dev/source",
-				"-i", "ghul/compiler:stable",
-				ghul_compiler, "-A"
-			]);
-		} else {
-			log("starting ghūl compiler '" + ghul_compiler + "'");
+		log("starting ghūl compiler '" + ghul_compiler + "'");
 
-			if (ghul_compiler.endsWith(".exe")) {
-				this.child = spawn("mono", [ ghul_compiler, "-A", ...other_flags ]);
-			} else {
-				this.child = spawn(ghul_compiler, [ "-A", ...other_flags ]);
-			}
-		} 
+		this.child = spawn("mono", [ ghul_compiler, "-A", ...other_flags ]);
 
 		this.event_emitter.running(this.child);
 	
@@ -92,11 +71,13 @@ export class ServerManager {
 	
 		this.child.on('exit',
 			(_code: number, _signal: string) => {
-				log("ghūl compiler exited - you will need to restart your IDE");
-	
-				this.abort();
+				log("ghūl compiler exited - restarting");
 
-				rejectAllAndThrow("ghūl compiler exited unexpectedly");
+				rejectAllPendingPromises("restarting");
+	
+				// this.abort();
+
+				// rejectAllAndThrow("ghūl compiler exited unexpectedly");
 			}
 		);
 	}	
@@ -124,11 +105,6 @@ export class ServerManager {
 
 		log("kill any running ghūl compiler container...");
 		try {
-			spawnSync("docker",
-				[
-					"rm", "-f", "ghul-analyse",
-				]
-			);
 	
 			this.event_emitter.killed();
 		} catch (e) {
@@ -138,14 +114,5 @@ export class ServerManager {
 	}
 
 	killQuiet() {
-		try {
-			spawnSync("docker",
-				[
-					"rm", "-f", "ghul-analyse",
-				]
-			);
-		} catch (e) {
-			log("something went wrong killing ghūl compiler container: " + e);			
-		}
 	}
 }

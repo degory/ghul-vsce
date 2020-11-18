@@ -59,6 +59,7 @@ let connection = createConnection(new IPCMessageReader(process), new IPCMessageW
 let response_handler = new ResponseHandler(
 	connection,
 	problems,
+	config_event_emitter
 );
 
 let requester = new Requester(server_event_emitter, response_handler);

@@ -6,7 +6,9 @@ export class ResponseParser {
     buffer: string;
     response_handler: ResponseHandler;
 
-    constructor(response_handler: ResponseHandler) {
+    constructor(
+        response_handler: ResponseHandler
+    ) {
         this.buffer = '';
         this.response_handler = response_handler;
     }
@@ -61,7 +63,7 @@ export class ResponseParser {
 
         case "DIAG ANALYSIS":
             // log("response parser: DIAG ANALYSIS received");
-            this.response_handler.handleDiagnostics('analyis', lines);
+            this.response_handler.handleDiagnostics('analysis', lines);
             break;
 
         case "ANALYSED":

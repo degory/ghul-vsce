@@ -32,6 +32,8 @@ interface Document {
 export class EditQueue {
     can_build_all: boolean;
 
+    expected_build_time: number;
+
     edit_timeout: number;
     edit_timer: NodeJS.Timer;
 
@@ -79,7 +81,7 @@ export class EditQueue {
         this.pending_builds = [];
         this.pending_changes.clear();
 
-        // this.requester.sendRestart();
+        this.requester.sendRestart();
 
         this.state = QueueState.IDLE;
         
@@ -184,12 +186,33 @@ export class EditQueue {
             build_time = Date.now() - this.analyse_start_time;
 
             if (this.last_build_type != BuildType.FULL) {
-                this.edit_timeout = 0.8 * this.edit_timeout + 0.2 * build_time;
+                this.edit_timeout = 0.9 * this.edit_timeout + 0.1 * build_time;
 
-                if (this.edit_timeout > 500 && this.can_build_all && this.build_count > 10) {
-                    log("average build time " + build_time + " exceeds 500 milliseconds: disabling full build per edit");
-                    this.can_build_all = false;
+                if (this.build_count > 10) {
+                    if (!this.expected_build_time) {
+                        this.expected_build_time = this.edit_timeout;
+
+                        log("setting expected build time to " + build_time);
+                    } else if(build_time > this.expected_build_time * 3) {
+                        log("actual build time: " + build_time + " vs expected build time: " + this.expected_build_time);
+                        log("requesting restart");
+
+                        this.requester.sendRestart();
+
+                        this.build_count = 0;
+                        this.expected_build_time = null;
+                    }
                 }
+
+
+                // if (this.build_count > 10 && this.can_build_all) {
+                //     if (this.edit_timeout > 500) {
+                //         log("average build time " + build_time + " exceeds 500 milliseconds: disabling full build per edit");
+                //         this.can_build_all = false;
+                //     } else  /* if (this.build_count % 25 == 0) */ {
+                //         log("average build time " + build_time + "ms");
+                //     }    
+                // }
             }
         }
 

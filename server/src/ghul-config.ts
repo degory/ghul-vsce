@@ -2,19 +2,18 @@ import { readFileSync, existsSync } from 'fs';
 
 export interface GhulConfig {
 	compiler: string,
-	use_docker: boolean,
 	source: string[],
 	other_flags: string[],
+	want_plaintext_hover: boolean,
 }
 
 interface GhulConfigJson {
 	compiler?: string,
-	use_docker?: boolean,
 	source?: string[],
 	libraries?: string[] | null,
 	other_flags?: string[],
-	target?: "dotnet" | "legacy",
-	prefix?: string
+	prefix?: string,
+	want_plaintext_hover?: boolean,
 }
 
 export function getGhulConfig(workspace: string): GhulConfig {
@@ -27,8 +26,6 @@ export function getGhulConfig(workspace: string): GhulConfig {
 		config = {}
 	}
 
-	let target = config.target ?? "dotnet";
-
 	let prefix = config.prefix ?? "/usr/lib/ghul/";
 
 	if (!prefix.endsWith('/')) {
@@ -36,10 +33,7 @@ export function getGhulConfig(workspace: string): GhulConfig {
 	}
 
 	// FIXME: avoid duplicating this between the VSCE and the compiler:
-	let default_libraries = target == "dotnet" ?
-		["dotnet/ghul", "dotnet/stubs"]
-	:
-		["legacy/ghul"];
+	let default_libraries = ["dotnet/ghul", "dotnet/stubs"];
 
 	let libraries = 
 		(config.libraries ?? default_libraries)
@@ -65,14 +59,10 @@ export function getGhulConfig(workspace: string): GhulConfig {
 		other_flags = [other_flags] as string[];
 	}
 
-	if (target != "dotnet") {
-		other_flags.push("-L");
-	}
-    
     return {
-		use_docker: false,
-		compiler: config.compiler ?? "ghul",
+		compiler: config.compiler ?? "/usr/bin/ghul.exe",
 		source,
-		other_flags
+		other_flags,
+		want_plaintext_hover: config.want_plaintext_hover ?? false
 	};
 }
