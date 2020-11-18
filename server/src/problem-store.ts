@@ -62,7 +62,7 @@ export class ProblemStore {
 	add(kind: string, uri: string, diagnostic: Diagnostic) {
 		if (kind == 'parse') {
 			this.add_parse_problem(uri, diagnostic);
-		} else if (kind == 'analyis') {
+		} else if (kind == 'analysis') {
 			this.add_analysis_problem(uri, diagnostic);
 		} else {
 			log("unknown diagnostic: " + kind);

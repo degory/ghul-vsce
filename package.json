@@ -1,27 +1,113 @@
 {
-	"name": "ghul--lsp",
-	"displayName": "ghūl language server",
-	"description": "ghūl language server",
-	"author": "degory",
-	"version": "0.2.6",
+	"name": "ghul",
+	"displayName": "ghūl",
+	"description": "ghūl language support",
+	"version": "0.2.7",
 	"publisher": "degory",
 	"license": "GPL-3.0",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/degory/ghul-lsp"
+		"url": "https://github.com/degory/ghul-vsce"
+	},
+	"engines": {
+		"vscode": "^1.18.0"
+	},
+	"categories": [
+		"Programming Languages",
+		"Snippets"
+	],
+	"activationEvents": [
+		"workspaceContains:**/*.ghul"
+	],
+	"main": "./client/out/extension",
+	"contributes": {
+		"languages": [
+			{
+				"id": "ghul",
+				"aliases": [
+					"ghul",
+					"ghūl"
+				],
+				"extensions": [
+					".ghul"
+				],
+				"configuration": "./language-configuration.json"
+			}
+		],
+		"grammars": [
+			{
+				"language": "ghul",
+				"scopeName": "source.ghul",
+				"path": "./syntaxes/ghul.tmLanguage.json"
+			}
+		],
+		"snippets": [
+			{
+				"language": "ghul",
+				"path": "./snippets/ghul.json"
+			}
+		],
+		"problemMatchers": [
+			{
+				"name": "ghūl",
+				"owner": "ghul",
+				"fileLocation": [
+					"absolute"
+				],
+				"pattern": [
+					{
+						"regexp": "^/(.*):\\s+(\\d+),(\\d+)\\.\\.(\\d+),(\\d+):\\s+(info|warn|error):\\s+(.*)$",
+						"file": 1,
+						"line": 2,
+						"column": 3,
+						"endLine": 4,
+						"endColumn": 5,
+						"severity": 6,
+						"message": 7
+					}
+				]
+			},
+			{
+				"name": "ghūl",
+				"owner": "ghul",
+				"fileLocation": [
+					"relative",
+					"${workspaceRoot}"
+				],
+				"pattern": [
+					{
+						"regexp": "^(.*):\\s+(\\d+),(\\d+)\\.\\.(\\d+),(\\d+):\\s+(info|warn|error):\\s+(.*)$",
+						"file": 1,
+						"line": 2,
+						"column": 3,
+						"endLine": 4,
+						"endColumn": 5,
+						"severity": 6,
+						"message": 7
+					}
+				]
+			}
+		]
 	},
 	"scripts": {
-		"postinstall": "cd server && npm install && cd ../client && npm install && cd ..",
-		"compile": "tsc -p client/tsconfig.json && cd server && npm run installServer && cd .. && tsc -p server/tsconfig.json",
-		"compile:client": "tsc -p client/tsconfig.json",
-		"watch:client": "tsc -w -p client/tsconfig.json",
-		"compile:server": "cd server && npm run installServer && cd .. && tsc -p server/tsconfig.json",
-		"watch:server": "cd server && npm run installServer && cd .. && tsc -w -p server/tsconfig.json"
+		"vscode:prepublish": "npm run webpack",
+		"webpack": "npm run clean && webpack --mode production --config ./client/webpack.config.js && webpack --mode production --config ./server/webpack.config.js",
+		"webpack:dev": "npm run clean && webpack --mode none --config ./client/webpack.config.js && webpack --mode none --config ./server/webpack.config.js",
+		"compile": "tsc -b",
+		"compile:client": "tsc -b ./client/tsconfig.json",
+		"compile:server": "tsc -b ./server/tsconfig.json",
+		"watch": "tsc -b -w",
+		"clean": "rimraf client/out && rimraf server/out",
+		"postinstall": "cd client && npm install && cd ../server && npm install && cd .."
 	},
 	"devDependencies": {
 		"@types/mocha": "^2.2.42",
 		"@types/node": "^6.14.10",
-		"typescript": "^3.9.5"
+		"merge-options": "^3.0.3",
+		"rimraf": "^3.0.2",
+		"typescript": "^3.9.5",
+		"webpack": "^5.5.1",
+		"webpack-cli": "^4.2.0"
 	},
 	"dependencies": {
 		"@types/file-url": "^2.0.0",
