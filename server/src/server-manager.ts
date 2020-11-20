@@ -3,7 +3,7 @@ import {
 	ChildProcess
 } from 'child_process';
 
-import { log, rejectAllPendingPromises } from './server';
+import { log, resolveAllPendingPromises } from './server';
 
 import { GhulConfig } from './ghul-config';
 
@@ -12,6 +12,7 @@ import { ResponseParser } from './response-parser';
 import { ServerEventEmitter } from './server-event-emitter';
 
 import { ConfigEventEmitter } from './config-event-emitter';
+import { EditQueue } from './edit-queue';
 
 export enum ServerState {
 	Cold,
@@ -28,14 +29,17 @@ export class ServerManager {
 	server_state: ServerState;
 	ghul_config: GhulConfig;
 	workspace_root: string;
+	edit_queue: EditQueue;
 	response_parser: ResponseParser;
 
 	constructor(
 		config_event_source: ConfigEventEmitter,
 		event_emitter: ServerEventEmitter,
+		edit_queue: EditQueue,
 		response_parser: ResponseParser
 	) {
 		this.event_emitter = event_emitter;
+		this.edit_queue = edit_queue;
 		this.response_parser = response_parser;
 
 		config_event_source.onConfigAvailable((workspace: string, config: GhulConfig) => {
@@ -73,11 +77,11 @@ export class ServerManager {
 			(_code: number, _signal: string) => {
 				log("ghūl compiler exited - restarting");
 
-				rejectAllPendingPromises("restarting");
-	
-				// this.abort();
+				resolveAllPendingPromises();
 
-				// rejectAllAndThrow("ghūl compiler exited unexpectedly");
+				this.edit_queue.reset();
+	
+				this.start();
 			}
 		);
 	}	

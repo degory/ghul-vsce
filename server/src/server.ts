@@ -30,21 +30,6 @@ let real_console_log = console.log;
 
 export function log(message: string) {
 	real_console_log(message);
-
-	// 2017-12-16T12:24:20.226Z
-	// 012345678901234567890123
-	//           11111111112222
-
-	/*
-	let date_string = new Date().toISOString();
-
-	let log_date_string =
-		date_string.substring(0, 10) +
-		' ' +
-		date_string.substring(11, 22);
-
-	appendFileSync("log.txt", log_date_string + ": " + message + "\n");
-	*/
 }
 
 console.log = log;
@@ -77,11 +62,16 @@ let response_parser = new ResponseParser(response_handler);
 let server_manager = new ServerManager(
 	config_event_emitter,
 	server_event_emitter,
+	edit_queue,
 	response_parser	
 );
 
 response_handler.setServerManager(server_manager);
 response_handler.setEditQueue(edit_queue);
+
+export function resolveAllPendingPromises() {
+	response_handler.resolveAllPendingPromises();
+}
 
 export function rejectAllPendingPromises(message: string) {
 	response_handler.rejectAllPendingPromises(message);

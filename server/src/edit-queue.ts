@@ -76,12 +76,10 @@ export class EditQueue {
         this.state = QueueState.START;
     }
 
-    restart() {
+    reset() {
         this.problems.clear();
         this.pending_builds = [];
         this.pending_changes.clear();
-
-        this.requester.sendRestart();
 
         this.state = QueueState.IDLE;
         
@@ -185,15 +183,18 @@ export class EditQueue {
         if (this.analyse_start_time) {
             build_time = Date.now() - this.analyse_start_time;
 
-            if (this.last_build_type != BuildType.FULL) {
-                this.edit_timeout = 0.9 * this.edit_timeout + 0.1 * build_time;
+            log("last build type " + last_build_type_string);
+            log("build count " + this.build_count);
 
-                if (this.build_count > 10) {
+            // if (this.last_build_type != BuildType.FULL) {
+                this.edit_timeout = 0.5 * this.edit_timeout + 0.2 * build_time;
+
+                if (this.build_count > 5) {
                     if (!this.expected_build_time) {
                         this.expected_build_time = this.edit_timeout;
 
-                        log("setting expected build time to " + build_time);
-                    } else if(build_time > this.expected_build_time * 3) {
+                        log("setting expected build time to " + this.expected_build_time);
+                    } else if(build_time > this.expected_build_time * 2) {
                         log("actual build time: " + build_time + " vs expected build time: " + this.expected_build_time);
                         log("requesting restart");
 
@@ -203,17 +204,7 @@ export class EditQueue {
                         this.expected_build_time = null;
                     }
                 }
-
-
-                // if (this.build_count > 10 && this.can_build_all) {
-                //     if (this.edit_timeout > 500) {
-                //         log("average build time " + build_time + " exceeds 500 milliseconds: disabling full build per edit");
-                //         this.can_build_all = false;
-                //     } else  /* if (this.build_count % 25 == 0) */ {
-                //         log("average build time " + build_time + "ms");
-                //     }    
-                // }
-            }
+            // }
         }
 
         if (this.state == QueueState.WAITING_FOR_BUILD) {

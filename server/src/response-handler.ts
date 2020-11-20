@@ -52,6 +52,50 @@ export class ResponseHandler {
 		});
     }
 
+    resolveAllPendingPromises() {
+        if (this.hover_resolve) {
+            this.hover_resolve(null);
+
+            this.hover_resolve = null;
+            this.hover_reject = null;
+        }
+
+        if (this.definition_resolve) {
+            this.definition_resolve(null);
+
+            this.definition_resolve = null;
+            this.definition_reject = null;
+        }
+
+        if (this.completion_resolve) {
+            this.completion_resolve(null);
+
+            this.completion_resolve = null;
+            this.completion_reject = null;
+        }
+        
+        if (this.signature_resolve) {
+            this.signature_resolve(null);
+
+            this.signature_resolve = null;
+            this.signature_reject = null;
+        }        
+
+        if (this.symbols_resolve) {
+            this.symbols_resolve(null);
+
+            this.symbols_resolve = null;
+            this.symbols_reject = null;
+        }        
+
+        if (this.references_resolve) {
+            this.references_resolve(null);
+
+            this.references_resolve = null;
+            this.references_reject = null;
+        }        
+    }
+
     rejectAllPendingPromises(message: string) {
         if (this.hover_reject) {
             this.hover_reject(message);
@@ -454,8 +498,7 @@ export class ResponseHandler {
 
     handleRestart() {
         console.log("compiler requested restart");
-
-        this.edit_queue.restart();
+        this.edit_queue.reset();
     }
      
     handleUnexpected() {
