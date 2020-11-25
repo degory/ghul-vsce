@@ -75,3 +75,5 @@ Thumbs.db
 **/node_modules/
 */out/
 client/dist/**/*
+client/src/version.js
+server/src/version.js

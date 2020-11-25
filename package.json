@@ -91,11 +91,12 @@
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run webpack",
-		"webpack": "npm run clean && webpack --mode production --config ./client/webpack.config.js && webpack --mode production --config ./server/webpack.config.js",
-		"webpack:dev": "npm run clean && webpack --mode none --config ./client/webpack.config.js && webpack --mode none --config ./server/webpack.config.js",
+		"webpack": "npm run genversion && npm run clean && webpack --mode production --config ./client/webpack.config.js && webpack --mode production --config ./server/webpack.config.js",
+		"webpack:dev": "npm run genversion && npm run clean && webpack --mode none --config ./client/webpack.config.js && webpack --mode none --config ./server/webpack.config.js",
 		"compile": "tsc -b",
 		"compile:client": "tsc -b ./client/tsconfig.json",
 		"compile:server": "tsc -b ./server/tsconfig.json",
+		"genversion": "genversion ./client/src/version.js && genversion ./server/src/version.js",
 		"watch": "tsc -b -w",
 		"clean": "rimraf client/out && rimraf server/out",
 		"postinstall": "cd client && npm install && cd ../server && npm install && cd .."
@@ -103,6 +104,7 @@
 	"devDependencies": {
 		"@types/mocha": "^2.2.42",
 		"@types/node": "^6.14.10",
+		"genversion": "^2.2.1",
 		"merge-options": "^3.0.3",
 		"rimraf": "^3.0.2",
 		"typescript": "^3.9.5",

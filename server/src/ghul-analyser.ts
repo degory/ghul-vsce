@@ -1,4 +1,3 @@
-
 import {
 	readFileSync //, Stats
 } from 'fs';

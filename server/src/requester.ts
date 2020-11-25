@@ -17,6 +17,8 @@ import { ServerEventEmitter } from './server-event-emitter';
 
 import { ResponseHandler } from './response-handler';
 
+const version = require('./version') as string;
+
 export class Requester {
     analysed: boolean;
     stream: any;    
@@ -31,14 +33,8 @@ export class Requester {
 
         this.analysed = true;
 
-        /*
-        server_event_emitter.onAnalysed(() => {
-            this.analysed = true;
-        });
-        */
-
         server_event_emitter.onRunning((child: ChildProcess) => {
-            log("ghūl language extension: compiler is running");
+            log(`ghūl language extension v${version}: initialized`);
             this.stream = child.stdin;
         });        
     }

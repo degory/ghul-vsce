@@ -18,8 +18,6 @@ import {
     Location
 } from 'vscode-languageserver';
 
-const version = process.env.npm_package_version;
-
 import { log } from './server';
 
 import { getGhulConfig } from './ghul-config';
@@ -100,8 +98,6 @@ export class ConnectionEventHandler {
     }
 
     onInitialize(params: any): InitializeResult {
-        log(`ghūl language extension ${version}: initializing...`);
-
         let workspace: string = params.rootPath;
 
         let config = getGhulConfig(workspace);
