@@ -19,7 +19,7 @@ export class ServerEventEmitter extends EventEmitter {
 	listening() {
 		this.emit('listening');
     }
-    
+
     analysed() {
         this.emit('analysed');
     }

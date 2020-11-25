@@ -49,7 +49,7 @@ export class ResponseHandler {
 
 		config_event_source.onConfigAvailable((_workspace: string, config: GhulConfig) => {
             this.want_plaintext_hover = config.want_plaintext_hover;
-		});
+        });
     }
 
     resolveAllPendingPromises() {

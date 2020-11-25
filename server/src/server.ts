@@ -4,8 +4,6 @@ import {
 	IPCMessageReader, IPCMessageWriter, createConnection, TextDocuments
 } from 'vscode-languageserver';
 
-// import { appendFileSync } from 'fs';
-
 import { ProblemStore } from './problem-store';
 
 import { ConnectionEventHandler } from './connection-event-handler';
@@ -26,13 +24,10 @@ import { GhulAnalyser } from './ghul-analyser';
 
 import { ServerManager } from './server-manager';
 
-let real_console_log = console.log;
-
-export function log(message: string) {
-	real_console_log(message);
+export function log(...args: any[]) {
+	// console.log(new Date() + " " + edit_queue?.state + " " + message);
+	console.log(...args);
 }
-
-console.log = log;
 
 let problems = new ProblemStore();
 

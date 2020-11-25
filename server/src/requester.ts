@@ -38,7 +38,7 @@ export class Requester {
         */
 
         server_event_emitter.onRunning((child: ChildProcess) => {
-            log("ghūl language server: compiler is running");
+            log("ghūl language extension: compiler is running");
             this.stream = child.stdin;
         });        
     }

@@ -58,8 +58,6 @@ export class ServerManager {
 		let ghul_compiler = this.ghul_config.compiler;
 
 		let other_flags = this.ghul_config.other_flags;
-		
-		log("starting ghūl compiler '" + ghul_compiler + "'");
 
 		this.child = spawn("mono", [ ghul_compiler, "-A", ...other_flags ]);
 
@@ -92,8 +90,6 @@ export class ServerManager {
 
 	startListening() {
 		this.server_state = ServerState.Listening;
-
-		console.log("emit listening event");
 
 		this.event_emitter.listening();
 	}

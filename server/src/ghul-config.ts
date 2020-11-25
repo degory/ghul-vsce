@@ -21,7 +21,6 @@ export function getGhulConfig(workspace: string): GhulConfig {
 
 
 	if (existsSync(workspace + "/ghul.json")) {
-		console.log("using config file: " + workspace + "/ghul.json");
 		let buffer = '' + readFileSync(workspace + "/ghul.json");
 		config = <GhulConfigJson>JSON.parse(buffer);
 	} else {
@@ -48,13 +47,7 @@ export function getGhulConfig(workspace: string): GhulConfig {
 						library					
 				);
 
-	console.log("libraries is: ", libraries);
-
 	let source = [...libraries, ...(config.source ?? ["."])];
-
-	console.log("source including libraries is: ", source);
-
-	console.log("compiler is: " + config.compiler);
 
 	let other_flags = config.other_flags ?? [];
 

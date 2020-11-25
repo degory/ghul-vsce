@@ -26,7 +26,6 @@ export class GhulAnalyser {
     server_event_emitter: ServerEventEmitter;
 
     workspace_root: string;
-    // requester: Requester;
     edit_queue: EditQueue;
     ghul_config: GhulConfig;
 
@@ -46,7 +45,6 @@ export class GhulAnalyser {
         });
 
         server_event_emitter.onListening(() => {
-            console.log("on listening");
             this.analyseEntireProject();
         });
     }
@@ -81,7 +79,7 @@ export class GhulAnalyser {
                         }
                     }
                 }
-        
+
                 sourceFiles.forEach((file: string) => {
                     let path = fileUriToPath(file);
 

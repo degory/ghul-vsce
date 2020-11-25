@@ -25,7 +25,7 @@ export function activate(context: ExtensionContext) {
 		documentSelector: [{scheme: 'file', language: 'ghul'}],
 		synchronize: {
 			// Synchronize the setting section 'languageServerExample' to the server
-			configurationSection: 'lspSample',
+			configurationSection: 'ghul',
 			// Notify the server about file changes to '.clientrc files contain in the workspace
 			fileEvents: workspace.createFileSystemWatcher('ghul.json')
 		}

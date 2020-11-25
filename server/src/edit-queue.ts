@@ -63,7 +63,7 @@ export class EditQueue {
 
         this.build_count = 0;
 
-        this.full_build_timeout = this.edit_timeout * 5;
+        this.full_build_timeout = 10000;
 
         this.can_build_all = true;
         this.requester = requester;
@@ -113,7 +113,6 @@ export class EditQueue {
             });
 
         if (this.state == QueueState.START) {
-            // log("queue edit: starting up");
         } else if (this.state == QueueState.IDLE) {
             this.state = QueueState.WAITING_FOR_MORE_EDITS;
             
@@ -123,7 +122,7 @@ export class EditQueue {
         } else if (this.state == QueueState.BUILDING || this.state == QueueState.WAITING_FOR_BUILD) {
             this.state = QueueState.WAITING_FOR_BUILD;
         } else {
-            rejectAllAndThrow("queue edit: unexpected queue state: " + QueueState[this.state]);
+            rejectAllAndThrow("queue edit: unexpected queue state (A): " + QueueState[this.state]);
         }
     }
 
@@ -146,23 +145,6 @@ export class EditQueue {
         this.edit_timer = setTimeout(() => { this.onEditTimeout() }, this.edit_timeout * 2);
     }
 
-    onFullBuildTimeout() {
-        this.full_build_timer = null;
-
-        if (this.last_build_type == BuildType.LIMITED && this.state == QueueState.IDLE) {
-            this.state = QueueState.BUILDING;
-            // log("requesting full build");            
-            this.queueAnalyse();
-        }
-    }
-
-    startOrResetFullBuildTimer() {
-        if (this.full_build_timer) {
-            clearTimeout(this.full_build_timer);
-        }
-
-        this.full_build_timer = setTimeout(() => { this.onFullBuildTimeout() }, this.full_build_timeout);
-    }    
 
     onBuildFinished() {
         let build_time: number = 0;
@@ -183,68 +165,34 @@ export class EditQueue {
         if (this.analyse_start_time) {
             build_time = Date.now() - this.analyse_start_time;
 
-            log("last build type " + last_build_type_string);
-            log("build count " + this.build_count);
-
-            // if (this.last_build_type != BuildType.FULL) {
-                this.edit_timeout = 0.5 * this.edit_timeout + 0.2 * build_time;
-
-                if (this.build_count > 5) {
-                    if (!this.expected_build_time) {
-                        this.expected_build_time = this.edit_timeout;
-
-                        log("setting expected build time to " + this.expected_build_time);
-                    } else if(build_time > this.expected_build_time * 2) {
-                        log("actual build time: " + build_time + " vs expected build time: " + this.expected_build_time);
-                        log("requesting restart");
-
-                        this.requester.sendRestart();
-
-                        this.build_count = 0;
-                        this.expected_build_time = null;
-                    }
-                }
-            // }
+            this.edit_timeout = 0.4 * this.edit_timeout + 0.1 * build_time;
         }
 
         if (this.state == QueueState.WAITING_FOR_BUILD) {
             if (this.pending_builds.length == 0) {
-                // log(last_build_type_string + " build finished in " + build_time + " milliseconds: more changes queued, will start another build");
-
                 this.state = QueueState.IDLE;
 
                 this.sendQueued();
-            // } else {
-            //    log(last_build_type_string + " build finished in " + build_time + " milliseconds: more changes queued, but " + this.pending_builds.length + " builds still in queue, will continue to wait");
             }
         } else if (this.state == QueueState.BUILDING) {
             if (this.pending_builds.length == 0) {
-                // log(last_build_type_string + " build finished in " + build_time + " milliseconds: queue is now idle");            
-            
                 this.state = QueueState.IDLE;
-            // } else {
-            //    log(last_build_type_string + " build finished in " + build_time + " milliseconds: " + this.pending_builds.length + " builds still in queue, will continue to wait");                
             }
         } else {
-            log(last_build_type_string + " build finished: unexpected queue state: " + QueueState[this.state]);
+            log(last_build_type_string + " build finished: unexpected queue state (B): " + QueueState[this.state]);
 
             if (this.pending_builds.length == 0) {
                 this.state = QueueState.IDLE;
             }
-        }
-
-        if (this.last_build_type == BuildType.LIMITED && this.state == QueueState.IDLE) {
-            this.startOrResetFullBuildTimer();
         }
     }
 
     startAndSendQueued() {
         if (this.state == QueueState.START) {
             this.state = QueueState.IDLE;
-
             this.sendQueued();
         } else {
-            log("start and send queued: unexpected queue state: " + QueueState[this.state]);            
+            log("start and send queued: unexpected queue state (C): " + QueueState[this.state]);            
         }
     }
 
@@ -290,7 +238,7 @@ export class EditQueue {
                     
                     this.queueAnalyse(to_analyse);
                 } else {
-                    rejectAllAndThrow("try send queued: unexpected queue state: " + QueueState[this.state]);
+                    rejectAllAndThrow("try send queued: unexpected queue state (D): " + QueueState[this.state]);
                 }
             }
         }
@@ -300,7 +248,7 @@ export class EditQueue {
         if (this.state == QueueState.WAITING_FOR_MORE_EDITS) {
             clearTimeout(this.edit_timer);
         } else if (this.state != QueueState.IDLE) {
-            rejectAllAndThrow("send queued: unexpected queue state: " + QueueState[this.state]);
+            rejectAllAndThrow("send queued: unexpected queue state (E): " + QueueState[this.state]);
         }
 
         this.state = QueueState.SENDING;

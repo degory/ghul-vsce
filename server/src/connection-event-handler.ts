@@ -18,6 +18,8 @@ import {
     Location
 } from 'vscode-languageserver';
 
+const version = process.env.npm_package_version;
+
 import { log } from './server';
 
 import { getGhulConfig } from './ghul-config';
@@ -98,15 +100,11 @@ export class ConnectionEventHandler {
     }
 
     onInitialize(params: any): InitializeResult {
-        log("ghūl language server initializing...");
+        log(`ghūl language extension ${version}: initializing...`);
 
         let workspace: string = params.rootPath;
 
-        log("project workspace: " + workspace);
-
         let config = getGhulConfig(workspace);
-
-        log("project config: " + JSON.stringify(config));
 
         this.config_event_emitter.configAvailable(workspace, config);
         
@@ -130,12 +128,12 @@ export class ConnectionEventHandler {
     }
 
     onShutdown() {
-	    log("ghūl language server shutting down: kill compiler...");
+	    log("ghūl language extension: shutting down...");
 	    this.server_manager.kill();
     }
 
     onExit() {
-	    log("ghūl language server exit");
+	    log("ghūl language extension: exit");
     }
 
     onDidChangeConfiguration(_change: DidChangeConfigurationParams) {
