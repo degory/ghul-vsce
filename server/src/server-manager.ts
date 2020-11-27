@@ -59,7 +59,7 @@ export class ServerManager {
 
 		let other_flags = this.ghul_config.other_flags;
 
-		this.child = spawn("mono", [ ghul_compiler, "-A", ...other_flags ]);
+		this.child = spawn(ghul_compiler, [ "-A", ...other_flags ]);
 
 		this.event_emitter.running(this.child);
 	

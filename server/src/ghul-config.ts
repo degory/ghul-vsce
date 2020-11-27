@@ -56,7 +56,7 @@ export function getGhulConfig(workspace: string): GhulConfig {
 	}
 
     return {
-		compiler: config.compiler ?? "/usr/bin/ghul.exe",
+		compiler: config.compiler ?? "/usr/bin/ghul",
 		source,
 		other_flags,
 		want_plaintext_hover: config.want_plaintext_hover ?? false
