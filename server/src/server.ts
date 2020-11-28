@@ -10,7 +10,7 @@ import { ConnectionEventHandler } from './connection-event-handler';
 
 import { Requester } from './requester';
 
-import { EditQueue } from './edit-queue';
+import { Document, EditQueue } from './edit-queue';
 
 import { ServerEventEmitter } from './server-event-emitter';
 
@@ -78,7 +78,10 @@ export function rejectAllAndThrow(message: string) {
 	throw message;
 }
 
-let documents: TextDocuments = new TextDocuments();
+let documents: TextDocuments<Document> = new TextDocuments<Document>({
+	create: (uri, _languageId, version, content): Document => ({ uri, version, text: content, is_pending: true }),
+	update: (document: Document) => document
+});
  
 documents.onDidChangeContent((change) => {
 	edit_queue.queueEdit(change);

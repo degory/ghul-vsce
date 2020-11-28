@@ -19,7 +19,6 @@ interface GhulConfigJson {
 export function getGhulConfig(workspace: string): GhulConfig {
 	let config: GhulConfigJson;
 
-
 	if (existsSync(workspace + "/ghul.json")) {
 		let buffer = '' + readFileSync(workspace + "/ghul.json");
 		config = <GhulConfigJson>JSON.parse(buffer);

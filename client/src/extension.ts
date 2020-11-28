@@ -1,11 +1,38 @@
 'use strict';
 
+// import { existsSync, readFileSync } from 'fs';
 import * as path from 'path';
 
-import { workspace, ExtensionContext } from 'vscode';
+import { ExtensionContext, workspace } from 'vscode';
 import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient';
 
+// function getSourceFolders(): string[] {
+// 	let config: { source?: string[] };
+
+// 	let path = workspace.asRelativePath("ghul.json");
+
+// 	console.log("path is: " + path);
+
+// 	if (existsSync(path)) {
+// 		console.log("path exists: " + path);
+
+// 		let buffer = '' + readFileSync(path);
+// 		console.log("buffer is: " + buffer);
+
+// 		config = JSON.parse(buffer);
+// 	} else {
+// 		console.log("no ghul.json found in " + workspace + ": using empty config");
+// 		config = {}
+// 	}
+
+// 	return config.source ?? [workspace.asRelativePath(".")];
+// }
+
 export function activate(context: ExtensionContext) {
+	console.log("startup...");
+	let sourceFolderGlobs = "**/*.ghul"; //  getSourceFolders().map(path => path + "/**/*.ghul").join(',');
+
+	console.log("globs is: " + sourceFolderGlobs);
 
 	// The server is implemented in node
 	let serverModule = context.asAbsolutePath(path.join('server', 'out', 'server.js'));
@@ -27,7 +54,7 @@ export function activate(context: ExtensionContext) {
 			// Synchronize the setting section 'languageServerExample' to the server
 			configurationSection: 'ghul',
 			// Notify the server about file changes to '.clientrc files contain in the workspace
-			fileEvents: workspace.createFileSystemWatcher('ghul.json')
+			fileEvents: workspace.createFileSystemWatcher(sourceFolderGlobs)
 		}
 	}
 	

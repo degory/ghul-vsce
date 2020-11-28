@@ -7,7 +7,6 @@ import {
     // HoverRequest,
     IConnection,
     InitializeResult,
-    InitializedParams,
     TextDocuments,
     TextDocumentPositionParams,
     SignatureHelp,
@@ -15,7 +14,8 @@ import {
     DocumentSymbolParams,
     SymbolInformation,
     ReferenceParams,
-    Location
+    Location,
+    InitializeParams
 } from 'vscode-languageserver';
 
 import { log } from './server';
@@ -28,12 +28,12 @@ import { ServerManager } from './server-manager';
 
 import { Requester } from './requester';
 
-import { EditQueue } from './edit-queue';
+import { Document, EditQueue } from './edit-queue';
 
 export class ConnectionEventHandler {
     connection: IConnection; 
     server_manager: ServerManager;
-    documents: TextDocuments;
+    documents: TextDocuments<Document>;
     config_event_emitter: ConfigEventEmitter;
     requester: Requester;
     edit_queue: EditQueue;
@@ -41,7 +41,7 @@ export class ConnectionEventHandler {
     constructor(
         connection: IConnection,
         server_manager: ServerManager,
-        documents: TextDocuments,
+        documents: TextDocuments<Document>,
         config_event_emitter: ConfigEventEmitter,        
         requester: Requester,
         edit_queue: EditQueue
@@ -53,7 +53,7 @@ export class ConnectionEventHandler {
         this.requester = requester;
         this.edit_queue = edit_queue;
 
-        connection.onInitialize((params: InitializedParams): InitializeResult => 
+        connection.onInitialize((params: InitializeParams): InitializeResult => 
             this.onInitialize(params));
 
         connection.onShutdown(() => 
@@ -97,7 +97,8 @@ export class ConnectionEventHandler {
                 this.onReferences(params));        
     }
 
-    onInitialize(params: any): InitializeResult {
+    onInitialize(params: InitializeParams): InitializeResult {
+
         let workspace: string = params.rootPath;
 
         let config = getGhulConfig(workspace);
@@ -106,7 +107,7 @@ export class ConnectionEventHandler {
         
         return {
             capabilities: {
-                textDocumentSync: this.documents.syncKind,
+                // textDocumentSync: this.documents.syncKind,
                 completionProvider: {
                     triggerCharacters: ['.'],                    
                     resolveProvider: false,
@@ -118,6 +119,11 @@ export class ConnectionEventHandler {
                 referencesProvider: true,
                 signatureHelpProvider: {
                     triggerCharacters: ["(", "["]
+                },
+                workspace: {
+                    workspaceFolders: {
+                        changeNotifications: true
+                    }
                 }
             }
         }
@@ -146,7 +152,7 @@ export class ConnectionEventHandler {
     
     onDidChangeWatchedFiles(_change: DidChangeWatchedFilesParams) {
         // Monitored files have change in VSCode
-        log('file change event received');
+        log('file change event received:', _change);
     }
 
     onCompletion(textDocumentPosition: CompletionParams): Promise<CompletionItem[]> {

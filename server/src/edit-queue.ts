@@ -22,7 +22,7 @@ enum QueueState {
     WAITING_FOR_BUILD,
 }
 
-interface Document {
+export interface Document {
     uri: string,
     version: number,
     text: string,
@@ -86,8 +86,8 @@ export class EditQueue {
         this.can_build_all = true;
     }
 
-    queueEdit(change: TextDocumentChangeEvent) {
-        this.queueEdit3(change.document.uri, change.document.version, change.document.getText());
+    queueEdit(change: TextDocumentChangeEvent<Document>) {
+        this.queueEdit3(change.document.uri, change.document.version, change.document.text);
     }
 
     queueEdit3(uri: string, version: number, text: string) {

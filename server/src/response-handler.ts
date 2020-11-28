@@ -530,26 +530,5 @@ export class ResponseHandler {
             this.problems.add(kind, uri, problem);
         }
     }
-
-    /*
-    connection.onDidOpenTextDocument((params) => {
-        // A text document got opened in VSCode.
-        // params.uri uniquely identifies the document. For documents store on disk this is a file URI.
-        // params.text the initial full content of the document.
-        connection.log(`${params.textDocument.uri} opened.`);
-    });
-    connection.onDidChangeTextDocument((params) => {
-        // The content of a text document did change in VSCode.
-        // params.uri uniquely identifies the document.
-        // params.contentChanges describe the content changes to the document.
-        connection.log(`${params.textDocument.uri} changed: ${JSON.stringify(params.contentChanges)}`);
-    });
-    connection.onDidCloseTextDocument((params) => {
-        // A text document got closed in VSCode.
-        // params.uri uniquely identifies the document.
-        connection.log(`${params.textDocument.uri} closed.`);
-    });
-    */
-
 }
 

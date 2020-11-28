@@ -2,14 +2,6 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
-			"taskName": "compile",
-			"dependsOn": [
-				"compile:client",
-				"compile:server"
-			],
-			"problemMatcher": []
-		},
-		{
 			"label": "compile:client",
 			"type": "npm",
 			"script": "compile:client",
@@ -34,18 +26,6 @@
 			"problemMatcher": [
 				"$tsc"
 			]
-		},
-		{
-			"taskName": "watch",
-			"dependsOn": [
-				"watch:client",
-				"watch:server"
-			],
-			"group": {
-				"kind": "build",
-				"isDefault": true
-			},
-			"problemMatcher": []
 		},
 		{
 			"label": "watch:client",
