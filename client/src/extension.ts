@@ -1,38 +1,23 @@
 'use strict';
 
+import { existsSync, readFileSync } from 'fs';
 // import { existsSync, readFileSync } from 'fs';
 import * as path from 'path';
 
-import { ExtensionContext, workspace } from 'vscode';
+import { ExtensionContext, RelativePattern, workspace } from 'vscode';
 import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient';
 
-// function getSourceFolders(): string[] {
-// 	let config: { source?: string[] };
-
-// 	let path = workspace.asRelativePath("ghul.json");
-
-// 	console.log("path is: " + path);
-
-// 	if (existsSync(path)) {
-// 		console.log("path exists: " + path);
-
-// 		let buffer = '' + readFileSync(path);
-// 		console.log("buffer is: " + buffer);
-
-// 		config = JSON.parse(buffer);
-// 	} else {
-// 		console.log("no ghul.json found in " + workspace + ": using empty config");
-// 		config = {}
-// 	}
-
-// 	return config.source ?? [workspace.asRelativePath(".")];
-// }
-
 export function activate(context: ExtensionContext) {
-	console.log("startup...");
-	let sourceFolderGlobs = "**/*.ghul"; //  getSourceFolders().map(path => path + "/**/*.ghul").join(',');
+	let configPath = workspace.rootPath + "/ghul.json";
 
-	console.log("globs is: " + sourceFolderGlobs);
+	let folders: string[] = ['.'];
+
+	if (existsSync(configPath)) {
+		let config = JSON.parse(readFileSync(configPath, "utf-8"));
+		if (config.source && config.source.length) {
+			folders = config.source;
+		}
+	}
 
 	// The server is implemented in node
 	let serverModule = context.asAbsolutePath(path.join('server', 'out', 'server.js'));
@@ -54,7 +39,7 @@ export function activate(context: ExtensionContext) {
 			// Synchronize the setting section 'languageServerExample' to the server
 			configurationSection: 'ghul',
 			// Notify the server about file changes to '.clientrc files contain in the workspace
-			fileEvents: workspace.createFileSystemWatcher(sourceFolderGlobs)
+			fileEvents: folders.map(folder => workspace.createFileSystemWatcher(new RelativePattern(workspace.rootPath + "/" + folder, '**/*.ghul')))
 		}
 	}
 	
