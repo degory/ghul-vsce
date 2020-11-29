@@ -4,7 +4,8 @@ import {
     Hover,
     SignatureHelp,
     SymbolInformation,
-    Location
+    Location,
+    DidChangeWatchedFilesParams
 } from 'vscode-languageserver';
 
 import { log } from './server';
@@ -146,6 +147,16 @@ export class Requester {
             return this.response_handler.expectReferences();
         } else {
             return null;
+        }
+    }
+
+    sendWatchedFileChanged(change: DidChangeWatchedFilesParams) {
+        if (this.analysed) {
+            this.write('#WATCH#\n');
+
+            for (let f of change.changes) {
+                this.write(f.type + '\t' + f.uri + '\n');
+            }
         }
     }
 
