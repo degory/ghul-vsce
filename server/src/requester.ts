@@ -157,6 +157,8 @@ export class Requester {
             for (let f of change.changes) {
                 this.write(f.type + '\t' + f.uri + '\n');
             }
+
+            this.write('#END#');
         }
     }
 

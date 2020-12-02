@@ -138,22 +138,14 @@ export class ConnectionEventHandler {
 	    log("ghūl language extension: exit");
     }
 
-    onDidChangeConfiguration(_change: DidChangeConfigurationParams) {
-        /*
-        let settings = <Settings>change.settings;
-        maxNumberOfProblems = settings.lspSample.maxNumberOfProblems || 100;
-        // Revalidate any open text documents
-
-        documents.all().forEach((d: TextDocument) => validateSingleDocument(d.uri, d.getText()));	
-
-        analyse();
-        */
+    onDidChangeConfiguration(change: DidChangeConfigurationParams) {
+        log("config change event received: ", change);
     }
     
     onDidChangeWatchedFiles(change: DidChangeWatchedFilesParams) {
         log('file change event received:', change);
 
-        this.requester.sendWatchedFileChanged(change);
+        // this.requester.sendWatchedFileChanged(change);
     }
 
     onCompletion(textDocumentPosition: CompletionParams): Promise<CompletionItem[]> {
