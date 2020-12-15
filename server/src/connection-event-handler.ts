@@ -146,7 +146,7 @@ export class ConnectionEventHandler {
     
     onDidChangeWatchedFiles(_change: DidChangeWatchedFilesParams) {
         // Monitored files have change in VSCode
-        log('file change event received');
+        // log('file change event received');
     }
 
     onCompletion(textDocumentPosition: CompletionParams): Promise<CompletionItem[]> {
