@@ -19,19 +19,12 @@ interface GhulConfigJson {
 export function getGhulConfig(workspace: string): GhulConfig {
 	let config: GhulConfigJson;
 
-
 	if (existsSync(workspace + "/ghul.json")) {
-		let buffer = '' + readFileSync(workspace + "/ghul.json");
+		let buffer = '' + readFileSync(workspace + "/ghul.json", "utf-8").replace(/^\uFEFF/, '');
 		config = <GhulConfigJson>JSON.parse(buffer);
 	} else {
 		console.log("no ghul.json found in " + workspace + ": using empty config");
 		config = {}
-	}
-
-	let prefix = config.prefix ?? "/usr/lib/ghul/";
-
-	if (!prefix.endsWith('/')) {
-		prefix = prefix + '/';
 	}
 
 	let other_flags = config.other_flags ?? [];
@@ -40,9 +33,30 @@ export function getGhulConfig(workspace: string): GhulConfig {
 		other_flags = (other_flags as string).split(" ").map(option => option.trim());
 	}
 
+	if (existsSync(workspace + "/.assemblies.json")) {		
+		if (!other_flags.includes("--v3") ) {
+			console.log("assemblies JSON found: forcing V3 mode");
+			other_flags.push("--v3");
+		}
+
+		let buffer = ('' + readFileSync(workspace + "/.assemblies.json", "utf-8")).replace(/^\uFEFF/, '');
+
+		let { assemblies } = JSON.parse(buffer) as { assemblies: string[] };
+		
+		for (let assembly of assemblies) {
+			other_flags.push("--assembly");
+			other_flags.push(assembly);
+		}
+	}
+
+	let prefix = config.prefix ?? "/usr/lib/ghul/";
+
+	if (!prefix.endsWith('/')) {
+		prefix = prefix + '/';
+	}
+
 	// FIXME: avoid duplicating this between the VSCE and the compiler:
 	let default_libraries;
-	
 	
 	if (other_flags.find(flag => flag == '--v3')) {
 		default_libraries = ["dotnet/ghul"];

@@ -145,7 +145,7 @@ export class ConnectionEventHandler {
     }
     
     onDidChangeWatchedFiles(_change: DidChangeWatchedFilesParams) {
-        // Monitored files have change in VSCode
+        // Monitored files have changed in VSCode
         // log('file change event received');
     }
 
