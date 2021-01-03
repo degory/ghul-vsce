@@ -109,7 +109,7 @@ export class ConnectionEventHandler {
                 textDocumentSync: this.documents.syncKind,
                 completionProvider: {
                     triggerCharacters: ['.'],                    
-                    resolveProvider: false,
+                    resolveProvider: false,                    
                 },
                 documentSymbolProvider: true,
                 workspaceSymbolProvider: true,
