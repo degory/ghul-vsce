@@ -29,7 +29,7 @@
 		},
 		{
 			"name": "storage.modifier.ghul",
-			"match": "\\b(?<!\\`)(static|public|protected|private|let|@)\\b"
+			"match": "(\\b(?<!\\`)(static|public|protected|private|let|@)\\b)|(\\b_(?=[A-Za-z]))"
 		},
 		{
 			"name": "keyword.operator.ghul",
@@ -57,7 +57,7 @@
 		},
 		{
 			"name": "variable.other.ghul",
-			"match": "\\b([a-zA-Z_\\`][a-zA-Z0-9_]*)\\b"
+			"match": "((?<=_)|(\\b))([a-zA-Z\\`][a-zA-Z0-9_]*)\\b"
 		},		
 		{
 			"include": "#strings"

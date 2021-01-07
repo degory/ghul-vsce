@@ -65,12 +65,6 @@
 			"let $1"
 		]	
 	},	
-	"var variable definition": {
-		"prefix": "var",
-		"body": [
-			"var $1"
-		]
-	},	
 	"for loop": {
 		"prefix": "for",
 		"body": [
