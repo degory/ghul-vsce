@@ -29,6 +29,7 @@ import { ServerManager } from './server-manager';
 import { Requester } from './requester';
 
 import { EditQueue } from './edit-queue';
+import { generateAssembliesJson } from './generate-assemblies-json';
 
 export class ConnectionEventHandler {
     connection: IConnection; 
@@ -99,6 +100,8 @@ export class ConnectionEventHandler {
 
     onInitialize(params: any): InitializeResult {
         let workspace: string = params.rootPath;
+
+        generateAssembliesJson(workspace);
 
         let config = getGhulConfig(workspace);
 
