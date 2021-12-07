@@ -113,6 +113,8 @@ export function getGhulConfig(workspace: string): GhulConfig {
 								})
 							}
 						);
+				} else if(config.source) {
+					config.source = config.source.map(directory => directory + "/**/*.ghul");
 				}
 			} else {
 				console.log("failed to parse ghul project file " + ghulProjFileName);
