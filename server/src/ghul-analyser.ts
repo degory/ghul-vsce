@@ -45,13 +45,9 @@ export class GhulAnalyser {
     analyseEntireProject() {
         let config = this.ghul_config;
 
-        let sourceFiles = <string[]>[];
-    
-        console.log("analyse project, config.source is: " + config.source);
-        
+        let sourceFiles = <string[]>[];    
+       
         config.source.forEach(pattern => {
-            console.log("search for files matching glob: " + pattern);
-
             sourceFiles
                 .push(
                     ...glob.sync(pattern)
@@ -61,7 +57,6 @@ export class GhulAnalyser {
         });
     
         sourceFiles.forEach((file: string) => {
-            console.log("queue source file: " + file);
             let path = fileUriToPath(file);
 
             this.edit_queue.queueEdit3(file, null, '' + readFileSync(path));
