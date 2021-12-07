@@ -30,6 +30,7 @@ import { Requester } from './requester';
 
 import { EditQueue } from './edit-queue';
 import { generateAssembliesJson } from './generate-assemblies-json';
+import { restoreDotNetTools } from './restore-dotnet-tools';
 
 export class ConnectionEventHandler {
     connection: IConnection; 
@@ -101,6 +102,7 @@ export class ConnectionEventHandler {
     onInitialize(params: any): InitializeResult {
         let workspace: string = params.rootPath;
 
+        restoreDotNetTools(workspace)
         generateAssembliesJson(workspace);
 
         let config = getGhulConfig(workspace);
