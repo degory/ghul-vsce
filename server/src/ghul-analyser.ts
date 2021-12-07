@@ -1,20 +1,14 @@
 import {
-	readFileSync //, Stats
+	readFileSync
 } from 'fs';
-
-// import { log } from './server';
 
 import fileUrl = require('file-url');
 
 import fileUriToPath = require('file-uri-to-path');
 
-import readdir = require('recursive-readdir');
-
-// import path = require('path');
+import glob = require('glob');
 
 import { GhulConfig } from './ghul-config'; 
-
-// import { Requester } from './requester';
 
 import { ConfigEventEmitter } from './config-event-emitter';
 
@@ -53,42 +47,26 @@ export class GhulAnalyser {
 
         let sourceFiles = <string[]>[];
     
-        let directories = config.source;
-               
-        let promises: Promise<String[]>[] = [];
+        console.log("analyse project, config.source is: " + config.source);
         
-        for (let i in directories) {
-            promises.push(
-                readdir(directories[i])
-            );
-        }
-    
-        Promise.all(promises).then(
-            (value: string[][]) => {    
-                for (let i in value) {
-                    let results = value[i];
-    
-                    for (let j in results) {
-                        let result = results[j];
-    
-                        if (result.endsWith('.ghul')) {
-                            result = fileUrl(result);
-    
-                            sourceFiles.push(result);
-                        }
-                    }
-                }
+        config.source.forEach(pattern => {
+            console.log("search for files matching glob: " + pattern);
 
-                sourceFiles.forEach((file: string) => {
-                    let path = fileUriToPath(file);
-
-                    this.edit_queue.queueEdit3(file, null, '' + readFileSync(path));
-                });
-
-                this.edit_queue.startAndSendQueued();;
+            sourceFiles
+                .push(
+                    ...glob.sync(pattern)
+                        .filter(f => f.endsWith('.ghul'))
+                        .map(f => fileUrl(f))
+                );
+        });
     
-                // this.server_event_emitter.analysed();
-            }
-        );
+        sourceFiles.forEach((file: string) => {
+            console.log("queue source file: " + file);
+            let path = fileUriToPath(file);
+
+            this.edit_queue.queueEdit3(file, null, '' + readFileSync(path));
+        });
+
+        this.edit_queue.startAndSendQueued();;
     }
 }
