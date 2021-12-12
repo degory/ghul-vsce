@@ -57,9 +57,7 @@ export class ServerManager {
 	
 		let ghul_compiler = this.ghul_config.compiler;
 
-		let other_flags = this.ghul_config.arguments;
-
-		this.child = spawn(ghul_compiler, [ "-A", ...other_flags ]);
+		this.child = spawn(ghul_compiler, this.ghul_config.arguments);
 
 		this.event_emitter.running(this.child);
 	
