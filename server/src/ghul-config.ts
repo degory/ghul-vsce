@@ -1,4 +1,3 @@
-// import { Console } from 'console';
 import { readFileSync, existsSync } from 'fs';
 
 import { glob } from 'glob';
