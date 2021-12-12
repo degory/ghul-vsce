@@ -1,20 +1,14 @@
 import {
-	readFileSync //, Stats
+	readFileSync
 } from 'fs';
-
-// import { log } from './server';
 
 import fileUrl = require('file-url');
 
 import fileUriToPath = require('file-uri-to-path');
 
-import readdir = require('recursive-readdir');
-
-// import path = require('path');
+import glob = require('glob');
 
 import { GhulConfig } from './ghul-config'; 
-
-// import { Requester } from './requester';
 
 import { ConfigEventEmitter } from './config-event-emitter';
 
@@ -51,44 +45,23 @@ export class GhulAnalyser {
     analyseEntireProject() {
         let config = this.ghul_config;
 
-        let sourceFiles = <string[]>[];
+        let sourceFiles = <string[]>[];    
+       
+        config.source.forEach(pattern => {
+            sourceFiles
+                .push(
+                    ...glob.sync(pattern)
+                        .filter(f => f.endsWith('.ghul'))
+                        .map(f => fileUrl(f))
+                );
+        });
     
-        let directories = config.source;
-               
-        let promises: Promise<String[]>[] = [];
-        
-        for (let i in directories) {
-            promises.push(
-                readdir(directories[i])
-            );
-        }
-    
-        Promise.all(promises).then(
-            (value: string[][]) => {    
-                for (let i in value) {
-                    let results = value[i];
-    
-                    for (let j in results) {
-                        let result = results[j];
-    
-                        if (result.endsWith('.ghul')) {
-                            result = fileUrl(result);
-    
-                            sourceFiles.push(result);
-                        }
-                    }
-                }
+        sourceFiles.forEach((file: string) => {
+            let path = fileUriToPath(file);
 
-                sourceFiles.forEach((file: string) => {
-                    let path = fileUriToPath(file);
+            this.edit_queue.queueEdit3(file, null, '' + readFileSync(path));
+        });
 
-                    this.edit_queue.queueEdit3(file, null, '' + readFileSync(path));
-                });
-
-                this.edit_queue.startAndSendQueued();;
-    
-                // this.server_event_emitter.analysed();
-            }
-        );
+        this.edit_queue.startAndSendQueued();;
     }
 }
