@@ -73,6 +73,22 @@ export class EditQueue {
         this.queueEdit3(change.document.uri, change.document.version, change.document.getText());
     }
 
+    sendMultiEdits(documents: { uri: string, source: string}[]) {
+        if (this.state != QueueState.START) {
+            rejectAllAndThrow("queue multi edits: unexpected queue state (A): " + QueueState[this.state]);
+        }
+
+        console.log("XXXXXXXX: start send multi edits...");
+
+        this.state = QueueState.SENDING;
+
+        this.requester.sendDocuments(documents);
+
+        this.state = QueueState.IDLE;
+
+        console.log("XXXXXXXX: done send multi edits");
+    }
+
     queueEdit3(uri: string, version: number, text: string) {
         if (version == null || version < 0) {
             version = -1;
@@ -124,13 +140,13 @@ export class EditQueue {
         this.edit_timer = setTimeout(() => { this.onEditTimeout() }, 50);
     }
 
-    startAndSendQueued() {
-        if (this.state == QueueState.START) {
-            this.state = QueueState.IDLE;
-            this.sendQueued();
-        } else {
-            log("start and send queued: unexpected queue state (C): " + QueueState[this.state]);            
-        }
+    start(documents: { uri: string, source: string}[]) {
+        // if (this.state == QueueState.START) {
+        //     this.state = QueueState.IDLE;
+            this.sendMultiEdits(documents);
+        // } else {
+        //     log("start and send queued: unexpected queue state (C): " + QueueState[this.state]);            
+        // }
     }
 
     sendQueued() {

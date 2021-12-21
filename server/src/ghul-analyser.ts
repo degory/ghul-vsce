@@ -55,13 +55,25 @@ export class GhulAnalyser {
                         .map(f => fileUrl(f))
                 );
         });
-    
-        sourceFiles.forEach((file: string) => {
-            let path = fileUriToPath(file);
 
-            this.edit_queue.queueEdit3(file, null, '' + readFileSync(path));
+        let documents = sourceFiles.map((uri: string) => {
+            console.log("XXXXXXXX: map uri: " + uri);
+
+            let path = fileUriToPath(uri);
+            console.log("XXXXXXXX: map path: " + path);
+
+            let source = readFileSync(path).toString();
+
+            console.log("XXXXXXXX: source: " + source.substring(0, 64));
+
+            return {
+                uri,
+                source
+            }
         });
 
-        this.edit_queue.startAndSendQueued();;
+        console.log("XXXXXXXX: start...");
+
+        this.edit_queue.start(documents);
     }
 }

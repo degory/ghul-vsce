@@ -174,6 +174,12 @@ export class ResponseHandler {
     }
 
     handleDiagnostics(kind: string, lines: string[]) {
+        console.log("XXXXXXXX: received diagnostics: " + kind);
+
+        for (let line of lines) {
+            console.log("XXXXXXXX: DIAG: " + kind + ": " + line);
+        }
+
         this.addDiagnostics(kind, lines);
     }
 

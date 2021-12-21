@@ -47,21 +47,31 @@ export class Requester {
         }
     }
     
+    sendDocuments(documents: { uri: string, source: string }[]) {        
+        console.log("send multi EDIT...");
+        this.write('#EDIT#\n');
+
+        for (let { uri } of documents) {
+            console.log("send URI: " + uri);
+            this.write(bodgeUri(uri) + '\n');
+        }
+
+        this.write('\n');
+
+        for (let { uri, source } of documents) {
+            console.log("send source for URI: " + uri);
+            this.write(source);
+            this.write('\f');
+        }
+    }
+
     sendDocument(uri: string, source: string) {
         console.log("send EDIT: " + uri);
         this.write('#EDIT#\n');
         this.write(bodgeUri(uri) + '\n');
+        this.write('\n');
         this.write(source);
         this.write('\f');
-    }
-
-    analyse(uris: string[]): void {
-        console.log("send ANALYSE: " + uris.join(','));
-        this.write('#ANALYSE#\n');
-        for (let uri of uris) {
-            this.write(uri + '\t');
-        }
-        this.write('\n');
     }
 
     sendHover(uri: string, line: number, character: number): Promise<Hover> {
