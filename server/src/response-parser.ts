@@ -66,11 +66,6 @@ export class ResponseParser {
             this.response_handler.handleDiagnostics('analysis', lines);
             break;
 
-        case "ANALYSED":
-            // log("response parser: ANALYSED received");
-            this.response_handler.handleAnalysed();
-            break;            
-
         case "HOVER":
             // log("response parser: HOVER received");
             this.response_handler.handleHover(lines);

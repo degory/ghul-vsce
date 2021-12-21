@@ -138,25 +138,14 @@ export class ConnectionEventHandler {
     }
 
     onDidChangeConfiguration(_change: DidChangeConfigurationParams) {
-        /*
-        let settings = <Settings>change.settings;
-        maxNumberOfProblems = settings.lspSample.maxNumberOfProblems || 100;
-        // Revalidate any open text documents
-
-        documents.all().forEach((d: TextDocument) => validateSingleDocument(d.uri, d.getText()));	
-
-        analyse();
-        */
     }
     
     onDidChangeWatchedFiles(_change: DidChangeWatchedFilesParams) {
-        // Monitored files have changed in VSCode
-        // log('file change event received');
     }
 
     onCompletion(textDocumentPosition: CompletionParams): Promise<CompletionItem[]> {
         if (textDocumentPosition.context.triggerCharacter == '.') {
-            this.edit_queue.trySendQueued();
+            this.edit_queue.sendQueued();
         }
 
         return this.requester.sendCompletion(textDocumentPosition.textDocument.uri, textDocumentPosition.position.line, textDocumentPosition.position.character);
@@ -171,7 +160,7 @@ export class ConnectionEventHandler {
     }
     
     onSignatureHelp(params: TextDocumentPositionParams): Promise<SignatureHelp> {
-        this.edit_queue.trySendQueued();
+        this.edit_queue.sendQueued();
         
         return this.requester.sendSignature(params.textDocument.uri, params.position.line, params.position.character);        
     }

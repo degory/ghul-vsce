@@ -177,14 +177,6 @@ export class ResponseHandler {
         this.addDiagnostics(kind, lines);
     }
 
-    handleAnalysed() {
-        for (let d of this.problems) {
-            this.connection.sendDiagnostics(d);
-        }
-
-        this.edit_queue.onBuildFinished();
-    }
-
     expectHover(): Promise<Hover> {
         return new Promise<Hover>((resolve, reject) => {
             if (this.hover_resolve) {
