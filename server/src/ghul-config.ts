@@ -58,7 +58,6 @@ export function getGhulConfig(workspace: string): GhulConfig {
 		let buffer = '' + readFileSync(workspace + "/ghul.json", "utf-8").replace(/^\uFEFF/, '');
 		config = <GhulConfigJson>JSON.parse(buffer);
 	} else {
-		console.log("no ghul.json found in " + workspace + ": using empty config");
 		config = {}
 	}
 

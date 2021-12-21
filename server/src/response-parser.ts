@@ -57,12 +57,12 @@ export class ResponseParser {
             break;
 
         case "DIAG PARSE":
-            log("response parser: DIAG PARSE received");
+            // log("response parser: DIAG PARSE received");
             this.response_handler.handleDiagnostics('parse', lines);
             break;
 
         case "DIAG ANALYSIS":
-            log("response parser: DIAG ANALYSIS received");
+            // log("response parser: DIAG ANALYSIS received");
             this.response_handler.handleDiagnostics('analysis', lines);
             break;
 

@@ -48,25 +48,21 @@ export class Requester {
     }
     
     sendDocuments(documents: { uri: string, source: string }[]) {        
-        console.log("send multi EDIT...");
         this.write('#EDIT#\n');
 
         for (let { uri } of documents) {
-            console.log("send URI: " + uri);
             this.write(bodgeUri(uri) + '\n');
         }
 
         this.write('\n');
 
-        for (let { uri, source } of documents) {
-            console.log("send source for URI: " + uri);
+        for (let { source } of documents) {
             this.write(source);
             this.write('\f');
         }
     }
 
     sendDocument(uri: string, source: string) {
-        console.log("send EDIT: " + uri);
         this.write('#EDIT#\n');
         this.write(bodgeUri(uri) + '\n');
         this.write('\n');
@@ -75,7 +71,6 @@ export class Requester {
     }
 
     sendHover(uri: string, line: number, character: number): Promise<Hover> {
-        console.log("send HOVER: " + uri + " @ " + line + "," + character);
         if (this.analysed) {
             this.write('#HOVER#\n');
             this.write(bodgeUri(uri) + '\n');
@@ -89,7 +84,6 @@ export class Requester {
     }
 
     sendDefinition(uri: string, line: number, character: number): Promise<Definition> {
-        console.log("send DEFINITION: " + uri + " @ " + line + "," + character);
         if (this.analysed) {
             this.write('#DEFINITION#\n');
             this.write(bodgeUri(uri) + '\n');
@@ -103,7 +97,6 @@ export class Requester {
     }
 
     sendCompletion(uri: string, line: number, character: number): Promise<CompletionItem[]> {
-        console.log("send COMPLETE: " + uri + " @ " + line + "," + character);
         if (this.analysed) {
             this.write("#COMPLETE#\n");
             this.write(bodgeUri(uri) + '\n');
@@ -117,7 +110,6 @@ export class Requester {
     }    
 
     sendSignature(uri: string, line: number, character: number): Promise<SignatureHelp> {
-        console.log("send SIGNATURE: " + uri + " @ " + line + "," + character);
         if (this.analysed) {
             this.write('#SIGNATURE#\n');
             this.write(bodgeUri(uri) + '\n');
@@ -131,7 +123,6 @@ export class Requester {
     }
     
     sendDocumentSymbol(uri: string): Promise<SymbolInformation[]> {
-        console.log("send SYMBOLS: " + uri);
         if (this.analysed) {
             this.write('#SYMBOLS#\n');
             this.write(bodgeUri(uri) + '\n');
@@ -143,7 +134,6 @@ export class Requester {
     }
 
     sendWorkspaceSymbol(): Promise<SymbolInformation[]> {
-        console.log("send SYMBOLS: (all)");
         if (this.analysed) {
             this.write('#SYMBOLS#\n');
             this.write('\n');
@@ -155,7 +145,6 @@ export class Requester {
     }
 
     sendReferences(uri: string, line: number, character: number): Promise<Location[]> {
-        console.log("send REFERENCES: " + uri + " @ " + line + "," + character);
         if (this.analysed) {
             this.write('#REFERENCES#\n');
             this.write(bodgeUri(uri) + '\n');
@@ -169,7 +158,6 @@ export class Requester {
     }
 
     sendRestart() {
-        console.log("send RESTART");
         if (this.analysed) {
             this.write('#RESTART#\n');
         }        

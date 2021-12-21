@@ -78,15 +78,11 @@ export class EditQueue {
             rejectAllAndThrow("queue multi edits: unexpected queue state (A): " + QueueState[this.state]);
         }
 
-        console.log("XXXXXXXX: start send multi edits...");
-
         this.state = QueueState.SENDING;
 
         this.requester.sendDocuments(documents);
 
         this.state = QueueState.IDLE;
-
-        console.log("XXXXXXXX: done send multi edits");
     }
 
     queueEdit3(uri: string, version: number, text: string) {

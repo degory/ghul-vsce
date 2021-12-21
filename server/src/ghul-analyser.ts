@@ -57,22 +57,14 @@ export class GhulAnalyser {
         });
 
         let documents = sourceFiles.map((uri: string) => {
-            console.log("XXXXXXXX: map uri: " + uri);
-
             let path = fileUriToPath(uri);
-            console.log("XXXXXXXX: map path: " + path);
-
             let source = readFileSync(path).toString();
-
-            console.log("XXXXXXXX: source: " + source.substring(0, 64));
 
             return {
                 uri,
                 source
             }
         });
-
-        console.log("XXXXXXXX: start...");
 
         this.edit_queue.start(documents);
     }
