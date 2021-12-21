@@ -175,14 +175,12 @@ export class ResponseHandler {
 
     handleDiagnostics(kind: string, lines: string[]) {
         this.addDiagnostics(kind, lines);
-    }
 
-    handleAnalysed() {
-        for (let d of this.problems) {
-            this.connection.sendDiagnostics(d);
+        if (kind == "analysis") {
+            for (let d of this.problems) {
+                this.connection.sendDiagnostics(d);
+            }
         }
-
-        this.edit_queue.onBuildFinished();
     }
 
     expectHover(): Promise<Hover> {

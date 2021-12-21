@@ -47,19 +47,27 @@ export class Requester {
         }
     }
     
+    sendDocuments(documents: { uri: string, source: string }[]) {        
+        this.write('#EDIT#\n');
+
+        for (let { uri } of documents) {
+            this.write(bodgeUri(uri) + '\n');
+        }
+
+        this.write('\n');
+
+        for (let { source } of documents) {
+            this.write(source);
+            this.write('\f');
+        }
+    }
+
     sendDocument(uri: string, source: string) {
         this.write('#EDIT#\n');
         this.write(bodgeUri(uri) + '\n');
+        this.write('\n');
         this.write(source);
         this.write('\f');
-    }
-
-    analyse(uris: string[]): void {
-        this.write('#ANALYSE#\n');
-        for (let uri of uris) {
-            this.write(uri + '\t');
-        }
-        this.write('\n');
     }
 
     sendHover(uri: string, line: number, character: number): Promise<Hover> {
