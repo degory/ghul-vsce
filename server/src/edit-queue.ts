@@ -160,6 +160,8 @@ export class EditQueue {
 
         this.send_start_time = Date.now();
 
+        this.problems.clear_all_analysis_problems();
+
         for (let change of this.pending_changes.values()) {
             if (change.is_pending) {
                 this.problems.clear_parse_problems(change.uri);

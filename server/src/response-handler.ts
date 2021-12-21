@@ -181,6 +181,12 @@ export class ResponseHandler {
         }
 
         this.addDiagnostics(kind, lines);
+
+        if (kind == "analysis") {
+            for (let d of this.problems) {
+                this.connection.sendDiagnostics(d);
+            }
+        }
     }
 
     expectHover(): Promise<Hover> {
