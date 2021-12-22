@@ -13,6 +13,76 @@ import { EditQueue } from './edit-queue';
 import { ConfigEventEmitter } from './config-event-emitter';
 import { GhulConfig } from './ghul-config';
 
+type ResolveReject<T> = {
+    resolve: (value: T) => void;
+    reject: (error: any) => void;
+}
+
+class PromiseQueue<T> {
+    _name: string;
+    _queue: ResolveReject<T>[];
+
+    constructor(name: string) {
+        this._name = name;
+        this._queue = [];
+    }
+
+    enqueue(): Promise<T> {
+        console.log(this._name + ": enqueue");
+        return new Promise<T>((resolve, reject) => {
+            this._queue.push({resolve, reject});
+        })
+    }
+
+    dequeue(): ResolveReject<T> {
+        console.log(this._name + ": dequeue...");
+        // compiler is guaranteed to respond to requests in the order they were
+        // sent, so safe to just dequeue the next pending promise:
+        return this._queue.shift();
+    }
+
+    dequeueAlways(): ResolveReject<T> {
+        console.log(this._name + ": dequeue always");
+        // compiler is guaranteed to respond to requests in the order they were
+        // sent, so safe to just dequeue the next pending promise:
+        return (
+            this._queue.shift() ?? 
+            {
+                resolve: value => console.log(this._name + ": oops: unexpected resolve: " + JSON.stringify(value)),
+                reject: error => console.log(this._name + ": oops: unexpected reject: " + error)
+            }
+        );
+    }
+
+    resolve(value: T) {
+        console.log(this._name + ": will resolve: " + JSON.stringify(value));
+
+        this.dequeueAlways().resolve(value);
+    }
+
+    reject(error: any) {
+        console.log(this._name + ": will reject: " + error);
+
+        this.dequeueAlways().reject(error);
+    }
+
+    resolveAll(value: T) {
+        console.log(this._name + ": will resolve ALL: " + JSON.stringify(value));
+
+        for (let entry = this.dequeue(); entry; entry = this.dequeue() ) {
+            entry.resolve(value);
+        }
+    }
+
+    rejectAll(error: any) {
+        console.log(this._name + ": will reject ALL: " + error);
+
+        for (let entry = this.dequeue(); entry; entry = this.dequeue() ) {
+            entry.reject(error);
+        }
+    }
+}
+
 export class ResponseHandler {
     want_plaintext_hover: boolean;
 
@@ -21,23 +91,12 @@ export class ResponseHandler {
     problems: ProblemStore;
     edit_queue: EditQueue;
 
-    hover_resolve: (value: Hover) => void;
-    hover_reject: (error: any) => void;
-
-    definition_resolve: (value: Definition) => void;
-    definition_reject: (error: any) => void;
-
-    completion_resolve: (value: CompletionItem[]) => void;
-    completion_reject: (error: any) => void;
-
-    signature_resolve: (value: SignatureHelp) => void;
-    signature_reject: (error: any) => void;
-
-    symbols_resolve: (value: SymbolInformation[]) => void;
-    symbols_reject: (error: any) => void;
-
-    references_resolve: (value: Location[]) => void;
-    references_reject: (error: any) => void;
+    _hover_promise_queue: PromiseQueue<Hover>;
+    _definition_promise_queue: PromiseQueue<Definition>;
+    _completion_promise_queue: PromiseQueue<CompletionItem[]>;
+    _signature_promise_queue: PromiseQueue<SignatureHelp>;
+    _symbols_promise_queue: PromiseQueue<SymbolInformation[]>;
+    _references_promise_queue: PromiseQueue<Location[]>;
 
     constructor(
         connection: IConnection,
@@ -50,94 +109,31 @@ export class ResponseHandler {
 		config_event_source.onConfigAvailable((_workspace: string, config: GhulConfig) => {
             this.want_plaintext_hover = config.want_plaintext_hover;
         });
+
+        this._hover_promise_queue = new PromiseQueue<Hover>("HOVER");
+        this._definition_promise_queue = new PromiseQueue<Definition>("DEFINITION");
+        this._completion_promise_queue = new PromiseQueue<CompletionItem[]>("COMPLETION");
+        this._signature_promise_queue = new PromiseQueue<SignatureHelp>("SIGNATURE");
+        this._symbols_promise_queue = new PromiseQueue<SymbolInformation[]>("SYMBOLS");
+        this._references_promise_queue = new PromiseQueue<Location[]>("REFERENCES");
     }
 
     resolveAllPendingPromises() {
-        if (this.hover_resolve) {
-            this.hover_resolve(null);
-
-            this.hover_resolve = null;
-            this.hover_reject = null;
-        }
-
-        if (this.definition_resolve) {
-            this.definition_resolve(null);
-
-            this.definition_resolve = null;
-            this.definition_reject = null;
-        }
-
-        if (this.completion_resolve) {
-            this.completion_resolve(null);
-
-            this.completion_resolve = null;
-            this.completion_reject = null;
-        }
-        
-        if (this.signature_resolve) {
-            this.signature_resolve(null);
-
-            this.signature_resolve = null;
-            this.signature_reject = null;
-        }        
-
-        if (this.symbols_resolve) {
-            this.symbols_resolve(null);
-
-            this.symbols_resolve = null;
-            this.symbols_reject = null;
-        }        
-
-        if (this.references_resolve) {
-            this.references_resolve(null);
-
-            this.references_resolve = null;
-            this.references_reject = null;
-        }        
+        this._hover_promise_queue.resolveAll(null);
+        this._definition_promise_queue.resolveAll(null);
+        this._completion_promise_queue.resolveAll(null);
+        this._signature_promise_queue.resolveAll(null);
+        this._symbols_promise_queue.resolveAll(null);
+        this._references_promise_queue.resolveAll(null);
     }
 
     rejectAllPendingPromises(message: string) {
-        if (this.hover_reject) {
-            this.hover_reject(message);
-
-            this.hover_resolve = null;
-            this.hover_reject = null;
-        }
-
-        if (this.definition_reject) {
-            this.definition_reject(message);
-
-            this.definition_resolve = null;
-            this.definition_reject = null;
-        }
-
-        if (this.completion_reject) {
-            this.completion_reject(message);
-
-            this.completion_resolve = null;
-            this.completion_reject = null;
-        }
-        
-        if (this.signature_reject) {
-            this.signature_reject(message);
-
-            this.signature_resolve = null;
-            this.signature_reject = null;
-        }        
-
-        if (this.symbols_reject) {
-            this.symbols_reject(message);
-
-            this.symbols_resolve = null;
-            this.symbols_reject = null;
-        }        
-
-        if (this.references_reject) {
-            this.references_reject(message);
-
-            this.references_resolve = null;
-            this.references_reject = null;
-        }        
+        this._hover_promise_queue.rejectAll(message);
+        this._definition_promise_queue.rejectAll(message);
+        this._completion_promise_queue.rejectAll(message);
+        this._signature_promise_queue.rejectAll(message);
+        this._symbols_promise_queue.rejectAll(message);
+        this._references_promise_queue.rejectAll(message);
     }
 
     setServerManager(server_manager: ServerManager) {
@@ -184,107 +180,69 @@ export class ResponseHandler {
     }
 
     expectHover(): Promise<Hover> {
-        return new Promise<Hover>((resolve, reject) => {
-            if (this.hover_resolve) {
-                log("oops: overlapped hover request");
-                this.hover_resolve(null);
-            }
-
-            this.hover_resolve = resolve;
-            this.hover_reject = reject;
-        });
+        return this._hover_promise_queue.enqueue();
     }
 
     handleHover(lines: string[]) {
-        let resolve = this.hover_resolve;
+        let {resolve, reject} = this._hover_promise_queue.dequeueAlways();
 
-        if (!resolve) {
-            log("oops: unexpected hover response: ignoring");
-            return;
-        }
-
-        this.hover_resolve = null;
-
-        if (lines.length > 0 && lines[0] != null && lines[0].length > 0) {
-            if (this.want_plaintext_hover) {
-                resolve({
-                    contents: { kind: "plaintext", value: lines[0] }
-                });
+        try {
+            if (lines.length > 0 && lines[0] != null && lines[0].length > 0) {
+                if (this.want_plaintext_hover) {
+                    resolve({
+                        contents: { kind: "plaintext", value: lines[0] }
+                    });
+                } else {
+                    resolve({
+                        contents: { language: "ghul", value: lines[0] }
+                    });    
+                }
             } else {
-                resolve({
-                    contents: { language: "ghul", value: lines[0] }
-                });    
-            }
-        } else {
-            resolve(null);
+                resolve(null);
+            }    
+        } catch(e) {
+            reject("" + e);
         }
     }
 
     expectDefinition(): Promise<Definition> {
-        return new Promise<Definition>((resolve, reject) => {
-            if (this.definition_resolve) {
-                log("oops: overlapped definition request: cancelling");
-                this.definition_resolve(null);
-            }
-
-            this.definition_resolve = resolve;
-            this.definition_reject = reject;
-        });
+        return this._definition_promise_queue.enqueue();
     }
 
     handleDefinition(lines: string[]) {
-        let resolve = this.definition_resolve;
+        let {resolve, reject} = this._definition_promise_queue.dequeueAlways();
 
-        if (!resolve) {
-            log("oops: unexpected definition response: ignoring");
-            return;
-        }
-
-        this.definition_resolve = null;
-        if (lines.length >= 5) {
-
-            resolve({
-                uri: lines[0],
-                range: {
-                    start: {
-                        line: parseInt(lines[1], 10) - 1,
-                        character: parseInt(lines[2], 10) - 1
-                    },
-                    end: {
-                        line: parseInt(lines[3], 10) - 1,
-                        character: parseInt(lines[4], 10) - 1
+        try {
+            if (lines.length >= 5) {
+                resolve({
+                    uri: lines[0],
+                    range: {
+                        start: {
+                            line: parseInt(lines[1], 10) - 1,
+                            character: parseInt(lines[2], 10) - 1
+                        },
+                        end: {
+                            line: parseInt(lines[3], 10) - 1,
+                            character: parseInt(lines[4], 10) - 1
+                        }
                     }
-                }
-            });
-        } else {
-            resolve(null);
+                });
+            } else {
+                resolve(null);
+            }    
+        } catch(e) {
+            reject(e);
         }
     }
 
     expectCompletion(): Promise<CompletionItem[]> {
-        return new Promise<CompletionItem[]>((resolve, reject) => {
-            if (this.completion_resolve) {
-                log("oops: overlapped completion request: cancelling");
-                this.completion_resolve(null);
-            }
-            this.completion_resolve = resolve;
-            this.completion_reject = reject;
-        });
+        return this._completion_promise_queue.enqueue();
     }
 
     handleCompletion(lines: string[]) {
-        let reject = this.completion_reject;
+        let {resolve, reject} = this._completion_promise_queue.dequeueAlways();
+
         try {
-            let resolve = this.completion_resolve;
-
-            this.completion_resolve = null;
-            this.completion_reject = null;
-
-            if (!resolve) {
-                log("oops: unexpected completion response: ignoring");
-                return;
-            }
-    
             let results: CompletionItem[] = [];
 
             for (let line of lines) {
@@ -301,41 +259,18 @@ export class ResponseHandler {
             
             resolve(results)
         } catch(e) {
-            if (reject && typeof reject === "function") {
-                log("rejecting completion: " + e);
-                reject("" + e);
-            } else {
-                log(e);
-            }
+            reject("" + e);
         }
     }    
 
     expectSignature(): Promise<SignatureHelp> {
-        return new Promise<SignatureHelp>((resolve, reject) => {
-            if (this.signature_resolve) {
-                log("oops: overlapped signature request: cancelling");
-                this.signature_resolve(null);
-            }
-
-            this.signature_resolve = resolve;
-            this.signature_reject = reject;
-        });
+        return this._signature_promise_queue.enqueue();
     }
 
     handleSignature(lines: string[]) {
-        let reject = this.signature_reject;
+        let {resolve, reject} = this._signature_promise_queue.dequeueAlways();
 
         try {
-            let resolve = this.signature_resolve;
-
-            if (!resolve) {
-                log("oops: unexpected signature response: ignoring");
-                return;
-            }
-    
-            this.signature_resolve = null;
-            this.signature_resolve = null;
-
             let active_signature = 0;
             let active_parameter = 0;
 
@@ -380,118 +315,97 @@ export class ResponseHandler {
     }    
 
     expectSymbols(): Promise<SymbolInformation[]> {
-        return new Promise<SymbolInformation[]>((resolve, reject) => {
-            if (this.symbols_resolve) {
-                log("oops: overlapped symbols request: cancelling");
-                this.symbols_resolve(null);
-            }
-            this.symbols_resolve = resolve;
-            this.symbols_reject = reject;
-        });
+        return this._symbols_promise_queue.enqueue();
     }
 
     handleSymbols(lines: string[]) {
-        let resolve = this.symbols_resolve;
+        let {resolve, reject} = this._symbols_promise_queue.dequeueAlways();
 
-        if (!resolve) {
-            log("oops: unexpected symbols response: ignoring");
-            return;
-        }
+        try {
+            let symbols: SymbolInformation[] = [];
 
-        this.symbols_resolve = null;
+            if (lines.length > 0) {
+                let uri: string = "unknown";
+                
+                for (let i = 1; i < lines.length; i++) {
+                    let line = lines[i];
+                    let fields = line.split('\t');
 
-        let symbols: SymbolInformation[] = [];
+                    if (fields.length == 1) {
+                        uri = line;
+                    } else {
 
-        if (lines.length > 0) {
-            let uri: string = "unknown";
-            
-            for (let i = 1; i < lines.length; i++) {
-                let line = lines[i];
-                let fields = line.split('\t');
-
-                if (fields.length == 1) {
-                    uri = line;
-                } else {
-
-                    let symbol: SymbolInformation = {
-                        name: fields[0],
-                        kind: <SymbolKind>parseInt(fields[1]),
-                        location: {
-                            uri: uri,
-                            range: {
-                                start: {
-                                    line: parseInt(fields[2]) - 1,
-                                    character: parseInt(fields[3]) - 1
-                                },
-                                end: {
-                                    line: parseInt(fields[4]) - 1,
-                                    character: parseInt(fields[5]) - 1
+                        let symbol: SymbolInformation = {
+                            name: fields[0],
+                            kind: <SymbolKind>parseInt(fields[1]),
+                            location: {
+                                uri: uri,
+                                range: {
+                                    start: {
+                                        line: parseInt(fields[2]) - 1,
+                                        character: parseInt(fields[3]) - 1
+                                    },
+                                    end: {
+                                        line: parseInt(fields[4]) - 1,
+                                        character: parseInt(fields[5]) - 1
+                                    }
                                 }
-                            }
-                        },
-                        containerName: fields[6]
-                    };
+                            },
+                            containerName: fields[6]
+                        };
 
-                    symbols.push(symbol);
+                        symbols.push(symbol);
+                    }
                 }
             }
-        }
 
-        resolve(
-            symbols
-        );
+            resolve(
+                symbols
+            );
+        } catch(e) {
+            reject("" + e);
+        }
     }    
     
     expectReferences(): Promise<Location[]> {
-        return new Promise<Location[]>((resolve, reject) => {
-            if (this.references_resolve) {
-                log("oops: overlapped references request: cancelling");
-                this.references_resolve(null);
-            }
-            
-            this.references_resolve = resolve;
-            this.references_reject = reject;
-        });
+        return this._references_promise_queue.enqueue();
     }
 
     handleReferences(lines: string[]) {
-        let resolve = this.references_resolve;
+        let {resolve, reject} = this._references_promise_queue.dequeueAlways();
 
-        if (!resolve) {
-            log("oops: unexpected references response: ignoring");
-            return;
-        }
+        try {
+            let locations: Location[] = [];
 
-        this.references_resolve = null;
+            if (lines.length > 0) {
+                for (let i = 0; i < lines.length; i++) {
+                    let line = lines[i];
+                    let fields = line.split('\t');
 
-        let locations: Location[] = [];
-
-        if (lines.length > 0) {
-            for (let i = 0; i < lines.length; i++) {
-                let line = lines[i];
-                let fields = line.split('\t');
-
-                let location: Location = {
-                    uri: fields[0],
-                    range: {
-                        start: {
-                            line: parseInt(fields[1]) - 1,
-                            character: parseInt(fields[2]) - 1
-                        },
-                        end: {
-                            line: parseInt(fields[3]) - 1,
-                            character: parseInt(fields[4])
+                    let location: Location = {
+                        uri: fields[0],
+                        range: {
+                            start: {
+                                line: parseInt(fields[1]) - 1,
+                                character: parseInt(fields[2]) - 1
+                            },
+                            end: {
+                                line: parseInt(fields[3]) - 1,
+                                character: parseInt(fields[4])
+                            }
                         }
-                    }
-                };
+                    };
 
-                locations.push(location);
+                    locations.push(location);
+                }
             }
-        }
 
-        resolve(
-            locations
-        );
+            resolve(
+                locations
+            );
+        } catch(e) {
+            reject("" + e);
+        }
     }        
 
     handleRestart() {

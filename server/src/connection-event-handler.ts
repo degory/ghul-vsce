@@ -96,7 +96,7 @@ export class ConnectionEventHandler {
 
         connection.onReferences(
             (params: ReferenceParams): Promise<Location[]> =>
-                this.onReferences(params));        
+                this.onReferences(params));
     }
 
     onInitialize(params: any): InitializeResult {
