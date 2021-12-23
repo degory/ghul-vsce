@@ -1,4 +1,4 @@
-import { IConnection, CompletionItem, CompletionItemKind, Definition, SignatureHelp, SymbolKind, Hover, SignatureInformation, ParameterInformation, SymbolInformation, Location } from 'vscode-languageserver';
+import { IConnection, CompletionItem, CompletionItemKind, Definition, SignatureHelp, SymbolKind, Hover, SignatureInformation, ParameterInformation, SymbolInformation, Location, WorkspaceEdit, TextEdit } from 'vscode-languageserver';
 
 import { log, rejectAllAndThrow } from './server';
 
@@ -93,10 +93,13 @@ export class ResponseHandler {
 
     _hover_promise_queue: PromiseQueue<Hover>;
     _definition_promise_queue: PromiseQueue<Definition>;
+    _declaration_promise_queue: PromiseQueue<Definition>;
     _completion_promise_queue: PromiseQueue<CompletionItem[]>;
     _signature_promise_queue: PromiseQueue<SignatureHelp>;
     _symbols_promise_queue: PromiseQueue<SymbolInformation[]>;
     _references_promise_queue: PromiseQueue<Location[]>;
+    _implementation_promise_queue: PromiseQueue<Location[]>;
+    _rename_promise_queue: PromiseQueue<WorkspaceEdit>;
 
     constructor(
         connection: IConnection,
@@ -112,28 +115,37 @@ export class ResponseHandler {
 
         this._hover_promise_queue = new PromiseQueue<Hover>("HOVER");
         this._definition_promise_queue = new PromiseQueue<Definition>("DEFINITION");
+        this._declaration_promise_queue = new PromiseQueue<Definition>("DECLARATION");
         this._completion_promise_queue = new PromiseQueue<CompletionItem[]>("COMPLETION");
         this._signature_promise_queue = new PromiseQueue<SignatureHelp>("SIGNATURE");
         this._symbols_promise_queue = new PromiseQueue<SymbolInformation[]>("SYMBOLS");
         this._references_promise_queue = new PromiseQueue<Location[]>("REFERENCES");
+        this._implementation_promise_queue = new PromiseQueue<Location[]>("IMPLEMENTATION");
+        this._rename_promise_queue = new PromiseQueue<WorkspaceEdit>("RENAMEREQUEST");
     }
 
     resolveAllPendingPromises() {
         this._hover_promise_queue.resolveAll(null);
         this._definition_promise_queue.resolveAll(null);
+        this._declaration_promise_queue.resolveAll(null);
         this._completion_promise_queue.resolveAll(null);
         this._signature_promise_queue.resolveAll(null);
         this._symbols_promise_queue.resolveAll(null);
         this._references_promise_queue.resolveAll(null);
+        this._implementation_promise_queue.resolveAll(null);
+        this._rename_promise_queue.resolveAll(null);
     }
 
     rejectAllPendingPromises(message: string) {
         this._hover_promise_queue.rejectAll(message);
         this._definition_promise_queue.rejectAll(message);
+        this._declaration_promise_queue.reject(message);
         this._completion_promise_queue.rejectAll(message);
         this._signature_promise_queue.rejectAll(message);
         this._symbols_promise_queue.rejectAll(message);
         this._references_promise_queue.rejectAll(message);
+        this._implementation_promise_queue.rejectAll(message);
+        this._rename_promise_queue.reject(message);
     }
 
     setServerManager(server_manager: ServerManager) {
@@ -211,6 +223,36 @@ export class ResponseHandler {
 
     handleDefinition(lines: string[]) {
         let {resolve, reject} = this._definition_promise_queue.dequeueAlways();
+
+        try {
+            if (lines.length >= 5) {
+                resolve({
+                    uri: lines[0],
+                    range: {
+                        start: {
+                            line: parseInt(lines[1], 10) - 1,
+                            character: parseInt(lines[2], 10) - 1
+                        },
+                        end: {
+                            line: parseInt(lines[3], 10) - 1,
+                            character: parseInt(lines[4], 10) - 1
+                        }
+                    }
+                });
+            } else {
+                resolve(null);
+            }    
+        } catch(e) {
+            reject(e);
+        }
+    }
+
+    expectDeclaration(): Promise<Definition> {
+        return this._declaration_promise_queue.enqueue();
+    }
+
+    handleDeclaration(lines: string[]) {
+        let {resolve, reject} = this._declaration_promise_queue.dequeueAlways();
 
         try {
             if (lines.length >= 5) {
@@ -334,7 +376,6 @@ export class ResponseHandler {
                     if (fields.length == 1) {
                         uri = line;
                     } else {
-
                         let symbol: SymbolInformation = {
                             name: fields[0],
                             kind: <SymbolKind>parseInt(fields[1]),
@@ -407,6 +448,106 @@ export class ResponseHandler {
             reject("" + e);
         }
     }        
+
+    expectImplementation(): Promise<Location[]> {
+        return this._implementation_promise_queue.enqueue();
+    }
+
+    handleImplementation(lines: string[]) {
+        let {resolve, reject} = this._implementation_promise_queue.dequeueAlways();
+
+        try {
+            let locations: Location[] = [];
+
+            if (lines.length > 0) {
+                for (let i = 0; i < lines.length; i++) {
+                    let line = lines[i];
+                    let fields = line.split('\t');
+
+                    let location: Location = {
+                        uri: fields[0],
+                        range: {
+                            start: {
+                                line: parseInt(fields[1]) - 1,
+                                character: parseInt(fields[2]) - 1
+                            },
+                            end: {
+                                line: parseInt(fields[3]) - 1,
+                                character: parseInt(fields[4])
+                            }
+                        }
+                    };
+
+                    locations.push(location);
+                }
+            }
+
+            resolve(
+                locations
+            );
+        } catch(e) {
+            reject("" + e);
+        }
+    }    
+
+    expectRenameRequest(): Promise<WorkspaceEdit> {
+        return this._rename_promise_queue.enqueue();
+    }
+
+    handleRenameRequest(lines: string[]) {
+        let {resolve, reject} = this._rename_promise_queue.dequeueAlways();
+
+        try {
+            let changes: {
+                [uri: string]: TextEdit[];
+            } = {};
+
+            console.log("have " + lines.length + " edits: " + JSON.stringify(lines));
+
+            if (lines.length > 0) {
+                for (let i = 0; i < lines.length; i++) {
+                    let line = lines[i];
+                    let fields = line.split('\t');
+
+                    let uri = fields[0];
+
+                    let edits = changes[uri];
+
+                    if (!edits) {
+                        edits = [];
+                        changes[uri] = edits;
+                    }
+
+                    let edit = {
+                        range: {
+                            start: {
+                                line: parseInt(fields[1]) - 1,
+                                character: parseInt(fields[2]) - 1
+                            },
+                            end: {
+                                line: parseInt(fields[3]) - 1,
+                                character: parseInt(fields[4])
+                            }
+                        },
+                        newText: fields[5]
+                    };
+
+                    edits.push(edit)
+                }
+            }
+
+            console.log("have changes: " + JSON.stringify(changes));
+
+            resolve(
+                { changes }
+            );
+        } catch(e) {
+            console.log("have caught: " + e);
+
+            reject("" + e);
+        }
+    }    
+
 
     handleRestart() {
         console.log("compiler requested restart");

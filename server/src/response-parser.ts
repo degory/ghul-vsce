@@ -76,6 +76,11 @@ export class ResponseParser {
             this.response_handler.handleDefinition(lines);
             break;
 
+        case "DECLARATION":
+            // log("response parser: DECLARATION received");
+            this.response_handler.handleDeclaration(lines);
+            break;
+    
         case "COMPLETION":
             // log("response parser: COMPLETION received");
             this.response_handler.handleCompletion(lines);
@@ -99,6 +104,15 @@ export class ResponseParser {
         case "REFERENCES":
             // log("response parser: REFERENCES received");
             this.response_handler.handleReferences(lines);
+            break;
+
+        case "IMPLEMENTATION":
+            // log("response parser: IMPLEMENTATION received");
+            this.response_handler.handleImplementation(lines);
+            break;
+
+        case "RENAMEREQUEST":
+            this.response_handler.handleRenameRequest(lines);
             break;
 
         case "RESTART":

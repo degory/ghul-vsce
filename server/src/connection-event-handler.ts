@@ -15,7 +15,9 @@ import {
     DocumentSymbolParams,
     SymbolInformation,
     ReferenceParams,
-    Location
+    Location,
+    RenameParams,
+    WorkspaceEdit
 } from 'vscode-languageserver';
 
 import { log } from './server';
@@ -82,6 +84,10 @@ export class ConnectionEventHandler {
             (params: TextDocumentPositionParams): Promise<Definition> =>
                 this.onDefinition(params));
 
+        connection.onDeclaration(
+            (params: TextDocumentPositionParams): Promise<Definition> =>
+                this.onDeclaration(params));
+        
         connection.onSignatureHelp(
             (params: TextDocumentPositionParams): Promise<SignatureHelp> =>
                 this.onSignatureHelp(params));
@@ -97,6 +103,14 @@ export class ConnectionEventHandler {
         connection.onReferences(
             (params: ReferenceParams): Promise<Location[]> =>
                 this.onReferences(params));
+
+        connection.onImplementation(
+            (params: TextDocumentPositionParams): Promise<Definition> =>
+                this.onImplementation(params));
+
+        connection.onRenameRequest(
+             (params: RenameParams): Promise<WorkspaceEdit> =>
+                this.onRenameRequest(params));
     }
 
     onInitialize(params: any): InitializeResult {
@@ -120,10 +134,13 @@ export class ConnectionEventHandler {
                 workspaceSymbolProvider: true,
                 hoverProvider: true,
                 definitionProvider: true,
+                declarationProvider: true,
                 referencesProvider: true,
                 signatureHelpProvider: {
                     triggerCharacters: ["(", "["]
-                }
+                },
+                implementationProvider: true,
+                renameProvider: true
             }
         }
     }
@@ -158,6 +175,10 @@ export class ConnectionEventHandler {
     onDefinition(params: TextDocumentPositionParams): Promise<Definition> {
         return this.requester.sendDefinition(params.textDocument.uri, params.position.line, params.position.character);
     }
+
+    onDeclaration(params: TextDocumentPositionParams): Promise<Definition> {
+        return this.requester.sendDeclaration(params.textDocument.uri, params.position.line, params.position.character);
+    }
     
     onSignatureHelp(params: TextDocumentPositionParams): Promise<SignatureHelp> {
         this.edit_queue.sendQueued();
@@ -175,5 +196,13 @@ export class ConnectionEventHandler {
     
     onReferences(params: ReferenceParams): Promise<Location[]> {
         return this.requester.sendReferences(params.textDocument.uri, params.position.line, params.position.character);
+    }
+
+    onImplementation(params: TextDocumentPositionParams): Promise<Location[]> {
+        return this.requester.sendImplementation(params.textDocument.uri, params.position.line, params.position.character);
+    }
+
+    onRenameRequest(params: RenameParams): Promise<WorkspaceEdit> {
+        return this.requester.sendRenameRequest(params.textDocument.uri, params.position.line, params.position.character, params.newName);
     }
 }
