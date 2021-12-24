@@ -23,10 +23,11 @@ export function activate(context: ExtensionContext) {
 		// Register the server for ghul source files
 		documentSelector: [{scheme: 'file', language: 'ghul'}],
 		synchronize: {
-			// Synchronize the setting section 'languageServerExample' to the server
-			configurationSection: 'ghul',
-			// Notify the server about file changes to '.clientrc files contain in the workspace
-			fileEvents: workspace.createFileSystemWatcher('ghul.json')
+			// Notify the server about file changes to '.ghul' and '.ghulproj' files contain in the workspace
+			fileEvents: [
+				workspace.createFileSystemWatcher('**/*.ghul'),
+				workspace.createFileSystemWatcher('**/*.ghulproj')
+			]
 		}
 	}
 	

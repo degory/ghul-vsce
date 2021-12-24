@@ -1,3 +1,9 @@
+import * as minimatch from 'minimatch';
+
+import { URI } from 'vscode-uri';
+
+import * as path from 'path';
+
 import {
     DidChangeConfigurationParams,
     DidChangeWatchedFilesParams,
@@ -17,12 +23,13 @@ import {
     ReferenceParams,
     Location,
     RenameParams,
-    WorkspaceEdit
+    WorkspaceEdit,
+    DidOpenTextDocumentParams
 } from 'vscode-languageserver';
 
 import { log } from './server';
 
-import { getGhulConfig } from './ghul-config';
+import { getGhulConfig, GhulConfig } from './ghul-config';
 
 import { ConfigEventEmitter } from './config-event-emitter';
 
@@ -33,6 +40,7 @@ import { Requester } from './requester';
 import { EditQueue } from './edit-queue';
 import { generateAssembliesJson } from './generate-assemblies-json';
 import { restoreDotNetTools } from './restore-dotnet-tools';
+import { DocumentChangeTracker } from './document-change-tracker';
 
 export class ConnectionEventHandler {
     connection: IConnection; 
@@ -41,7 +49,10 @@ export class ConnectionEventHandler {
     config_event_emitter: ConfigEventEmitter;
     requester: Requester;
     edit_queue: EditQueue;
-    
+    config: GhulConfig;
+    workspace_root: string;
+    document_change_tracker: DocumentChangeTracker;
+
     constructor(
         connection: IConnection,
         server_manager: ServerManager,
@@ -69,8 +80,14 @@ export class ConnectionEventHandler {
         connection.onDidChangeConfiguration((change: DidChangeConfigurationParams) =>
             this.onDidChangeConfiguration(change));
 
+        connection.onDidOpenTextDocument((params: DidOpenTextDocumentParams) =>
+            this.document_change_tracker?.onDidOpenTextDocument(params));
+
+        connection.onDidCloseTextDocument((params: DidOpenTextDocumentParams) =>
+            this.document_change_tracker?.onDidCloseTextDocument(params));
+
         connection.onDidChangeWatchedFiles((change: DidChangeWatchedFilesParams) =>
-            this.onDidChangeWatchedFiles(change));
+            this.document_change_tracker?.onDidChangeWatchedFiles(change));
 
         connection.onCompletion(
             (textDocumentPosition: CompletionParams): Promise<CompletionItem[]> =>
@@ -114,14 +131,20 @@ export class ConnectionEventHandler {
     }
 
     onInitialize(params: any): InitializeResult {
-        let workspace: string = params.rootPath;
+        this.workspace_root = params.rootPath;
 
-        restoreDotNetTools(workspace)
-        generateAssembliesJson(workspace);
+        restoreDotNetTools(this.workspace_root)
+        generateAssembliesJson(this.workspace_root);
 
-        let config = getGhulConfig(workspace);
+        this.config = getGhulConfig(this.workspace_root);
 
-        this.config_event_emitter.configAvailable(workspace, config);
+        this.document_change_tracker = 
+            new DocumentChangeTracker(
+                this.edit_queue,
+                this.config.source.map(glob => path.join(this.workspace_root, glob))
+            );
+
+        this.config_event_emitter.configAvailable(this.workspace_root, this.config);
         
         return {
             capabilities: {
@@ -157,7 +180,39 @@ export class ConnectionEventHandler {
     onDidChangeConfiguration(_change: DidChangeConfigurationParams) {
     }
     
-    onDidChangeWatchedFiles(_change: DidChangeWatchedFilesParams) {
+    onDidChangeWatchedFiles(change: DidChangeWatchedFilesParams) {
+        if (!change?.changes) {
+            return;
+        }
+
+        for (let c of change.changes) {
+            let fn = URI.parse(c.uri).fsPath;
+
+            let globs = this.config.source.map(glob => { 
+                if (path.isAbsolute(glob)) {
+
+                    return glob;
+                }
+
+                return path.join(this.workspace_root, glob);
+            });
+
+            console.log("XXXXXX: on did change: " + c.type + " " + c.uri + " -> " + fn);
+            console.log("XXXXXX: globs: " + JSON.stringify(globs));
+
+            if (!globs
+                .find(
+                    glob => minimatch(fn, glob)
+                )
+            ) {
+                console.log("XXXXXX: no glob matches: " + c.type + " " + c.uri);
+
+                for (let glob of globs) {
+                    console.log("XXXXXX: glob: '" + glob + "' fn: '" + fn + "' minimatch: " + minimatch(fn, glob));
+                }
+            }
+            console.log("XXXXXX: on did change: " + c.type + " " + c.uri);
+        }
     }
 
     onCompletion(textDocumentPosition: CompletionParams): Promise<CompletionItem[]> {

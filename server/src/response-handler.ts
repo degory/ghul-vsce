@@ -502,8 +502,6 @@ export class ResponseHandler {
                 [uri: string]: TextEdit[];
             } = {};
 
-            console.log("have " + lines.length + " edits: " + JSON.stringify(lines));
-
             if (lines.length > 0) {
                 for (let i = 0; i < lines.length; i++) {
                     let line = lines[i];
@@ -536,8 +534,6 @@ export class ResponseHandler {
                 }
             }
 
-            console.log("have changes: " + JSON.stringify(changes));
-
             resolve(
                 { changes }
             );
@@ -548,9 +544,13 @@ export class ResponseHandler {
         }
     }    
 
-
     handleRestart() {
         console.log("compiler requested restart");
+        this.edit_queue.reset();
+    }
+
+    handleResync() {
+        console.log("compiler requested resync");
         this.edit_queue.reset();
     }
      
@@ -583,26 +583,5 @@ export class ResponseHandler {
             this.problems.add(kind, uri, problem);
         }
     }
-
-    /*
-    connection.onDidOpenTextDocument((params) => {
-        // A text document got opened in VSCode.
-        // params.uri uniquely identifies the document. For documents store on disk this is a file URI.
-        // params.text the initial full content of the document.
-        connection.log(`${params.textDocument.uri} opened.`);
-    });
-    connection.onDidChangeTextDocument((params) => {
-        // The content of a text document did change in VSCode.
-        // params.uri uniquely identifies the document.
-        // params.contentChanges describe the content changes to the document.
-        connection.log(`${params.textDocument.uri} changed: ${JSON.stringify(params.contentChanges)}`);
-    });
-    connection.onDidCloseTextDocument((params) => {
-        // A text document got closed in VSCode.
-        // params.uri uniquely identifies the document.
-        connection.log(`${params.textDocument.uri} closed.`);
-    });
-    */
-
 }
 

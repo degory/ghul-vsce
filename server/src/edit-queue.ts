@@ -69,6 +69,12 @@ export class EditQueue {
         this.can_build_all = true;
     }
 
+    resync() {
+        this.reset();
+
+        
+    }
+
     queueEdit(change: TextDocumentChangeEvent) {
         this.queueEdit3(change.document.uri, change.document.version, change.document.getText());
     }
@@ -86,6 +92,7 @@ export class EditQueue {
     }
 
     queueEdit3(uri: string, version: number, text: string) {
+        console.log("queue edit: uri: " + uri + " version: " + version)
         if (version == null || version < 0) {
             version = -1;
         } else if (this.pending_changes.has(uri)) {
@@ -133,7 +140,7 @@ export class EditQueue {
     }
 
     startEditTimer() {
-        this.edit_timer = setTimeout(() => { this.onEditTimeout() }, 50);
+        this.edit_timer = setTimeout(() => { this.onEditTimeout() }, 100);
     }
 
     start(documents: { uri: string, source: string}[]) {
@@ -153,14 +160,25 @@ export class EditQueue {
 
         this.problems.clear_all_analysis_problems();
 
+        let documents = <{ uri: string, source: string}[]>[]
+
         for (let change of this.pending_changes.values()) {
             if (change.is_pending) {
                 this.problems.clear_parse_problems(change.uri);
-                this.requester.sendDocument(change.uri, change.text);
+
+                documents.push({uri: change.uri, source: change.text});
+
+                if (change.text != "") {
+                    console.log("send edit: uri: " + change.uri);
+                } else {
+                    console.log("send delete: uri: " + change.uri);
+                }
 
                 change.is_pending = false;
             }
         }
+
+        this.sendMultiEdits(documents);
 
         this.state = QueueState.IDLE;
     }
