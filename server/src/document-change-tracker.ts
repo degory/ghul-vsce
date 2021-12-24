@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
 import * as minimatch from "minimatch";
-import { DidOpenTextDocumentParams, DidChangeWatchedFilesParams, FileChangeType } from "vscode-languageserver";
+import { DidOpenTextDocumentParams, DidChangeWatchedFilesParams, FileChangeType, TextDocumentChangeEvent } from "vscode-languageserver";
 import { URI } from "vscode-uri";
 import { EditQueue } from "./edit-queue";
 
@@ -21,6 +21,18 @@ export class DocumentChangeTracker {
 
     isOpen(fn: string) {
         return this.open_documents.has(fn);
+    }
+
+    onDidOpen(event: TextDocumentChangeEvent) {
+        console.log("OOOOOO: >>>> open document: " + event.document.uri  + " language ID: " + event.document.languageId);
+
+        this.open_documents.add(event.document.languageId);
+    }
+
+    onDidClose(event: TextDocumentChangeEvent) {
+        console.log("OOOOOO: <<<< close document: " + event.document.uri + " language ID: " + event.document.languageId);
+
+        this.open_documents.delete(event.document.uri);
     }
 
     onDidOpenTextDocument(params: DidOpenTextDocumentParams) {
@@ -49,7 +61,8 @@ export class DocumentChangeTracker {
 
             let fn = uri.fsPath;
 
-            if (this.isOpen(fn)) {
+            if (this.isOpen(c.uri)) {
+                console.log("ignore change to open file: " + uri);
                 continue;
             }
 

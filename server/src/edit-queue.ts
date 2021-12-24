@@ -82,13 +82,16 @@ export class EditQueue {
     sendMultiEdits(documents: { uri: string, source: string}[]) {
         this.state = QueueState.SENDING;
 
+        console.log("sending " + documents.length + " edits...");
+
         this.requester.sendDocuments(documents);
+
+        console.log("sent " + documents.length + " edits");
 
         this.state = QueueState.IDLE;
     }
 
     queueEdit3(uri: string, version: number, text: string) {
-        console.log("queue edit: uri: " + uri + " version: " + version)
         if (version == null || version < 0) {
             version = -1;
         } else if (this.pending_changes.has(uri)) {
@@ -161,12 +164,6 @@ export class EditQueue {
                 this.problems.clear_parse_problems(change.uri);
 
                 documents.push({uri: change.uri, source: change.text});
-
-                if (change.text != "") {
-                    console.log("send edit: uri: " + change.uri);
-                } else {
-                    console.log("send delete: uri: " + change.uri);
-                }
 
                 change.is_pending = false;
             }
