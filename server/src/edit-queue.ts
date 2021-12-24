@@ -80,10 +80,6 @@ export class EditQueue {
     }
 
     sendMultiEdits(documents: { uri: string, source: string}[]) {
-        if (this.state != QueueState.START) {
-            rejectAllAndThrow("queue multi edits: unexpected queue state (A): " + QueueState[this.state]);
-        }
-
         this.state = QueueState.SENDING;
 
         this.requester.sendDocuments(documents);
@@ -154,8 +150,6 @@ export class EditQueue {
             rejectAllAndThrow("send queued: unexpected queue state (E): " + QueueState[this.state]);
         }
 
-        this.state = QueueState.SENDING;
-
         this.send_start_time = Date.now();
 
         this.problems.clear_all_analysis_problems();
@@ -179,7 +173,5 @@ export class EditQueue {
         }
 
         this.sendMultiEdits(documents);
-
-        this.state = QueueState.IDLE;
     }
 }

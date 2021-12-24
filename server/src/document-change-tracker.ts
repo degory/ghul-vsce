@@ -41,14 +41,17 @@ export class DocumentChangeTracker {
         }
 
         for (let c of params.changes) {
-            let fn = URI.parse(c.uri).fsPath;
+            let uri = URI.parse(c.uri); 
+
+            if (uri.scheme != "file") {
+                continue;
+            }
+
+            let fn = uri.fsPath;
 
             if (this.isOpen(fn)) {
                 continue;
             }
-
-            console.log("XXXXXX: on did change: " + c.type + " " + c.uri + " -> " + fn);
-            console.log("XXXXXX: globs: " + JSON.stringify(this.globs));
 
             if (
                 !this.globs
@@ -56,17 +59,15 @@ export class DocumentChangeTracker {
                         glob => minimatch(fn, glob)
                     )
             ) {
-                console.log("XXXXXX: no glob matches: " + c.type + " " + c.uri);
-
                 continue;
             }
 
             if (c.type == FileChangeType.Changed || c.type == FileChangeType.Created) {
-                console.log("XXXXXX: on did add or change: " + c.type + " " + c.uri);
+                console.log("File added or changed: " + c.type + " " + c.uri);
 
                 this.edit_queue.queueEdit3(c.uri, null, readFileSync(fn).toString());
             } else if (c.type == FileChangeType.Deleted) {
-                console.log("XXXXXX: on did delete: " + c.type + " " + c.uri);
+                console.log("File deleted: " + c.type + " " + c.uri);
 
                 this.edit_queue.queueEdit3(c.uri, null, "");
             }

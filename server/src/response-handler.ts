@@ -28,21 +28,18 @@ class PromiseQueue<T> {
     }
 
     enqueue(): Promise<T> {
-        console.log(this._name + ": enqueue");
         return new Promise<T>((resolve, reject) => {
             this._queue.push({resolve, reject});
         })
     }
 
     dequeue(): ResolveReject<T> {
-        console.log(this._name + ": dequeue...");
         // compiler is guaranteed to respond to requests in the order they were
         // sent, so safe to just dequeue the next pending promise:
         return this._queue.shift();
     }
 
     dequeueAlways(): ResolveReject<T> {
-        console.log(this._name + ": dequeue always");
         // compiler is guaranteed to respond to requests in the order they were
         // sent, so safe to just dequeue the next pending promise:
         return (

@@ -1,7 +1,3 @@
-import * as minimatch from 'minimatch';
-
-import { URI } from 'vscode-uri';
-
 import * as path from 'path';
 
 import {
@@ -178,41 +174,6 @@ export class ConnectionEventHandler {
     }
 
     onDidChangeConfiguration(_change: DidChangeConfigurationParams) {
-    }
-    
-    onDidChangeWatchedFiles(change: DidChangeWatchedFilesParams) {
-        if (!change?.changes) {
-            return;
-        }
-
-        for (let c of change.changes) {
-            let fn = URI.parse(c.uri).fsPath;
-
-            let globs = this.config.source.map(glob => { 
-                if (path.isAbsolute(glob)) {
-
-                    return glob;
-                }
-
-                return path.join(this.workspace_root, glob);
-            });
-
-            console.log("XXXXXX: on did change: " + c.type + " " + c.uri + " -> " + fn);
-            console.log("XXXXXX: globs: " + JSON.stringify(globs));
-
-            if (!globs
-                .find(
-                    glob => minimatch(fn, glob)
-                )
-            ) {
-                console.log("XXXXXX: no glob matches: " + c.type + " " + c.uri);
-
-                for (let glob of globs) {
-                    console.log("XXXXXX: glob: '" + glob + "' fn: '" + fn + "' minimatch: " + minimatch(fn, glob));
-                }
-            }
-            console.log("XXXXXX: on did change: " + c.type + " " + c.uri);
-        }
     }
 
     onCompletion(textDocumentPosition: CompletionParams): Promise<CompletionItem[]> {
