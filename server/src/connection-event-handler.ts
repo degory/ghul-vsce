@@ -134,7 +134,7 @@ export class ConnectionEventHandler {
                 workspaceSymbolProvider: true,
                 hoverProvider: true,
                 definitionProvider: true,
-                declarationProvider: true,
+                // declarationProvider: true,
                 referencesProvider: true,
                 signatureHelpProvider: {
                     triggerCharacters: ["(", "["]
