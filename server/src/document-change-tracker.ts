@@ -26,6 +26,12 @@ export class DocumentChangeTracker {
     onDidOpen(event: TextDocumentChangeEvent) {
         console.log("OOOOOO: >>>> open document: " + event.document.uri  + " language ID: " + event.document.languageId);
 
+        if (!this.tryGetValidSourceFile(event.document.uri)) {
+            return;
+        }
+
+        this.edit_queue.queueEdit3(event.document.uri, null, event.document.getText());
+
         this.open_documents.add(event.document.languageId);
     }
 
@@ -36,13 +42,23 @@ export class DocumentChangeTracker {
     }
 
     onDidOpenTextDocument(params: DidOpenTextDocumentParams) {
-        console.log("OOOOOO: >>>> open document: " + params.textDocument.uri + " language ID: " + params.textDocument.languageId);
+        console.log("QQQQQQ: >>>> open document: " + params.textDocument.uri + " language ID: " + params.textDocument.languageId);
+
+        if (!this.tryGetValidSourceFile(params.textDocument.uri)) {
+            return;
+        }
+
+        this.edit_queue.queueEdit3(params.textDocument.uri, null, params.textDocument.text);
 
         this.open_documents.add(params.textDocument.uri);
     }
 
     onDidCloseTextDocument(params: DidOpenTextDocumentParams) {
-        console.log("OOOOOO: <<<< close document: " + params.textDocument.uri + " language ID: " + params.textDocument.languageId);
+        console.log("QQQQQQ: <<<< close document: " + params.textDocument.uri + " language ID: " + params.textDocument.languageId);
+
+        if (!this.tryGetValidSourceFile(params.textDocument.uri)) {
+            return;
+        }
 
         this.open_documents.delete(params.textDocument.uri);
     }
@@ -53,25 +69,15 @@ export class DocumentChangeTracker {
         }
 
         for (let c of params.changes) {
-            let uri = URI.parse(c.uri); 
-
-            if (uri.scheme != "file") {
+            let fn = this.tryGetValidSourceFile(c.uri);
+            
+            if (!fn) {
+                console.log("ignore non-project file: " + c.uri);
                 continue;
             }
-
-            let fn = uri.fsPath;
-
+ 
             if (this.isOpen(c.uri)) {
-                console.log("ignore change to open file: " + uri);
-                continue;
-            }
-
-            if (
-                !this.globs
-                    .find(
-                        glob => minimatch(fn, glob)
-                    )
-            ) {
+                console.log("ignore change to open file: " + c.uri);
                 continue;
             }
 
@@ -85,5 +91,26 @@ export class DocumentChangeTracker {
                 this.edit_queue.queueEdit3(c.uri, null, "");
             }
         }
+    }
+
+    tryGetValidSourceFile(uri: string) {
+        let parsed_uri = URI.parse(uri); 
+
+        if (parsed_uri.scheme != "file") {
+            return null;
+        }
+
+        let fn = parsed_uri.fsPath;
+
+        if (
+            this.globs
+                .find(
+                    glob => minimatch(fn, glob)
+                )
+        ) {
+            return fn;
+        }
+
+        return null;
     }
 }

@@ -181,6 +181,12 @@ export class ResponseHandler {
     handleDiagnostics(kind: string, lines: string[]) {
         this.addDiagnostics(kind, lines);
 
+        console.log("handle diagnostics: " + kind);
+
+        for (let line of lines) {
+            console.log(line.replace('\t', ' '));
+        }
+
         if (kind == "analysis") {
             for (let d of this.problems) {
                 this.connection.sendDiagnostics(d);

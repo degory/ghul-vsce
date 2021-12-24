@@ -22,7 +22,7 @@ interface Document {
 }
 
 export class EditQueue {
-    can_build_all: boolean;
+    fake_version: number;
 
     expected_build_time: number;
 
@@ -48,10 +48,8 @@ export class EditQueue {
         problems: ProblemStore
     ) {
         this.build_count = 0;
+        this.fake_version = -1;
 
-        this.full_build_timeout = 10000;
-
-        this.can_build_all = true;
         this.requester = requester;
         this.problems = problems;
 
@@ -65,14 +63,10 @@ export class EditQueue {
         this.pending_changes.clear();
 
         this.state = QueueState.IDLE;
-        
-        this.can_build_all = true;
     }
 
     resync() {
         this.reset();
-
-        
     }
 
     queueEdit(change: TextDocumentChangeEvent) {
@@ -84,6 +78,16 @@ export class EditQueue {
 
         console.log("sending " + documents.length + " edits...");
 
+        /*
+        for (let d of documents) {
+            console.log("sending " + d.uri);
+            console.log("--------------------------------")
+            console.log(d.source);
+            console.log("--------------------------------")
+            console.log("");
+        }
+        */
+
         this.requester.sendDocuments(documents);
 
         console.log("sent " + documents.length + " edits");
@@ -93,7 +97,7 @@ export class EditQueue {
 
     queueEdit3(uri: string, version: number, text: string) {
         if (version == null || version < 0) {
-            version = -1;
+            version = this.fake_version--;
         } else if (this.pending_changes.has(uri)) {
             let existing = this.pending_changes.get(uri);
 
