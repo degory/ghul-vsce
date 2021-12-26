@@ -117,21 +117,21 @@ export class EditQueue {
 
     onEditTimeout() {
         if (this.state == QueueState.WAITING_FOR_MORE_EDITS) {
-            log("on edit timeout")
+            // log("on edit timeout")
             this.sendQueued();
         } else {
-            log("timer expired: not waiting for edits: " + QueueState[this.state] + " (" + this.state + ")");
+            log("timer expired but not waiting for edits: " + QueueState[this.state] + " (" + this.state + ")");
         }
     }
 
     resetEditTimer() {
-        log("reset edit timer")
+        // log("reset edit timer")
         clearTimeout(this.edit_timer);
         this.startEditTimer();
     }
 
     startEditTimer() {
-        log("start edit timer")
+        // log("start edit timer")
         this.edit_timer = setTimeout(() => { this.onEditTimeout() }, 100);
     }
 
@@ -147,8 +147,6 @@ export class EditQueue {
         }
 
         this.send_start_time = Date.now();
-
-        log("clear all analysis problems")
         
         this.problems.clear_all_analysis_problems();
 
@@ -156,8 +154,6 @@ export class EditQueue {
 
         for (let change of this.pending_changes.values()) {
             if (change.is_pending) {
-                log("clear parse problems " + change.uri);
-
                 this.problems.clear_parse_problems(change.uri);
 
                 documents.push({uri: change.uri, source: change.text});

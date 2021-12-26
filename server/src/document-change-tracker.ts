@@ -24,8 +24,6 @@ export class DocumentChangeTracker {
     }
 
     onDidOpen(event: TextDocumentChangeEvent) {
-        console.log("OOOOOO: >>>> open document: " + event.document.uri  + " language ID: " + event.document.languageId);
-
         if (!this.tryGetValidSourceFile(event.document.uri)) {
             return;
         }
@@ -36,8 +34,6 @@ export class DocumentChangeTracker {
     }
 
     onDidClose(event: TextDocumentChangeEvent) {
-        console.log("OOOOOO: <<<< close document: " + event.document.uri + " language ID: " + event.document.languageId);
-
         this.open_documents.delete(event.document.uri);
     }
 
@@ -72,22 +68,16 @@ export class DocumentChangeTracker {
             let fn = this.tryGetValidSourceFile(c.uri);
             
             if (!fn) {
-                console.log("ignore non-project file: " + c.uri);
                 continue;
             }
  
             if (this.isOpen(c.uri)) {
-                console.log("ignore change to open file: " + c.uri);
                 continue;
             }
 
             if (c.type == FileChangeType.Changed || c.type == FileChangeType.Created) {
-                console.log("File added or changed: " + c.type + " " + c.uri);
-
                 this.edit_queue.queueEdit3(c.uri, null, readFileSync(fn).toString());
             } else if (c.type == FileChangeType.Deleted) {
-                console.log("File deleted: " + c.type + " " + c.uri);
-
                 this.edit_queue.queueEdit3(c.uri, null, "");
             }
         }

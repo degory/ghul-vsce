@@ -52,7 +52,7 @@ class PromiseQueue<T> {
     }
 
     resolve(value: T) {
-        console.log(this._name + ": will resolve: " + JSON.stringify(value));
+        // console.log(this._name + ": will resolve: " + JSON.stringify(value));
 
         this.dequeueAlways().resolve(value);
     }
@@ -64,7 +64,7 @@ class PromiseQueue<T> {
     }
 
     resolveAll(value: T) {
-        console.log(this._name + ": will resolve ALL: " + JSON.stringify(value));
+        // console.log(this._name + ": will resolve ALL: " + JSON.stringify(value));
 
         for (let entry = this.dequeue(); entry; entry = this.dequeue() ) {
             entry.resolve(value);
