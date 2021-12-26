@@ -4,7 +4,8 @@ import {
     Hover,
     SignatureHelp,
     SymbolInformation,
-    Location
+    Location,
+    WorkspaceEdit
 } from 'vscode-languageserver';
 
 import { log } from './server';
@@ -96,6 +97,19 @@ export class Requester {
         }
     }
 
+    sendDeclaration(uri: string, line: number, character: number): Promise<Definition> {
+        if (this.analysed) {
+            this.write('#DECLARATION#\n');
+            this.write(bodgeUri(uri) + '\n');
+            this.write((line+1) + '\n');
+            this.write((character+1) + '\n');
+
+            return this.response_handler.expectDeclaration();
+        } else {
+            return null;
+        }
+    }
+
     sendCompletion(uri: string, line: number, character: number): Promise<CompletionItem[]> {
         if (this.analysed) {
             this.write("#COMPLETE#\n");
@@ -157,6 +171,33 @@ export class Requester {
         }
     }
 
+    sendImplementation(uri: string, line: number, character: number): Promise<Location[]> {
+        if (this.analysed) {
+            this.write('#IMPLEMENTATION#\n');
+            this.write(bodgeUri(uri) + '\n');
+            this.write((line+1) + '\n');
+            this.write((character+1) + '\n');
+
+            return this.response_handler.expectImplementation();
+        } else {
+            return null;
+        }
+    }
+
+    sendRenameRequest(uri: string, line: number, character: number, newName: string): Promise<WorkspaceEdit> {
+        if (this.analysed) {
+            this.write('#RENAMEREQUEST#\n');
+            this.write(bodgeUri(uri) + '\n');
+            this.write((line+1) + '\n');
+            this.write((character+1) + '\n');
+            this.write(newName + '\n');
+
+            return this.response_handler.expectRenameRequest();
+        } else {
+            return null;
+        }
+    }
+ 
     sendRestart() {
         if (this.analysed) {
             this.write('#RESTART#\n');

@@ -22,7 +22,7 @@ interface Document {
 }
 
 export class EditQueue {
-    can_build_all: boolean;
+    fake_version: number;
 
     expected_build_time: number;
 
@@ -48,10 +48,8 @@ export class EditQueue {
         problems: ProblemStore
     ) {
         this.build_count = 0;
+        this.fake_version = -1;
 
-        this.full_build_timeout = 10000;
-
-        this.can_build_all = true;
         this.requester = requester;
         this.problems = problems;
 
@@ -65,8 +63,6 @@ export class EditQueue {
         this.pending_changes.clear();
 
         this.state = QueueState.IDLE;
-        
-        this.can_build_all = true;
     }
 
     queueEdit(change: TextDocumentChangeEvent) {
@@ -74,10 +70,6 @@ export class EditQueue {
     }
 
     sendMultiEdits(documents: { uri: string, source: string}[]) {
-        if (this.state != QueueState.START) {
-            rejectAllAndThrow("queue multi edits: unexpected queue state (A): " + QueueState[this.state]);
-        }
-
         this.state = QueueState.SENDING;
 
         this.requester.sendDocuments(documents);
@@ -87,7 +79,7 @@ export class EditQueue {
 
     queueEdit3(uri: string, version: number, text: string) {
         if (version == null || version < 0) {
-            version = -1;
+            version = this.fake_version--;
         } else if (this.pending_changes.has(uri)) {
             let existing = this.pending_changes.get(uri);
 
@@ -123,7 +115,7 @@ export class EditQueue {
         if (this.state == QueueState.WAITING_FOR_MORE_EDITS) {
             this.sendQueued();
         } else {
-            log("timer expired: not waiting for edits: " + QueueState[this.state] + " (" + this.state + ")");
+            log("timer expired but not waiting for edits: " + QueueState[this.state] + " (" + this.state + ")");
         }
     }
 
@@ -133,7 +125,7 @@ export class EditQueue {
     }
 
     startEditTimer() {
-        this.edit_timer = setTimeout(() => { this.onEditTimeout() }, 50);
+        this.edit_timer = setTimeout(() => { this.onEditTimeout() }, 100);
     }
 
     start(documents: { uri: string, source: string}[]) {
@@ -147,21 +139,22 @@ export class EditQueue {
             rejectAllAndThrow("send queued: unexpected queue state (E): " + QueueState[this.state]);
         }
 
-        this.state = QueueState.SENDING;
-
         this.send_start_time = Date.now();
-
+        
         this.problems.clear_all_analysis_problems();
+
+        let documents = <{ uri: string, source: string}[]>[]
 
         for (let change of this.pending_changes.values()) {
             if (change.is_pending) {
                 this.problems.clear_parse_problems(change.uri);
-                this.requester.sendDocument(change.uri, change.text);
+
+                documents.push({uri: change.uri, source: change.text});
 
                 change.is_pending = false;
             }
         }
 
-        this.state = QueueState.IDLE;
+        this.sendMultiEdits(documents);
     }
 }

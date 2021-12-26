@@ -1,3 +1,5 @@
+import * as path from 'path';
+
 import {
     DidChangeConfigurationParams,
     DidChangeWatchedFilesParams,
@@ -15,12 +17,17 @@ import {
     DocumentSymbolParams,
     SymbolInformation,
     ReferenceParams,
-    Location
+    Location,
+    RenameParams,
+    WorkspaceEdit,
+    DidOpenTextDocumentParams,
+    TextDocumentSyncKind,
+    TextDocumentChangeEvent
 } from 'vscode-languageserver';
 
 import { log } from './server';
 
-import { getGhulConfig } from './ghul-config';
+import { getGhulConfig, GhulConfig } from './ghul-config';
 
 import { ConfigEventEmitter } from './config-event-emitter';
 
@@ -31,6 +38,7 @@ import { Requester } from './requester';
 import { EditQueue } from './edit-queue';
 import { generateAssembliesJson } from './generate-assemblies-json';
 import { restoreDotNetTools } from './restore-dotnet-tools';
+import { DocumentChangeTracker } from './document-change-tracker';
 
 export class ConnectionEventHandler {
     connection: IConnection; 
@@ -39,7 +47,10 @@ export class ConnectionEventHandler {
     config_event_emitter: ConfigEventEmitter;
     requester: Requester;
     edit_queue: EditQueue;
-    
+    config: GhulConfig;
+    workspace_root: string;
+    document_change_tracker: DocumentChangeTracker;
+
     constructor(
         connection: IConnection,
         server_manager: ServerManager,
@@ -67,8 +78,20 @@ export class ConnectionEventHandler {
         connection.onDidChangeConfiguration((change: DidChangeConfigurationParams) =>
             this.onDidChangeConfiguration(change));
 
+        connection.onDidOpenTextDocument((params: DidOpenTextDocumentParams) =>
+            this.document_change_tracker?.onDidOpenTextDocument(params));
+
+        documents.onDidOpen((params: TextDocumentChangeEvent) =>
+            this.document_change_tracker?.onDidOpen(params));
+
+        connection.onDidCloseTextDocument((params: DidOpenTextDocumentParams) =>
+            this.document_change_tracker?.onDidCloseTextDocument(params));
+
+        documents.onDidClose((params: TextDocumentChangeEvent) =>
+            this.document_change_tracker?.onDidClose(params));
+
         connection.onDidChangeWatchedFiles((change: DidChangeWatchedFilesParams) =>
-            this.onDidChangeWatchedFiles(change));
+            this.document_change_tracker?.onDidChangeWatchedFiles(change));
 
         connection.onCompletion(
             (textDocumentPosition: CompletionParams): Promise<CompletionItem[]> =>
@@ -82,6 +105,10 @@ export class ConnectionEventHandler {
             (params: TextDocumentPositionParams): Promise<Definition> =>
                 this.onDefinition(params));
 
+        connection.onDeclaration(
+            (params: TextDocumentPositionParams): Promise<Definition> =>
+                this.onDeclaration(params));
+        
         connection.onSignatureHelp(
             (params: TextDocumentPositionParams): Promise<SignatureHelp> =>
                 this.onSignatureHelp(params));
@@ -97,21 +124,38 @@ export class ConnectionEventHandler {
         connection.onReferences(
             (params: ReferenceParams): Promise<Location[]> =>
                 this.onReferences(params));
+
+        connection.onImplementation(
+            (params: TextDocumentPositionParams): Promise<Definition> =>
+                this.onImplementation(params));
+
+        connection.onRenameRequest(
+             (params: RenameParams): Promise<WorkspaceEdit> =>
+                this.onRenameRequest(params));
     }
 
     onInitialize(params: any): InitializeResult {
-        let workspace: string = params.rootPath;
+        this.workspace_root = params.rootPath;
 
-        restoreDotNetTools(workspace)
-        generateAssembliesJson(workspace);
+        restoreDotNetTools(this.workspace_root)
+        generateAssembliesJson(this.workspace_root);
 
-        let config = getGhulConfig(workspace);
+        this.config = getGhulConfig(this.workspace_root);
 
-        this.config_event_emitter.configAvailable(workspace, config);
+        this.document_change_tracker = 
+            new DocumentChangeTracker(
+                this.edit_queue,
+                this.config.source.map(glob => path.join(this.workspace_root, glob))
+            );
+
+        this.config_event_emitter.configAvailable(this.workspace_root, this.config);
         
         return {
             capabilities: {
-                textDocumentSync: this.documents.syncKind,
+                textDocumentSync: {
+                    openClose: true,
+                    change: TextDocumentSyncKind.Full
+                },
                 completionProvider: {
                     triggerCharacters: ['.'],                    
                     resolveProvider: false,                    
@@ -120,10 +164,13 @@ export class ConnectionEventHandler {
                 workspaceSymbolProvider: true,
                 hoverProvider: true,
                 definitionProvider: true,
+                declarationProvider: true,
                 referencesProvider: true,
                 signatureHelpProvider: {
                     triggerCharacters: ["(", "["]
-                }
+                },
+                implementationProvider: true,
+                renameProvider: true
             }
         }
     }
@@ -138,9 +185,6 @@ export class ConnectionEventHandler {
     }
 
     onDidChangeConfiguration(_change: DidChangeConfigurationParams) {
-    }
-    
-    onDidChangeWatchedFiles(_change: DidChangeWatchedFilesParams) {
     }
 
     onCompletion(textDocumentPosition: CompletionParams): Promise<CompletionItem[]> {
@@ -157,6 +201,10 @@ export class ConnectionEventHandler {
 
     onDefinition(params: TextDocumentPositionParams): Promise<Definition> {
         return this.requester.sendDefinition(params.textDocument.uri, params.position.line, params.position.character);
+    }
+
+    onDeclaration(params: TextDocumentPositionParams): Promise<Definition> {
+        return this.requester.sendDeclaration(params.textDocument.uri, params.position.line, params.position.character);
     }
     
     onSignatureHelp(params: TextDocumentPositionParams): Promise<SignatureHelp> {
@@ -175,5 +223,13 @@ export class ConnectionEventHandler {
     
     onReferences(params: ReferenceParams): Promise<Location[]> {
         return this.requester.sendReferences(params.textDocument.uri, params.position.line, params.position.character);
+    }
+
+    onImplementation(params: TextDocumentPositionParams): Promise<Location[]> {
+        return this.requester.sendImplementation(params.textDocument.uri, params.position.line, params.position.character);
+    }
+
+    onRenameRequest(params: RenameParams): Promise<WorkspaceEdit> {
+        return this.requester.sendRenameRequest(params.textDocument.uri, params.position.line, params.position.character, params.newName);
     }
 }

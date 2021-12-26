@@ -1,4 +1,4 @@
-import { IConnection, CompletionItem, CompletionItemKind, Definition, SignatureHelp, SymbolKind, Hover, SignatureInformation, ParameterInformation, SymbolInformation, Location } from 'vscode-languageserver';
+import { IConnection, CompletionItem, CompletionItemKind, Definition, SignatureHelp, SymbolKind, Hover, SignatureInformation, ParameterInformation, SymbolInformation, Location, WorkspaceEdit, TextEdit } from 'vscode-languageserver';
 
 import { log, rejectAllAndThrow } from './server';
 
@@ -28,21 +28,18 @@ class PromiseQueue<T> {
     }
 
     enqueue(): Promise<T> {
-        console.log(this._name + ": enqueue");
         return new Promise<T>((resolve, reject) => {
             this._queue.push({resolve, reject});
         })
     }
 
     dequeue(): ResolveReject<T> {
-        console.log(this._name + ": dequeue...");
         // compiler is guaranteed to respond to requests in the order they were
         // sent, so safe to just dequeue the next pending promise:
         return this._queue.shift();
     }
 
     dequeueAlways(): ResolveReject<T> {
-        console.log(this._name + ": dequeue always");
         // compiler is guaranteed to respond to requests in the order they were
         // sent, so safe to just dequeue the next pending promise:
         return (
@@ -55,7 +52,7 @@ class PromiseQueue<T> {
     }
 
     resolve(value: T) {
-        console.log(this._name + ": will resolve: " + JSON.stringify(value));
+        // console.log(this._name + ": will resolve: " + JSON.stringify(value));
 
         this.dequeueAlways().resolve(value);
     }
@@ -67,7 +64,7 @@ class PromiseQueue<T> {
     }
 
     resolveAll(value: T) {
-        console.log(this._name + ": will resolve ALL: " + JSON.stringify(value));
+        // console.log(this._name + ": will resolve ALL: " + JSON.stringify(value));
 
         for (let entry = this.dequeue(); entry; entry = this.dequeue() ) {
             entry.resolve(value);
@@ -93,10 +90,13 @@ export class ResponseHandler {
 
     _hover_promise_queue: PromiseQueue<Hover>;
     _definition_promise_queue: PromiseQueue<Definition>;
+    _declaration_promise_queue: PromiseQueue<Definition>;
     _completion_promise_queue: PromiseQueue<CompletionItem[]>;
     _signature_promise_queue: PromiseQueue<SignatureHelp>;
     _symbols_promise_queue: PromiseQueue<SymbolInformation[]>;
     _references_promise_queue: PromiseQueue<Location[]>;
+    _implementation_promise_queue: PromiseQueue<Location[]>;
+    _rename_promise_queue: PromiseQueue<WorkspaceEdit>;
 
     constructor(
         connection: IConnection,
@@ -112,28 +112,37 @@ export class ResponseHandler {
 
         this._hover_promise_queue = new PromiseQueue<Hover>("HOVER");
         this._definition_promise_queue = new PromiseQueue<Definition>("DEFINITION");
+        this._declaration_promise_queue = new PromiseQueue<Definition>("DECLARATION");
         this._completion_promise_queue = new PromiseQueue<CompletionItem[]>("COMPLETION");
         this._signature_promise_queue = new PromiseQueue<SignatureHelp>("SIGNATURE");
         this._symbols_promise_queue = new PromiseQueue<SymbolInformation[]>("SYMBOLS");
         this._references_promise_queue = new PromiseQueue<Location[]>("REFERENCES");
+        this._implementation_promise_queue = new PromiseQueue<Location[]>("IMPLEMENTATION");
+        this._rename_promise_queue = new PromiseQueue<WorkspaceEdit>("RENAMEREQUEST");
     }
 
     resolveAllPendingPromises() {
         this._hover_promise_queue.resolveAll(null);
         this._definition_promise_queue.resolveAll(null);
+        this._declaration_promise_queue.resolveAll(null);
         this._completion_promise_queue.resolveAll(null);
         this._signature_promise_queue.resolveAll(null);
         this._symbols_promise_queue.resolveAll(null);
         this._references_promise_queue.resolveAll(null);
+        this._implementation_promise_queue.resolveAll(null);
+        this._rename_promise_queue.resolveAll(null);
     }
 
     rejectAllPendingPromises(message: string) {
         this._hover_promise_queue.rejectAll(message);
         this._definition_promise_queue.rejectAll(message);
+        this._declaration_promise_queue.reject(message);
         this._completion_promise_queue.rejectAll(message);
         this._signature_promise_queue.rejectAll(message);
         this._symbols_promise_queue.rejectAll(message);
         this._references_promise_queue.rejectAll(message);
+        this._implementation_promise_queue.rejectAll(message);
+        this._rename_promise_queue.reject(message);
     }
 
     setServerManager(server_manager: ServerManager) {
@@ -173,8 +182,8 @@ export class ResponseHandler {
         this.addDiagnostics(kind, lines);
 
         if (kind == "analysis") {
-            for (let d of this.problems) {
-                this.connection.sendDiagnostics(d);
+            for (let p of this.problems) {
+                this.connection.sendDiagnostics(p);
             }
         }
     }
@@ -232,6 +241,47 @@ export class ResponseHandler {
             }    
         } catch(e) {
             reject(e);
+        }
+    }
+
+    expectDeclaration(): Promise<Definition> {
+        return this._declaration_promise_queue.enqueue();
+    }
+
+    handleDeclaration(lines: string[]) {
+        let {resolve, reject} = this._declaration_promise_queue.dequeueAlways();
+
+        try {
+            let locations: Location[] = [];
+
+            if (lines.length > 0) {
+                for (let i = 0; i < lines.length; i++) {
+                    let line = lines[i];
+                    let fields = line.split('\t');
+
+                    let location: Location = {
+                        uri: fields[0],
+                        range: {
+                            start: {
+                                line: parseInt(fields[1]) - 1,
+                                character: parseInt(fields[2]) - 1
+                            },
+                            end: {
+                                line: parseInt(fields[3]) - 1,
+                                character: parseInt(fields[4])
+                            }
+                        }
+                    };
+
+                    locations.push(location);
+                }
+            }
+
+            resolve(
+                locations
+            );
+        } catch(e) {
+            reject("" + e);
         }
     }
 
@@ -334,7 +384,6 @@ export class ResponseHandler {
                     if (fields.length == 1) {
                         uri = line;
                     } else {
-
                         let symbol: SymbolInformation = {
                             name: fields[0],
                             kind: <SymbolKind>parseInt(fields[1]),
@@ -408,11 +457,106 @@ export class ResponseHandler {
         }
     }        
 
+    expectImplementation(): Promise<Location[]> {
+        return this._implementation_promise_queue.enqueue();
+    }
+
+    handleImplementation(lines: string[]) {
+        let {resolve, reject} = this._implementation_promise_queue.dequeueAlways();
+
+        try {
+            let locations: Location[] = [];
+
+            if (lines.length > 0) {
+                for (let i = 0; i < lines.length; i++) {
+                    let line = lines[i];
+                    let fields = line.split('\t');
+
+                    let location: Location = {
+                        uri: fields[0],
+                        range: {
+                            start: {
+                                line: parseInt(fields[1]) - 1,
+                                character: parseInt(fields[2]) - 1
+                            },
+                            end: {
+                                line: parseInt(fields[3]) - 1,
+                                character: parseInt(fields[4])
+                            }
+                        }
+                    };
+
+                    locations.push(location);
+                }
+            }
+
+            resolve(
+                locations
+            );
+        } catch(e) {
+            reject("" + e);
+        }
+    }    
+
+    expectRenameRequest(): Promise<WorkspaceEdit> {
+        return this._rename_promise_queue.enqueue();
+    }
+
+    handleRenameRequest(lines: string[]) {
+        let {resolve, reject} = this._rename_promise_queue.dequeueAlways();
+
+        try {
+            let changes: {
+                [uri: string]: TextEdit[];
+            } = {};
+
+            if (lines.length > 0) {
+                for (let i = 0; i < lines.length; i++) {
+                    let line = lines[i];
+                    let fields = line.split('\t');
+
+                    let uri = fields[0];
+
+                    let edits = changes[uri];
+
+                    if (!edits) {
+                        edits = [];
+                        changes[uri] = edits;
+                    }
+
+                    let edit = {
+                        range: {
+                            start: {
+                                line: parseInt(fields[1]) - 1,
+                                character: parseInt(fields[2]) - 1
+                            },
+                            end: {
+                                line: parseInt(fields[3]) - 1,
+                                character: parseInt(fields[4])
+                            }
+                        },
+                        newText: fields[5]
+                    };
+
+                    edits.push(edit)
+                }
+            }
+
+            resolve(
+                { changes }
+            );
+        } catch(e) {
+            console.log("have caught: " + e);
+
+            reject("" + e);
+        }
+    }    
+
     handleRestart() {
         console.log("compiler requested restart");
         this.edit_queue.reset();
     }
-     
+    
     handleUnexpected() {
         this.server_manager.abort();
     }
@@ -442,26 +586,5 @@ export class ResponseHandler {
             this.problems.add(kind, uri, problem);
         }
     }
-
-    /*
-    connection.onDidOpenTextDocument((params) => {
-        // A text document got opened in VSCode.
-        // params.uri uniquely identifies the document. For documents store on disk this is a file URI.
-        // params.text the initial full content of the document.
-        connection.log(`${params.textDocument.uri} opened.`);
-    });
-    connection.onDidChangeTextDocument((params) => {
-        // The content of a text document did change in VSCode.
-        // params.uri uniquely identifies the document.
-        // params.contentChanges describe the content changes to the document.
-        connection.log(`${params.textDocument.uri} changed: ${JSON.stringify(params.contentChanges)}`);
-    });
-    connection.onDidCloseTextDocument((params) => {
-        // A text document got closed in VSCode.
-        // params.uri uniquely identifies the document.
-        connection.log(`${params.textDocument.uri} closed.`);
-    });
-    */
-
 }
 

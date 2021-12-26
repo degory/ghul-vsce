@@ -214,6 +214,20 @@
 			"$1"
 		]
 	},
+	"break statement": {
+		"prefix": "break",
+		"body": [
+			"break;",
+			"$1"
+		]
+	},
+	"continue statement": {
+		"prefix": "continue",
+		"body": [
+			"continue;",
+			"$1"
+		]
+	},
 	"is keyword": {
 		"prefix": "is",
 		"body": [	
