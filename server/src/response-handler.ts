@@ -181,15 +181,9 @@ export class ResponseHandler {
     handleDiagnostics(kind: string, lines: string[]) {
         this.addDiagnostics(kind, lines);
 
-        console.log("handle diagnostics: " + kind);
-
-        for (let line of lines) {
-            console.log(line.replace('\t', ' '));
-        }
-
         if (kind == "analysis") {
-            for (let d of this.problems) {
-                this.connection.sendDiagnostics(d);
+            for (let p of this.problems) {
+                this.connection.sendDiagnostics(p);
             }
         }
     }
@@ -258,25 +252,36 @@ export class ResponseHandler {
         let {resolve, reject} = this._declaration_promise_queue.dequeueAlways();
 
         try {
-            if (lines.length >= 5) {
-                resolve({
-                    uri: lines[0],
-                    range: {
-                        start: {
-                            line: parseInt(lines[1], 10) - 1,
-                            character: parseInt(lines[2], 10) - 1
-                        },
-                        end: {
-                            line: parseInt(lines[3], 10) - 1,
-                            character: parseInt(lines[4], 10) - 1
+            let locations: Location[] = [];
+
+            if (lines.length > 0) {
+                for (let i = 0; i < lines.length; i++) {
+                    let line = lines[i];
+                    let fields = line.split('\t');
+
+                    let location: Location = {
+                        uri: fields[0],
+                        range: {
+                            start: {
+                                line: parseInt(fields[1]) - 1,
+                                character: parseInt(fields[2]) - 1
+                            },
+                            end: {
+                                line: parseInt(fields[3]) - 1,
+                                character: parseInt(fields[4])
+                            }
                         }
-                    }
-                });
-            } else {
-                resolve(null);
-            }    
+                    };
+
+                    locations.push(location);
+                }
+            }
+
+            resolve(
+                locations
+            );
         } catch(e) {
-            reject(e);
+            reject("" + e);
         }
     }
 

@@ -64,8 +64,8 @@ export class ServerManager {
 		this.child.stderr.on('data', (chunk: string) => {
 			process.stderr.write(chunk);
 		});
-	
-		this.child.stdout.on('data', (chunk: string) => {
+
+		this.child.stdout.on('data', (chunk: string) => {			
 			this.response_parser.handleChunk(chunk);
 		});
 	

@@ -76,21 +76,7 @@ export class EditQueue {
     sendMultiEdits(documents: { uri: string, source: string}[]) {
         this.state = QueueState.SENDING;
 
-        console.log("sending " + documents.length + " edits...");
-
-        /*
-        for (let d of documents) {
-            console.log("sending " + d.uri);
-            console.log("--------------------------------")
-            console.log(d.source);
-            console.log("--------------------------------")
-            console.log("");
-        }
-        */
-
         this.requester.sendDocuments(documents);
-
-        console.log("sent " + documents.length + " edits");
 
         this.state = QueueState.IDLE;
     }
@@ -131,6 +117,7 @@ export class EditQueue {
 
     onEditTimeout() {
         if (this.state == QueueState.WAITING_FOR_MORE_EDITS) {
+            log("on edit timeout")
             this.sendQueued();
         } else {
             log("timer expired: not waiting for edits: " + QueueState[this.state] + " (" + this.state + ")");
@@ -138,11 +125,13 @@ export class EditQueue {
     }
 
     resetEditTimer() {
+        log("reset edit timer")
         clearTimeout(this.edit_timer);
         this.startEditTimer();
     }
 
     startEditTimer() {
+        log("start edit timer")
         this.edit_timer = setTimeout(() => { this.onEditTimeout() }, 100);
     }
 
@@ -159,12 +148,16 @@ export class EditQueue {
 
         this.send_start_time = Date.now();
 
+        log("clear all analysis problems")
+        
         this.problems.clear_all_analysis_problems();
 
         let documents = <{ uri: string, source: string}[]>[]
 
         for (let change of this.pending_changes.values()) {
             if (change.is_pending) {
+                log("clear parse problems " + change.uri);
+
                 this.problems.clear_parse_problems(change.uri);
 
                 documents.push({uri: change.uri, source: change.text});
