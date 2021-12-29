@@ -222,20 +222,8 @@ export class ResponseHandler {
         let {resolve, reject} = this._definition_promise_queue.dequeueAlways();
 
         try {
-            if (lines.length >= 5) {
-                resolve({
-                    uri: lines[0],
-                    range: {
-                        start: {
-                            line: parseInt(lines[1], 10) - 1,
-                            character: parseInt(lines[2], 10) - 1
-                        },
-                        end: {
-                            line: parseInt(lines[3], 10) - 1,
-                            character: parseInt(lines[4], 10) - 1
-                        }
-                    }
-                });
+            if (lines.length == 1) {
+                resolve(this.parseLocation(lines[0]));
             } else {
                 resolve(null);
             }    
@@ -257,21 +245,7 @@ export class ResponseHandler {
             if (lines.length > 0) {
                 for (let i = 0; i < lines.length; i++) {
                     let line = lines[i];
-                    let fields = line.split('\t');
-
-                    let location: Location = {
-                        uri: fields[0],
-                        range: {
-                            start: {
-                                line: parseInt(fields[1]) - 1,
-                                character: parseInt(fields[2]) - 1
-                            },
-                            end: {
-                                line: parseInt(fields[3]) - 1,
-                                character: parseInt(fields[4])
-                            }
-                        }
-                    };
+                    let location = this.parseLocation(line);
 
                     locations.push(location);
                 }
@@ -429,21 +403,8 @@ export class ResponseHandler {
             if (lines.length > 0) {
                 for (let i = 0; i < lines.length; i++) {
                     let line = lines[i];
-                    let fields = line.split('\t');
 
-                    let location: Location = {
-                        uri: fields[0],
-                        range: {
-                            start: {
-                                line: parseInt(fields[1]) - 1,
-                                character: parseInt(fields[2]) - 1
-                            },
-                            end: {
-                                line: parseInt(fields[3]) - 1,
-                                character: parseInt(fields[4])
-                            }
-                        }
-                    };
+                    let location = this.parseLocation(line);
 
                     locations.push(location);
                 }
@@ -470,21 +431,8 @@ export class ResponseHandler {
             if (lines.length > 0) {
                 for (let i = 0; i < lines.length; i++) {
                     let line = lines[i];
-                    let fields = line.split('\t');
 
-                    let location: Location = {
-                        uri: fields[0],
-                        range: {
-                            start: {
-                                line: parseInt(fields[1]) - 1,
-                                character: parseInt(fields[2]) - 1
-                            },
-                            end: {
-                                line: parseInt(fields[3]) - 1,
-                                character: parseInt(fields[4])
-                            }
-                        }
-                    };
+                    let location = this.parseLocation(line);
 
                     locations.push(location);
                 }
@@ -585,6 +533,26 @@ export class ResponseHandler {
 
             this.problems.add(kind, uri, problem);
         }
+    }
+
+
+    private parseLocation(line: string) {
+        let fields = line.split('\t');
+
+        let location: Location = {
+            uri: fields[0],
+            range: {
+                start: {
+                    line: parseInt(fields[1]) - 1,
+                    character: parseInt(fields[2]) - 1
+                },
+                end: {
+                    line: parseInt(fields[3]) - 1,
+                    character: parseInt(fields[4])
+                }
+            }
+        };
+        return location;
     }
 }
 
