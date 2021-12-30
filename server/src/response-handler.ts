@@ -2,7 +2,7 @@ import { IConnection, CompletionItem, CompletionItemKind, Definition, SignatureH
 
 import { log, rejectAllAndThrow } from './server';
 
-import { bodgeUri } from './bodge-uri';
+import { normalizeFileUri } from './normalize-file-uri';
 
 import { ProblemStore } from './problem-store';
 import { SeverityMapper } from './severity-map';
@@ -52,8 +52,6 @@ class PromiseQueue<T> {
     }
 
     resolve(value: T) {
-        // console.log(this._name + ": will resolve: " + JSON.stringify(value));
-
         this.dequeueAlways().resolve(value);
     }
 
@@ -64,8 +62,6 @@ class PromiseQueue<T> {
     }
 
     resolveAll(value: T) {
-        // console.log(this._name + ": will resolve ALL: " + JSON.stringify(value));
-
         for (let entry = this.dequeue(); entry; entry = this.dequeue() ) {
             entry.resolve(value);
         }
@@ -519,7 +515,7 @@ export class ResponseHandler {
                 continue;
             }
 
-            let uri = bodgeUri(fields[0]);
+            let uri = normalizeFileUri(fields[0]);
 
             let problem = {
                 severity: SeverityMapper.getSeverity(fields[5], kind),

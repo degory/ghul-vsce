@@ -6,6 +6,7 @@ import { Requester } from './requester'
 
 import { ProblemStore } from './problem-store'
 import { clearTimeout } from 'timers';
+import { normalizeFileUri } from './normalize-file-uri';
 
 enum QueueState {
     START,
@@ -66,7 +67,7 @@ export class EditQueue {
     }
 
     queueEdit(change: TextDocumentChangeEvent) {
-        this.queueEdit3(change.document.uri, change.document.version, change.document.getText());
+        this.queueEdit3(normalizeFileUri(change.document.uri), change.document.version, change.document.getText());
     }
 
     sendMultiEdits(documents: { uri: string, source: string}[]) {

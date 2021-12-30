@@ -2,6 +2,7 @@ import { readFileSync } from "fs";
 import * as minimatch from "minimatch";
 import { DidOpenTextDocumentParams, DidChangeWatchedFilesParams, FileChangeType, TextDocumentChangeEvent } from "vscode-languageserver";
 import { URI } from "vscode-uri";
+import { normalizeFileUri } from "./normalize-file-uri";
 import { EditQueue } from "./edit-queue";
 
 export class DocumentChangeTracker {
@@ -28,13 +29,17 @@ export class DocumentChangeTracker {
             return;
         }
 
-        this.edit_queue.queueEdit3(event.document.uri, null, event.document.getText());
+        let uri = normalizeFileUri(event.document.uri);
 
-        this.open_documents.add(event.document.languageId);
+        this.edit_queue.queueEdit3(uri, null, event.document.getText());
+
+        this.open_documents.add(uri);
     }
 
     onDidClose(event: TextDocumentChangeEvent) {
-        this.open_documents.delete(event.document.uri);
+        let uri = normalizeFileUri(event.document.uri);
+
+        this.open_documents.delete(uri);
     }
 
     onDidOpenTextDocument(params: DidOpenTextDocumentParams) {
@@ -44,9 +49,11 @@ export class DocumentChangeTracker {
             return;
         }
 
-        this.edit_queue.queueEdit3(params.textDocument.uri, null, params.textDocument.text);
+        let uri = normalizeFileUri(params.textDocument.uri);
 
-        this.open_documents.add(params.textDocument.uri);
+        this.edit_queue.queueEdit3(uri, null, params.textDocument.text);
+
+        this.open_documents.add(uri);
     }
 
     onDidCloseTextDocument(params: DidOpenTextDocumentParams) {
@@ -56,7 +63,9 @@ export class DocumentChangeTracker {
             return;
         }
 
-        this.open_documents.delete(params.textDocument.uri);
+        let uri = normalizeFileUri(params.textDocument.uri);
+
+        this.open_documents.delete(uri);
     }
 
     onDidChangeWatchedFiles(params: DidChangeWatchedFilesParams) {
@@ -70,15 +79,17 @@ export class DocumentChangeTracker {
             if (!fn) {
                 continue;
             }
+
+            let uri = normalizeFileUri(c.uri);
  
-            if (this.isOpen(c.uri)) {
+            if (this.isOpen(uri)) {
                 continue;
             }
 
             if (c.type == FileChangeType.Changed || c.type == FileChangeType.Created) {
-                this.edit_queue.queueEdit3(c.uri, null, readFileSync(fn).toString());
+                this.edit_queue.queueEdit3(uri, null, readFileSync(fn).toString());
             } else if (c.type == FileChangeType.Deleted) {
-                this.edit_queue.queueEdit3(c.uri, null, "");
+                this.edit_queue.queueEdit3(uri, null, "");
             }
         }
     }

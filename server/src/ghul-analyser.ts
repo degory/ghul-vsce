@@ -2,9 +2,7 @@ import {
 	readFileSync
 } from 'fs';
 
-import fileUrl = require('file-url');
-
-import fileUriToPath = require('file-uri-to-path');
+import { URL, pathToFileURL, fileURLToPath } from 'url';
 
 import glob = require('glob');
 
@@ -45,23 +43,25 @@ export class GhulAnalyser {
     analyseEntireProject() {
         let config = this.ghul_config;
 
-        let sourceFiles = <string[]>[];    
+        let sourceFiles = <URL[]>[];    
        
         config.source.forEach(pattern => {
             sourceFiles
                 .push(
                     ...glob.sync(pattern)
                         .filter(f => f.endsWith('.ghul'))
-                        .map(f => fileUrl(f))
+                        .map(f => pathToFileURL(f))
                 );
         });
 
-        let documents = sourceFiles.map((uri: string) => {
-            let path = fileUriToPath(uri);
-            let source = readFileSync(path).toString();
+        let documents = sourceFiles.map((uri: URL) => {
+            let path = fileURLToPath(uri);
+            let source =  readFileSync(path).toString();
+
+            let mapped = uri.toString();
 
             return {
-                uri,
+                uri: mapped,
                 source
             }
         });

@@ -12,7 +12,7 @@ import { log } from './server';
 
 import { ChildProcess } from 'child_process';
 
-import { bodgeUri } from './bodge-uri';
+import { normalizeFileUri } from './normalize-file-uri';
 
 import { ServerEventEmitter } from './server-event-emitter';
 
@@ -52,7 +52,7 @@ export class Requester {
         this.write('#EDIT#\n');
 
         for (let { uri } of documents) {
-            this.write(bodgeUri(uri) + '\n');
+            this.write(normalizeFileUri(uri) + '\n');
         }
 
         this.write('\n');
@@ -65,7 +65,7 @@ export class Requester {
 
     sendDocument(uri: string, source: string) {
         this.write('#EDIT#\n');
-        this.write(bodgeUri(uri) + '\n');
+        this.write(normalizeFileUri(uri) + '\n');
         this.write('\n');
         this.write(source);
         this.write('\f');
@@ -74,7 +74,7 @@ export class Requester {
     sendHover(uri: string, line: number, character: number): Promise<Hover> {
         if (this.analysed) {
             this.write('#HOVER#\n');
-            this.write(bodgeUri(uri) + '\n');
+            this.write(normalizeFileUri(uri) + '\n');
             this.write((line+1) + '\n');
             this.write((character) + '\n');
 
@@ -87,7 +87,7 @@ export class Requester {
     sendDefinition(uri: string, line: number, character: number): Promise<Definition> {
         if (this.analysed) {
             this.write('#DEFINITION#\n');
-            this.write(bodgeUri(uri) + '\n');
+            this.write(normalizeFileUri(uri) + '\n');
             this.write((line+1) + '\n');
             this.write((character+1) + '\n');
 
@@ -100,7 +100,7 @@ export class Requester {
     sendDeclaration(uri: string, line: number, character: number): Promise<Definition> {
         if (this.analysed) {
             this.write('#DECLARATION#\n');
-            this.write(bodgeUri(uri) + '\n');
+            this.write(normalizeFileUri(uri) + '\n');
             this.write((line+1) + '\n');
             this.write((character+1) + '\n');
 
@@ -113,7 +113,7 @@ export class Requester {
     sendCompletion(uri: string, line: number, character: number): Promise<CompletionItem[]> {
         if (this.analysed) {
             this.write("#COMPLETE#\n");
-            this.write(bodgeUri(uri) + '\n');
+            this.write(normalizeFileUri(uri) + '\n');
             this.write((line+1) + '\n');
             this.write((character+1) + '\n');
 
@@ -126,7 +126,7 @@ export class Requester {
     sendSignature(uri: string, line: number, character: number): Promise<SignatureHelp> {
         if (this.analysed) {
             this.write('#SIGNATURE#\n');
-            this.write(bodgeUri(uri) + '\n');
+            this.write(normalizeFileUri(uri) + '\n');
             this.write((line+1) + '\n');
             this.write((character+1) + '\n');
 
@@ -139,7 +139,7 @@ export class Requester {
     sendDocumentSymbol(uri: string): Promise<SymbolInformation[]> {
         if (this.analysed) {
             this.write('#SYMBOLS#\n');
-            this.write(bodgeUri(uri) + '\n');
+            this.write(normalizeFileUri(uri) + '\n');
 
             return this.response_handler.expectSymbols();            
         } else {
@@ -161,7 +161,7 @@ export class Requester {
     sendReferences(uri: string, line: number, character: number): Promise<Location[]> {
         if (this.analysed) {
             this.write('#REFERENCES#\n');
-            this.write(bodgeUri(uri) + '\n');
+            this.write(normalizeFileUri(uri) + '\n');
             this.write((line+1) + '\n');
             this.write((character) + '\n');
 
@@ -174,7 +174,7 @@ export class Requester {
     sendImplementation(uri: string, line: number, character: number): Promise<Location[]> {
         if (this.analysed) {
             this.write('#IMPLEMENTATION#\n');
-            this.write(bodgeUri(uri) + '\n');
+            this.write(normalizeFileUri(uri) + '\n');
             this.write((line+1) + '\n');
             this.write((character+1) + '\n');
 
@@ -187,7 +187,7 @@ export class Requester {
     sendRenameRequest(uri: string, line: number, character: number, newName: string): Promise<WorkspaceEdit> {
         if (this.analysed) {
             this.write('#RENAMEREQUEST#\n');
-            this.write(bodgeUri(uri) + '\n');
+            this.write(normalizeFileUri(uri) + '\n');
             this.write((line+1) + '\n');
             this.write((character+1) + '\n');
             this.write(newName + '\n');
