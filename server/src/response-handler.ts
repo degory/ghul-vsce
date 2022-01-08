@@ -511,7 +511,7 @@ export class ResponseHandler {
 
             let fields = line.split('\t');
 
-            if (fields.length != 7) {
+            if (fields.length != 7 || fields[0] == 'internal' || fields[0] == 'reflected') {
                 continue;
             }
 
