@@ -89,7 +89,7 @@ documents.onDidChangeContent((change) => {
 	edit_queue.queueEdit(change);
 });
 
-new ConnectionEventHandler(
+export const connection_event_handler = new ConnectionEventHandler(
 	connection,
 	server_manager,
 	documents,
@@ -97,6 +97,8 @@ new ConnectionEventHandler(
 	requester,
 	edit_queue
 );
+
+export const reinitialize = () => connection_event_handler.initialize();
 
 documents.listen(connection);
 connection.listen();

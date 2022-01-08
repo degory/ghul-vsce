@@ -90,7 +90,7 @@ export function getGhulConfig(workspace: string): GhulConfig {
 
 						compilerCommandLineParts.slice(1).forEach(s => args.push(s));
 
-						console.log(`will use compiler ${compilerCommandLine} specified in ${ghulProjFileName}`);						
+						console.log(`will use compiler '${compilerCommandLine}' specified in ${ghulProjFileName}`);						
 					}
 				}
 

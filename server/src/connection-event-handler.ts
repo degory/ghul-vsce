@@ -138,9 +138,8 @@ export class ConnectionEventHandler {
                 this.onRenameRequest(params));
     }
 
-    onInitialize(params: any): InitializeResult {
-        this.workspace_root = params.rootPath;
-
+    initialize() {
+        console.log("initialize...");
         restoreDotNetTools(this.workspace_root)
         generateAssembliesJson(this.workspace_root);
 
@@ -153,7 +152,13 @@ export class ConnectionEventHandler {
             );
 
         this.config_event_emitter.configAvailable(this.workspace_root, this.config);
-        
+    }
+
+    onInitialize(params: any): InitializeResult {
+        this.workspace_root = params.rootPath;
+
+        this.initialize();
+
         return {
             capabilities: {
                 textDocumentSync: {

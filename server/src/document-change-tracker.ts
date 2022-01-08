@@ -6,6 +6,8 @@ import { normalizeFileUri } from "./normalize-file-uri";
 import { EditQueue } from "./edit-queue";
 import { TextDocument } from "vscode-languageserver-textdocument";
 
+import { reinitialize } from './server'
+
 export class DocumentChangeTracker {
     edit_queue: EditQueue;
     globs: string[];
@@ -75,6 +77,18 @@ export class DocumentChangeTracker {
         }
 
         for (let c of params.changes) {
+            if (
+                c.uri.endsWith(".ghulproj") ||
+                c.uri.endsWith("Directory.Build.props") ||
+                c.uri.endsWith("dotnet-tools.json")
+            ) {
+                console.log("project file changed: " + c.uri);
+
+                reinitialize();
+
+                return;
+            }
+
             let fn = this.tryGetValidSourceFile(c.uri);
             
             if (!fn) {

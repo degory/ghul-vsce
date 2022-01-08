@@ -23,6 +23,7 @@ export enum ServerState {
 
 export class ServerManager {
 	child: ChildProcess;
+	expecting_exit: boolean;
 
 	event_emitter: ServerEventEmitter;
 
@@ -45,7 +46,6 @@ export class ServerManager {
 		config_event_source.onConfigAvailable((workspace: string, config: GhulConfig) => {
 			this.workspace_root = workspace;
 			this.ghul_config = config;
-
 			this.start();
 		});
 	}
@@ -57,29 +57,59 @@ export class ServerManager {
 	
 		let ghul_compiler = this.ghul_config.compiler;
 
+		if (this.child) {
+			console.log("killing running compiler PID " + this.child.pid);
+			this.expecting_exit = true;
+
+			this.child.kill();
+		}
+
 		this.child = spawn(ghul_compiler, this.ghul_config.arguments);
 
-		this.event_emitter.running(this.child);
-	
-		this.child.stderr.on('data', (chunk: string) => {
-			process.stderr.write(chunk);
+		this.child.on("error", err => {
+			log(`ghūl compiler: failed to start: ${err.message}`);			
 		});
 
-		this.child.stdout.on('data', (chunk: string) => {
-			this.response_parser.handleChunk(chunk);
-		});
-	
-		this.child.on('exit',
-			(_code: number, _signal: string) => {
-				log("ghūl compiler exited - restarting");
+		// FIXME: why does this event not fire?
+		// this.child.on("spawn", () => {
+			log(`spawned compiler process PID ${this.child.pid}`);
 
-				resolveAllPendingPromises();
-
-				this.edit_queue.reset();
+			this.child.stderr.on('data', (chunk: string) => {
+				process.stderr.write(chunk);
+			});
 	
-				this.start();
-			}
-		);
+			this.child.stdout.on('data', (chunk: string) => {
+				this.response_parser.handleChunk(chunk);
+			});
+	
+			this.event_emitter.running(this.child);
+
+			const pid = this.child?.pid;
+		
+			this.child.on('exit',
+				(_code: number, _signal: string) => {
+					const was_expecting_exit = this.expecting_exit;
+
+					if (!was_expecting_exit) {
+						log(`ghūl compiler ${pid}: unexpected exit`);
+					} else {
+						log(`ghūl compiler ${pid}: exited`);
+					}
+
+					this.child = null;
+
+					resolveAllPendingPromises();
+
+					if (!was_expecting_exit) {
+						this.edit_queue.reset();
+						log(`ghūl compiler ${pid}: will restart after unexpected exit`);
+			
+						this.start();
+					} else {
+						this.expecting_exit = false;
+					}
+				});
+		// });			
 	}	
 	
 	state() {
@@ -101,9 +131,11 @@ export class ServerManager {
 	kill() {
 		this.event_emitter.killing();
 
-		log("kill any running ghūl compiler container...");
+		log("kill any running ghūl compiler...");
+
 		try {
-	
+			this.expecting_exit = true;
+			this.child.kill();
 			this.event_emitter.killed();
 		} catch (e) {
 			log("something went wrong killing ghūl compiler container: " + e);			

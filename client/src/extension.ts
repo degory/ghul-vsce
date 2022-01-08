@@ -26,7 +26,9 @@ export function activate(context: ExtensionContext) {
 			// Notify the server about file changes to '.ghul' and '.ghulproj' files contain in the workspace
 			fileEvents: [
 				workspace.createFileSystemWatcher('**/*.ghul'),
-				workspace.createFileSystemWatcher('**/*.ghulproj')
+				workspace.createFileSystemWatcher('**/*.ghulproj'),
+				workspace.createFileSystemWatcher('**/Directory.Build.props'),
+				workspace.createFileSystemWatcher('**/dotnet-tools.json'),
 			]
 		}
 	}

@@ -531,7 +531,6 @@ export class ResponseHandler {
         }
     }
 
-
     private parseLocation(line: string) {
         let fields = line.split('\t');
 
