@@ -7,7 +7,7 @@ import {
     CompletionItem,
     Hover,
     // HoverRequest,
-    IConnection,
+    Connection,
     InitializeResult,
     InitializedParams,
     TextDocuments,
@@ -25,6 +25,10 @@ import {
     TextDocumentChangeEvent
 } from 'vscode-languageserver';
 
+import {
+    TextDocument
+} from 'vscode-languageserver-textdocument';
+
 import { log } from './server';
 
 import { getGhulConfig, GhulConfig } from './ghul-config';
@@ -41,9 +45,9 @@ import { restoreDotNetTools } from './restore-dotnet-tools';
 import { DocumentChangeTracker } from './document-change-tracker';
 
 export class ConnectionEventHandler {
-    connection: IConnection; 
+    connection: Connection; 
     server_manager: ServerManager;
-    documents: TextDocuments;
+    documents: TextDocuments<TextDocument>;
     config_event_emitter: ConfigEventEmitter;
     requester: Requester;
     edit_queue: EditQueue;
@@ -52,9 +56,9 @@ export class ConnectionEventHandler {
     document_change_tracker: DocumentChangeTracker;
 
     constructor(
-        connection: IConnection,
+        connection: Connection,
         server_manager: ServerManager,
-        documents: TextDocuments,
+        documents: TextDocuments<TextDocument>,
         config_event_emitter: ConfigEventEmitter,        
         requester: Requester,
         edit_queue: EditQueue
@@ -81,13 +85,13 @@ export class ConnectionEventHandler {
         connection.onDidOpenTextDocument((params: DidOpenTextDocumentParams) =>
             this.document_change_tracker?.onDidOpenTextDocument(params));
 
-        documents.onDidOpen((params: TextDocumentChangeEvent) =>
+        documents.onDidOpen((params: TextDocumentChangeEvent<TextDocument>) =>
             this.document_change_tracker?.onDidOpen(params));
 
         connection.onDidCloseTextDocument((params: DidOpenTextDocumentParams) =>
             this.document_change_tracker?.onDidCloseTextDocument(params));
 
-        documents.onDidClose((params: TextDocumentChangeEvent) =>
+        documents.onDidClose((params: TextDocumentChangeEvent<TextDocument>) =>
             this.document_change_tracker?.onDidClose(params));
 
         connection.onDidChangeWatchedFiles((change: DidChangeWatchedFilesParams) =>

@@ -7,6 +7,7 @@ import { Requester } from './requester'
 import { ProblemStore } from './problem-store'
 import { clearTimeout } from 'timers';
 import { normalizeFileUri } from './normalize-file-uri';
+import { TextDocument } from 'vscode-languageserver-textdocument';
 
 enum QueueState {
     START,
@@ -66,7 +67,7 @@ export class EditQueue {
         this.state = QueueState.IDLE;
     }
 
-    queueEdit(change: TextDocumentChangeEvent) {
+    queueEdit(change: TextDocumentChangeEvent<TextDocument>) {
         this.queueEdit3(normalizeFileUri(change.document.uri), change.document.version, change.document.getText());
     }
 

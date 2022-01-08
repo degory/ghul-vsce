@@ -1,4 +1,4 @@
-import { IConnection, CompletionItem, CompletionItemKind, Definition, SignatureHelp, SymbolKind, Hover, SignatureInformation, ParameterInformation, SymbolInformation, Location, WorkspaceEdit, TextEdit } from 'vscode-languageserver';
+import { Connection, CompletionItem, CompletionItemKind, Definition, SignatureHelp, SymbolKind, Hover, SignatureInformation, ParameterInformation, SymbolInformation, Location, WorkspaceEdit, TextEdit } from 'vscode-languageserver';
 
 import { log, rejectAllAndThrow } from './server';
 
@@ -80,7 +80,7 @@ export class ResponseHandler {
     want_plaintext_hover: boolean;
 
     server_manager: ServerManager;
-    connection: IConnection;
+    connection: Connection;
     problems: ProblemStore;
     edit_queue: EditQueue;
 
@@ -95,7 +95,7 @@ export class ResponseHandler {
     _rename_promise_queue: PromiseQueue<WorkspaceEdit>;
 
     constructor(
-        connection: IConnection,
+        connection: Connection,
         problems: ProblemStore,
         config_event_source: ConfigEventEmitter
     ) {

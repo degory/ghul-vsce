@@ -4,6 +4,7 @@ import { DidOpenTextDocumentParams, DidChangeWatchedFilesParams, FileChangeType,
 import { URI } from "vscode-uri";
 import { normalizeFileUri } from "./normalize-file-uri";
 import { EditQueue } from "./edit-queue";
+import { TextDocument } from "vscode-languageserver-textdocument";
 
 export class DocumentChangeTracker {
     edit_queue: EditQueue;
@@ -24,7 +25,7 @@ export class DocumentChangeTracker {
         return this.open_documents.has(fn);
     }
 
-    onDidOpen(event: TextDocumentChangeEvent) {
+    onDidOpen(event: TextDocumentChangeEvent<TextDocument>) {
         if (!this.tryGetValidSourceFile(event.document.uri)) {
             return;
         }
@@ -36,7 +37,7 @@ export class DocumentChangeTracker {
         this.open_documents.add(uri);
     }
 
-    onDidClose(event: TextDocumentChangeEvent) {
+    onDidClose(event: TextDocumentChangeEvent<TextDocument>) {
         let uri = normalizeFileUri(event.document.uri);
 
         this.open_documents.delete(uri);

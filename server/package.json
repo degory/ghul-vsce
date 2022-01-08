@@ -2,7 +2,7 @@
   "name": "ghul-vsce",
   "displayName": "ghūl language server",
   "description": "ghul language server",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "author": "degory",
   "license": "GPL-3.0",
   "engines": {
@@ -20,7 +20,8 @@
     "minimatch": "^3.0.4",
     "recursive-readdir": "^2.2.1",
     "typescript-definition-of-eventemitter-with-keyof": "git+https://github.com/kimamula/TypeScript-definition-of-EventEmitter-with-keyof.git",
-    "vscode-languageserver": "^5.0.0",
+    "vscode-languageserver": "^7.0.0",
+    "vscode-languageserver-textdocument": "^1.0.3",
     "vscode-uri": "^3.0.3",
     "xml2js": "^0.4.23"
   },

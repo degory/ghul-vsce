@@ -1,8 +1,12 @@
 'use strict';
 
 import {
-	IPCMessageReader, IPCMessageWriter, createConnection, TextDocuments
+	TextDocuments
 } from 'vscode-languageserver';
+
+import {
+	createConnection
+} from 'vscode-languageserver/node'
 
 import { ProblemStore } from './problem-store';
 
@@ -23,6 +27,7 @@ import { ConfigEventEmitter } from './config-event-emitter';
 import { GhulAnalyser } from './ghul-analyser';
 
 import { ServerManager } from './server-manager';
+import { TextDocument } from 'vscode-languageserver-textdocument';
 
 export function log(...args: any[]) {
 	// console.log(new Date() + " " + edit_queue?.state + " " + message);
@@ -34,7 +39,7 @@ let problems = new ProblemStore();
 let server_event_emitter = new ServerEventEmitter();
 let config_event_emitter = new ConfigEventEmitter();
 
-let connection = createConnection(new IPCMessageReader(process), new IPCMessageWriter(process));
+let connection = createConnection();
 
 let response_handler = new ResponseHandler(
 	connection,
@@ -78,8 +83,8 @@ export function rejectAllAndThrow(message: string) {
 	throw message;
 }
 
-let documents: TextDocuments = new TextDocuments();
- 
+const documents = new TextDocuments(TextDocument);
+
 documents.onDidChangeContent((change) => {
 	edit_queue.queueEdit(change);
 });
