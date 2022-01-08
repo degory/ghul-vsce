@@ -19,6 +19,7 @@
     "glob": "^7.2.0",
     "minimatch": "^3.0.4",
     "recursive-readdir": "^2.2.1",
+    "throttle-debounce": "^3.0.1",
     "typescript-definition-of-eventemitter-with-keyof": "git+https://github.com/kimamula/TypeScript-definition-of-EventEmitter-with-keyof.git",
     "vscode-languageserver": "^7.0.0",
     "vscode-languageserver-textdocument": "^1.0.3",
@@ -34,6 +35,7 @@
   "devDependencies": {
     "@types/glob": "^7.2.0",
     "@types/node": "^14.0.11",
+    "@types/throttle-debounce": "^2.1.0",
     "@types/xml2js": "^0.4.9",
     "merge-options": "^3.0.3",
     "ts-loader": "^8.0.11",

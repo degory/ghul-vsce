@@ -2,11 +2,15 @@ import { readFileSync } from "fs";
 import * as minimatch from "minimatch";
 import { DidOpenTextDocumentParams, DidChangeWatchedFilesParams, FileChangeType, TextDocumentChangeEvent } from "vscode-languageserver";
 import { URI } from "vscode-uri";
+import { TextDocument } from "vscode-languageserver-textdocument";
+import { debounce } from "throttle-debounce";
+
 import { normalizeFileUri } from "./normalize-file-uri";
 import { EditQueue } from "./edit-queue";
-import { TextDocument } from "vscode-languageserver-textdocument";
 
 import { reinitialize } from './server'
+
+const debounced_reinitialize = debounce(3000, reinitialize);
 
 export class DocumentChangeTracker {
     edit_queue: EditQueue;
@@ -84,7 +88,7 @@ export class DocumentChangeTracker {
             ) {
                 console.log("project file changed: " + c.uri);
 
-                reinitialize();
+                debounced_reinitialize();
 
                 return;
             }
