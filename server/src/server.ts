@@ -95,7 +95,8 @@ export const connection_event_handler = new ConnectionEventHandler(
 	documents,
 	config_event_emitter,
 	requester,
-	edit_queue
+	edit_queue,
+	problems
 );
 
 export const reinitialize = () => connection_event_handler.initialize();

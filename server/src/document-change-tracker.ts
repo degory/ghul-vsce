@@ -10,7 +10,7 @@ import { EditQueue } from "./edit-queue";
 
 import { reinitialize } from './server'
 
-const debounced_reinitialize = debounce(3000, reinitialize);
+const debounced_reinitialize = debounce(5000, () => { reinitialize(); } );
 
 export class DocumentChangeTracker {
     edit_queue: EditQueue;

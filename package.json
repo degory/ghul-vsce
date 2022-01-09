@@ -2,7 +2,7 @@
 	"name": "ghul",
 	"displayName": "ghūl",
 	"description": "ghūl language support",
-	"version": "0.5.6",
+	"version": "0.5.7",
 	"publisher": "degory",
 	"license": "GPL-3.0",
 	"repository": {
@@ -111,5 +111,7 @@
 		"webpack": "^5.5.1",
 		"webpack-cli": "^4.2.0"
 	},
-	"dependencies": {}
+	"dependencies": {
+		"throttle-debounce": "^3.0.1"
+	}
 }

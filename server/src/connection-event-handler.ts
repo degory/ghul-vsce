@@ -43,6 +43,7 @@ import { EditQueue } from './edit-queue';
 import { generateAssembliesJson } from './generate-assemblies-json';
 import { restoreDotNetTools } from './restore-dotnet-tools';
 import { DocumentChangeTracker } from './document-change-tracker';
+import { ProblemStore } from './problem-store';
 
 export class ConnectionEventHandler {
     connection: Connection; 
@@ -54,6 +55,7 @@ export class ConnectionEventHandler {
     config: GhulConfig;
     workspace_root: string;
     document_change_tracker: DocumentChangeTracker;
+    problems: ProblemStore;
 
     constructor(
         connection: Connection,
@@ -61,7 +63,8 @@ export class ConnectionEventHandler {
         documents: TextDocuments<TextDocument>,
         config_event_emitter: ConfigEventEmitter,        
         requester: Requester,
-        edit_queue: EditQueue
+        edit_queue: EditQueue,
+        problems: ProblemStore
     ) {
         this.connection = connection;
         this.server_manager = server_manager;
@@ -69,6 +72,7 @@ export class ConnectionEventHandler {
         this.config_event_emitter = config_event_emitter;
         this.requester = requester;
         this.edit_queue = edit_queue;
+        this.problems = problems;
 
         connection.onInitialize((params: InitializedParams): InitializeResult => 
             this.onInitialize(params));
@@ -140,10 +144,13 @@ export class ConnectionEventHandler {
 
     initialize() {
         console.log("initialize...");
+
         restoreDotNetTools(this.workspace_root)
         generateAssembliesJson(this.workspace_root);
 
         this.config = getGhulConfig(this.workspace_root);
+
+        this.problems.clear();
 
         this.document_change_tracker = 
             new DocumentChangeTracker(
