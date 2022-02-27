@@ -17,6 +17,7 @@ import { normalizeFileUri } from './normalize-file-uri';
 import { ServerEventEmitter } from './server-event-emitter';
 
 import { ResponseHandler } from './response-handler';
+import { TextEdit } from 'vscode-languageserver-textdocument';
 
 const version = require('./version') as string;
 
@@ -72,6 +73,8 @@ export class Requester {
     }
 
     sendHover(uri: string, line: number, character: number): Promise<Hover> {
+        console.log("raw line,char: " + line + "," + character);
+
         if (this.analysed) {
             this.write('#HOVER#\n');
             this.write(normalizeFileUri(uri) + '\n');
@@ -85,6 +88,8 @@ export class Requester {
     }
 
     sendDefinition(uri: string, line: number, character: number): Promise<Definition> {
+        console.log("raw line,char: " + line + "," + character);
+
         if (this.analysed) {
             this.write('#DEFINITION#\n');
             this.write(normalizeFileUri(uri) + '\n');
@@ -196,6 +201,28 @@ export class Requester {
         } else {
             return null;
         }
+    }
+
+    sendDocumentFormatting(uri: string) {
+        this.write("#FORMAT#\n");
+        this.write(normalizeFileUri(uri) + '\n');
+        this.write((-1) + '\n');
+        this.write((-1) + '\n');
+        this.write((-1) + '\n');
+        this.write((-1) + '\n');
+
+        return Promise.resolve<TextEdit[]>([]);
+    }
+
+    sendDocumentRangeFormatting(uri: string, fromLine: number, fromChar: number, toLine: number, toChar: number) {
+        this.write("#FORMAT#\n");
+        this.write(normalizeFileUri(uri) + '\n');
+        this.write((fromLine+1) + '\n');
+        this.write((fromChar) + '\n');
+        this.write((toLine+1) + '\n');
+        this.write((toChar) + '\n');
+
+        return Promise.resolve<TextEdit[]>([]);
     }
  
     sendRestart() {

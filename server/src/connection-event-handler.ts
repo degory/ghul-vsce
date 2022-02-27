@@ -22,11 +22,13 @@ import {
     WorkspaceEdit,
     DidOpenTextDocumentParams,
     TextDocumentSyncKind,
-    TextDocumentChangeEvent
+    TextDocumentChangeEvent,
+    DocumentFormattingParams,
+    DocumentRangeFormattingParams
 } from 'vscode-languageserver';
 
 import {
-    TextDocument
+    TextDocument, TextEdit
 } from 'vscode-languageserver-textdocument';
 
 import { log } from './server';
@@ -140,6 +142,14 @@ export class ConnectionEventHandler {
         connection.onRenameRequest(
              (params: RenameParams): Promise<WorkspaceEdit> =>
                 this.onRenameRequest(params));
+
+        connection.onDocumentFormatting(
+            (params: DocumentFormattingParams): Promise<TextEdit[]> =>
+                this.onDocumentFormatting(params));
+
+        connection.onDocumentRangeFormatting(
+            (params: DocumentRangeFormattingParams): Promise<TextEdit[]> =>
+                this.onDocumentRangeFormatting(params));
     }
 
     initialize() {
@@ -186,7 +196,9 @@ export class ConnectionEventHandler {
                     triggerCharacters: ["(", "["]
                 },
                 implementationProvider: true,
-                renameProvider: true
+                renameProvider: true,
+                documentFormattingProvider: true,
+                documentRangeFormattingProvider: true
             }
         }
     }
@@ -247,5 +259,13 @@ export class ConnectionEventHandler {
 
     onRenameRequest(params: RenameParams): Promise<WorkspaceEdit> {
         return this.requester.sendRenameRequest(params.textDocument.uri, params.position.line, params.position.character, params.newName);
+    }
+
+    onDocumentFormatting(params: DocumentFormattingParams): Promise<TextEdit[]> {
+        return this.requester.sendDocumentFormatting(params.textDocument.uri);        
+    }
+
+    onDocumentRangeFormatting(params: DocumentRangeFormattingParams): Promise<TextEdit[]> {
+        return this.requester.sendDocumentRangeFormatting(params.textDocument.uri, params.range.start.line, params.range.start.character, params.range.end.line, params.range.end.character);
     }
 }
