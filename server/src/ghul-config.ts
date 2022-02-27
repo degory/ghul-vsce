@@ -122,7 +122,7 @@ export function getGhulConfig(workspace: string): GhulConfig {
 		console.log("ignoring multiple .ghulproj files:" + projects.join(','));
 	}
 
-	if (!config.compiler) {
+	if (!config.compiler || config.compiler == "") {
 		if (existsSync(workspace + "/.config/dotnet-tools.json")) {
 			let buffer = ('' + readFileSync(workspace + "/.config/dotnet-tools.json", "utf-8")).replace(/^\uFEFF/, '');
 
@@ -147,6 +147,14 @@ export function getGhulConfig(workspace: string): GhulConfig {
 		} else {
 			console.log("no .config/dotnet-tools.json found: assuming 'ghul-compiler' is on the PATH");
 		}
+	} else {
+		let compilerCommandLineParts = config.compiler.split(" ").map(s => s.trim())
+
+		config.compiler = compilerCommandLineParts[0];
+		
+		args.splice(1, 0, ...compilerCommandLineParts.slice(1));
+
+		// compilerCommandLineParts.slice(1).forEach(s => args.push(s));
 	}
 
 	if (existsSync(workspace + "/.assemblies.json")) {		
