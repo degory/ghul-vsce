@@ -1,4 +1,19 @@
-import { Connection, CompletionItem, CompletionItemKind, Definition, SignatureHelp, SymbolKind, Hover, SignatureInformation, ParameterInformation, SymbolInformation, Location, WorkspaceEdit, TextEdit } from 'vscode-languageserver';
+import { 
+    Connection, 
+    CompletionItem, 
+    CompletionItemKind, 
+    Definition, 
+    SignatureHelp, 
+    SymbolKind, 
+    Hover, 
+    SignatureInformation, 
+    ParameterInformation, 
+    SymbolInformation, 
+    Location, 
+    WorkspaceEdit, 
+    TextEdit, 
+    Diagnostic,
+} from 'vscode-languageserver';
 
 import { log, rejectAllAndThrow } from './server';
 
@@ -174,13 +189,19 @@ export class ResponseHandler {
         this.connection.window.showErrorMessage(error);
     }
 
-    handleDiagnostics(kind: string, lines: string[]) {
+    handleDiagnosticsOld(kind: string, lines: string[]) {
         this.addDiagnostics(kind, lines);
 
         if (kind == "analysis") {
             for (let p of this.problems) {
                 this.connection.sendDiagnostics(p);
             }
+        }
+    }
+
+    handleDiagnostics(lines: string[]) {
+        for (let diagnostic of this.parseDiagnostics(lines)) {
+            this.connection.sendDiagnostics( {uri: diagnostic[0], diagnostics: diagnostic[1]})
         }
     }
 
@@ -531,6 +552,43 @@ export class ResponseHandler {
         }
     }
 
+    parseDiagnostics(lines: string[]) {
+        let problems = new Map<string, Diagnostic[]>();
+
+        for (var i = 0; i < lines.length; i++) {
+            let line = lines[i];
+
+            let fields = line.split('\t');
+
+            if (fields.length != 7 || fields[0] == 'internal' || fields[0] == 'reflected') {
+                continue;
+            }
+
+            let uri = normalizeFileUri(fields[0]);
+
+            let problem = {
+                severity: SeverityMapper.getSeverity(fields[5], "new"),
+                range: {
+                    start: { line: Number(fields[1]) - 1, character: Number(fields[2]) - 1 },
+                    end: { line: Number(fields[3]) - 1, character: Number(fields[4]) - 1 }
+                },
+                message: fields[6],
+                source: 'ghūl'
+            }
+
+            if (!problems.has(uri)) {
+                problems.set(uri, []);
+            }
+
+            let list = problems.get(uri);
+
+            list.push(problem);
+        }
+
+        return problems;
+    }
+
+
     private parseLocation(line: string) {
         let fields = line.split('\t');
 
@@ -550,4 +608,3 @@ export class ResponseHandler {
         return location;
     }
 }
-
