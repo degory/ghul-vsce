@@ -35,7 +35,6 @@ class ProblemList {
 		this.analysis = [];
 	}
 
-
 	all(): Diagnostic[] {
 		return this.parse.concat(this.analysis);
 	}

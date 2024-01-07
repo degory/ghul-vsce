@@ -69,8 +69,9 @@ export class ResponseParser {
         // new style diagnostics:
         case "DIAGNOSTICS":
             // this.response_handler.hand
-            
-
+            this.response_handler.handleDiagnostics(lines);
+            break;
+           
         case "HOVER":
             // log("response parser: HOVER received");
             this.response_handler.handleHover(lines);
