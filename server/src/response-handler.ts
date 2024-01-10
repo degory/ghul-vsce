@@ -560,11 +560,35 @@ export class ResponseHandler {
 
             let fields = line.split('\t');
 
-            if (fields.length != 7 || fields[0] == 'internal' || fields[0] == 'reflected') {
+            if (fields.length == 0) {
+                // log("PD empty diagnostics line");
                 continue;
             }
 
-            let uri = normalizeFileUri(fields[0]);
+            let uri = fields[0];
+
+            if (uri == "internal" || uri == "reflected") {
+                // log("PD ignore " + uri);
+                continue;
+            }
+
+            // log("PD will try to normalize: " + uri);
+
+            if (!uri.startsWith("file://")) {
+                uri = "file://" + uri;
+            }
+
+            uri = normalizeFileUri(uri);
+
+            if (!problems.has(uri)) {
+                // log("PD add new problems uri: " + uri);
+                problems.set(uri, []);
+            }
+
+            if (fields.length != 7) {
+                // log("PD ignore uri only diagnostic: " + uri);
+                continue;
+            }
 
             let problem = {
                 severity: SeverityMapper.getSeverity(fields[5], "new"),
@@ -574,10 +598,6 @@ export class ResponseHandler {
                 },
                 message: fields[6],
                 source: 'ghūl'
-            }
-
-            if (!problems.has(uri)) {
-                problems.set(uri, []);
             }
 
             let list = problems.get(uri);
@@ -608,3 +628,4 @@ export class ResponseHandler {
         return location;
     }
 }
+
