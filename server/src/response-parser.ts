@@ -71,6 +71,16 @@ export class ResponseParser {
             // this.response_handler.hand
             this.response_handler.handleDiagnostics(lines);
             break;
+
+        case "PARTIAL DONE":
+            // log("response parser: PARTIAL DONE received");
+            this.response_handler.handlePartialCompileDone();
+            break;
+
+        case "FULL DONE":
+            // log("response parser: FULL DONE received");
+            this.response_handler.handleFullCompileDone();
+            break;
            
         case "HOVER":
             // log("response parser: HOVER received");

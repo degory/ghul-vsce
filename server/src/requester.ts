@@ -197,6 +197,10 @@ export class Requester {
             return null;
         }
     }
+
+    sendFullCompileRequest() {
+        this.write('#COMPILE#\n');
+    }
  
     sendRestart() {
         if (this.analysed) {
