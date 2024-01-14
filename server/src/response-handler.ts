@@ -203,7 +203,6 @@ export class ResponseHandler {
 
     handleDiagnostics(lines: string[]) {
         for (let diagnostic of this.parseDiagnostics(lines)) {
-            log("handleDiagnostics: ", diagnostic[0], diagnostic[1]);
             this.connection.sendDiagnostics( {uri: diagnostic[0], diagnostics: diagnostic[1]})
         }
 

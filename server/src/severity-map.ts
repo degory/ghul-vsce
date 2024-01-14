@@ -1,4 +1,4 @@
-import { log } from 'console';
+// import { log } from 'console';
 import { DiagnosticSeverity } from 'vscode-languageserver';
 
 let SeverityMapParse = new Map<string,DiagnosticSeverity>([
@@ -15,24 +15,24 @@ let SeverityMapOther = new Map<string,DiagnosticSeverity>([
 
 export class SeverityMapper {
 	static getSeverity(severity: string|number, kind: string): DiagnosticSeverity {
-		log("severity mapper: getSeverity: '" + severity + "' " + kind);
-
-		if (typeof severity == 'number') {
-			log("severity mapper: getSeverity: number: ", severity);
-
-			return severity as DiagnosticSeverity;
-		} else if(!isNaN(Number(severity))) {
-			log("severity mapper: getSeverity: number: ", severity);
-
-			return Number(severity) as DiagnosticSeverity;
-		}
+		// log("severity mapper: getSeverity: '" + severity + "' " + kind);
 
 		if (kind == 'parse') {
-			return SeverityMapParse.get(severity);
+			return SeverityMapParse.get(severity as string);
 		} else {
+			if (typeof severity == 'number') {
+				// log("severity mapper: getSeverity: number: ", severity);
+	
+				return severity as DiagnosticSeverity;
+			} else if(!isNaN(Number(severity))) {
+				// log("severity mapper: getSeverity: number: ", severity);
+	
+				return Number(severity) as DiagnosticSeverity;
+			}
+
 			let result = SeverityMapOther.get(severity);
 
-			log("severity mapper: getSeverity: other: ", result);
+			// log("severity mapper: getSeverity: other: ", result);
 
 			return result;
 		}
