@@ -15,7 +15,9 @@ import {
     Diagnostic,
 } from 'vscode-languageserver';
 
-import { log, rejectAllAndThrow } from './server';
+import { log } from './log';
+
+import { rejectAllAndThrow } from './extension-state';
 
 import { normalizeFileUri } from './normalize-file-uri';
 
@@ -38,6 +40,8 @@ class PromiseQueue<T> {
     _queue: ResolveReject<T>[];
 
     constructor(name: string) {
+        log("PromiseQueue: " + name);
+
         this._name = name;
         this._queue = [];
     }
@@ -114,6 +118,8 @@ export class ResponseHandler {
         problems: ProblemStore,
         config_event_source: ConfigEventEmitter
     ) {
+        log("response handler constructor...");
+
         this.connection = connection;
         this.problems = problems;
 

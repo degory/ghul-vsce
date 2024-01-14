@@ -1,10 +1,12 @@
 import { EventEmitter } from 'events';
 
 import { GhulConfig } from './ghul-config';
+import { log } from 'console';
 
 export class ConfigEventEmitter extends EventEmitter {
 	constructor(
 	) {
+        log("ConfigEventEmitter constructor");
 		super();
 	}
 

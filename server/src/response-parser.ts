@@ -1,6 +1,7 @@
 import { ResponseHandler } from './response-handler';
 
-import { log, rejectAllPendingPromises } from './server';
+import { log } from './log';
+import { rejectAllPendingPromises } from './extension-state';
 
 export class ResponseParser {
     buffer: string;
@@ -9,6 +10,8 @@ export class ResponseParser {
     constructor(
         response_handler: ResponseHandler
     ) {
+        log("response parser constructor...");
+
         this.buffer = '';
         this.response_handler = response_handler;
     }

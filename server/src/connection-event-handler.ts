@@ -29,7 +29,7 @@ import {
     TextDocument
 } from 'vscode-languageserver-textdocument';
 
-import { log } from './server';
+import { log } from './log';
 
 import { getGhulConfig, GhulConfig } from './ghul-config';
 
@@ -66,6 +66,8 @@ export class ConnectionEventHandler {
         edit_queue: EditQueue,
         problems: ProblemStore
     ) {
+        log("connection event handler: constructor");
+
         this.connection = connection;
         this.server_manager = server_manager;
         this.documents = documents;
@@ -143,7 +145,7 @@ export class ConnectionEventHandler {
     }
 
     initialize() {
-        console.log("initialize...");
+        log("conection event handler: initialize");
 
         restoreDotNetTools(this.workspace_root)
         generateAssembliesJson(this.workspace_root);

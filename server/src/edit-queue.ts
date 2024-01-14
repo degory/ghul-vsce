@@ -1,6 +1,8 @@
 import { TextDocumentChangeEvent } from 'vscode-languageserver'
 
-import { log, rejectAllAndThrow } from './server';
+import { log } from './log';
+
+import { rejectAllAndThrow } from './extension-state';
 
 import { Requester } from './requester'
 
@@ -54,6 +56,8 @@ export class EditQueue {
         requester: Requester,
         problems: ProblemStore
     ) {
+        log("edit queue: constructor");
+
         this.build_count = 0;
         this.fake_version = -1;
 
