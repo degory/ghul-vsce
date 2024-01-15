@@ -59,16 +59,6 @@ export class ResponseParser {
             this.response_handler.handleListen();
             break;
 
-        case "DIAG PARSE":
-            // log("response parser: DIAG PARSE received");
-            this.response_handler.handleDiagnosticsOld('parse', lines);
-            break;
-
-        case "DIAG ANALYSIS":
-            // log("response parser: DIAG ANALYSIS received");
-            this.response_handler.handleDiagnosticsOld('analysis', lines);
-            break;
-
         // new style diagnostics:
         case "DIAGNOSTICS":
             // this.response_handler.hand

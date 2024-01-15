@@ -8,8 +8,6 @@ import {
 	createConnection
 } from 'vscode-languageserver/node'
 
-import { ProblemStore } from './problem-store';
-
 import { ConnectionEventHandler } from './connection-event-handler';
 
 import { Requester } from './requester';
@@ -33,8 +31,6 @@ import { log } from './log';
 
 export class ExtensionState {
     private static instance: ExtensionState;
-
-    public problems: ProblemStore;
 
     public server_event_emitter: ServerEventEmitter;
     public config_event_emitter: ConfigEventEmitter;
@@ -81,8 +77,6 @@ export class ExtensionState {
     public connect() {
         log("ExtensionState connect...")
 
-        this.problems = new ProblemStore();
-
         this.server_event_emitter = new ServerEventEmitter();
         this.config_event_emitter = new ConfigEventEmitter();
         
@@ -90,13 +84,12 @@ export class ExtensionState {
         
         this.response_handler = new ResponseHandler(
             this.connection,
-            this.problems,
             this.config_event_emitter
         );
         
         this.requester = new Requester(this.server_event_emitter, this.response_handler);
         
-        this.edit_queue = new EditQueue(this.requester, this.problems);
+        this.edit_queue = new EditQueue(this.requester);
         
         new GhulAnalyser(
             this.edit_queue,
@@ -128,8 +121,7 @@ export class ExtensionState {
             this.documents,
             this.config_event_emitter,
             this.requester,
-            this.edit_queue,
-            this.problems
+            this.edit_queue
         );
         
 

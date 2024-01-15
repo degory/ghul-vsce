@@ -21,7 +21,6 @@ import { rejectAllAndThrow } from './extension-state';
 
 import { normalizeFileUri } from './normalize-file-uri';
 
-import { ProblemStore } from './problem-store';
 import { SeverityMapper } from './severity-map';
 
 import { ServerManager } from './server-manager';
@@ -102,7 +101,6 @@ export class ResponseHandler {
 
     server_manager: ServerManager;
     connection: Connection;
-    problems: ProblemStore;
     edit_queue: EditQueue;
 
     _hover_promise_queue: PromiseQueue<Hover>;
@@ -117,11 +115,9 @@ export class ResponseHandler {
 
     constructor(
         connection: Connection,
-        problems: ProblemStore,
         config_event_source: ConfigEventEmitter
     ) {
         this.connection = connection;
-        this.problems = problems;
 
 		config_event_source.onConfigAvailable((_workspace: string, config: GhulConfig) => {
             this.onConfigAvailable(_workspace, config);
@@ -197,18 +193,6 @@ export class ResponseHandler {
         this.server_manager.abort();
 
         this.connection.window.showErrorMessage(error);
-    }
-
-    handleDiagnosticsOld(kind: string, lines: string[]) {
-        this.addDiagnostics(kind, lines);
-
-        if (kind == "analysis") {
-            for (let p of this.problems) {
-                this.connection.sendDiagnostics(p);
-            }
-        }
-
-        this.edit_queue.onDiagnosticsReceived();
     }
 
     handleDiagnostics(lines: string[]) {
@@ -564,33 +548,39 @@ export class ResponseHandler {
         this.server_manager.abort();
     }
 
-    addDiagnostics(kind: string, lines: string[]) {
-        for (var i = 0; i < lines.length; i++) {
-            let line = lines[i];
+    // addDiagnostics(kind: string, lines: string[]) {
+    //     log("addDiagnostics: ", kind, lines);
 
-            let fields = line.split('\t');
+    //     for (var i = 0; i < lines.length; i++) {
+    //         let line = lines[i];
 
-            if (fields.length != 7 || fields[0] == 'internal' || fields[0] == 'reflected') {
-                continue;
-            }
+    //         let fields = line.split('\t');
 
-            let uri = normalizeFileUri(fields[0]);
+    //         if (fields.length != 7 || fields[0] == 'internal' || fields[0] == 'reflected') {
+    //             continue;
+    //         }
 
-            let problem = {
-                severity: SeverityMapper.getSeverity(fields[5], kind),
-                range: {
-                    start: { line: Number(fields[1]) - 1, character: Number(fields[2]) - 1 },
-                    end: { line: Number(fields[3]) - 1, character: Number(fields[4]) - 1 }
-                },
-                message: fields[6],
-                source: 'ghūl'
-            }
+    //         let uri = normalizeFileUri(fields[0]);
 
-            this.problems.add(kind, uri, problem);
-        }
-    }
+    //         let problem = {
+    //             severity: SeverityMapper.getSeverity(fields[5], kind),
+    //             range: {
+    //                 start: { line: Number(fields[1]) - 1, character: Number(fields[2]) - 1 },
+    //                 end: { line: Number(fields[3]) - 1, character: Number(fields[4]) - 1 }
+    //             },
+    //             message: fields[6],
+    //             source: 'ghūl'
+    //         }
+
+    //         this.problems.add(kind, uri, problem);
+    //     }
+
+    //     log("addDiagnostics: ", this.problems);
+    // }
 
     parseDiagnostics(lines: string[]) {
+        log("parseDiagnostics: ", lines);
+
         let problems = new Map<string, Diagnostic[]>();
 
         for (var i = 0; i < lines.length; i++) {
@@ -638,10 +628,14 @@ export class ResponseHandler {
                 source: 'ghūl'
             }
 
+            log("add problem: uri: ", uri, " problem: ", problem);
+
             let list = problems.get(uri);
 
             list.push(problem);
         }
+
+        log("parseDiagnostics: ", problems);
 
         return problems;
     }

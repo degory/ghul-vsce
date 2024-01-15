@@ -6,7 +6,6 @@ import { rejectAllAndThrow } from './extension-state';
 
 import { Requester } from './requester'
 
-import { ProblemStore } from './problem-store'
 import { clearTimeout } from 'timers';
 import { normalizeFileUri } from './normalize-file-uri';
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -42,7 +41,6 @@ export class EditQueue {
 
     pending_changes: Map<string,Document>;
     requester: Requester;
-    problems: ProblemStore;
 
     send_start_time: number;
     analyse_start_time: number;
@@ -53,8 +51,7 @@ export class EditQueue {
     static readonly PARTIAL_BUILD_EDIT_TIMEOUT = 300;
     
     constructor(
-        requester: Requester,
-        problems: ProblemStore
+        requester: Requester
     ) {
         log("edit queue: constructor");
 
@@ -62,7 +59,6 @@ export class EditQueue {
         this.fake_version = -1;
 
         this.requester = requester;
-        this.problems = problems;
 
         this.pending_changes = new Map();
 
@@ -70,7 +66,6 @@ export class EditQueue {
     }
 
     reset() {
-        this.problems.clear();
         this.pending_changes.clear();
 
         this.state = QueueState.IDLE;
@@ -211,14 +206,10 @@ export class EditQueue {
 
         this.send_start_time = Date.now();
         
-        this.problems.clear_all_analysis_problems();
-
         let documents = <{ uri: string, source: string}[]>[];
 
         for (let change of this.pending_changes.values()) {            
             if (change.is_pending) {
-                this.problems.clear_parse_problems(change.uri);
-
                 documents.push({uri: change.uri, source: change.text});
 
                 change.is_pending = false;
