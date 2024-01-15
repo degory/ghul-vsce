@@ -59,7 +59,10 @@ jest.mock('../src/config-event-emitter');
             arguments: [],
             want_plaintext_hover: true
         };
-        configEventEmitter.emit('configAvailable', 'workspace', config);
+        // configEventEmitter.emit('configAvailable', 'workspace', config);
+
+        responseHandler.onConfigAvailable('workspace', config);
+        
         expect(responseHandler.want_plaintext_hover).toBe(true);
     });
 
@@ -90,12 +93,24 @@ jest.mock('../src/config-event-emitter');
         let hover_promise = responseHandler._hover_promise_queue.enqueue();
         let definition_promise = responseHandler._definition_promise_queue.enqueue();
         let declaration_promise = responseHandler._declaration_promise_queue.enqueue();
-
+        let completion_promise = responseHandler._completion_promise_queue.enqueue();
+        let signature_promise = responseHandler._signature_promise_queue.enqueue();
+        let symbols_promise = responseHandler._symbols_promise_queue.enqueue();
+        let references_promise = responseHandler._references_promise_queue.enqueue();
+        let implementation_promise = responseHandler._implementation_promise_queue.enqueue();
+        let rename_promise = responseHandler._rename_promise_queue.enqueue();
+        
         responseHandler.resolveAllPendingPromises();
 
         expect(await hover_promise).toBe(null);
         expect(await definition_promise).toBe(null);
         expect(await declaration_promise).toBe(null);
+        expect(await completion_promise).toBe(null);
+        expect(await signature_promise).toBe(null);
+        expect(await symbols_promise).toBe(null);
+        expect(await references_promise).toBe(null);
+        expect(await implementation_promise).toBe(null);
+        expect(await rename_promise).toBe(null);
     });
 
     it('should reject all pending promises', async () => {
@@ -108,33 +123,28 @@ jest.mock('../src/config-event-emitter');
         let references_promise = responseHandler._references_promise_queue.enqueue();
         let implementation_promise = responseHandler._implementation_promise_queue.enqueue();
         let rename_promise = responseHandler._rename_promise_queue.enqueue();
-        
-        const errorMessage = 'Error occurred';
 
+        const errorMessage = 'Error occurred';
         responseHandler.rejectAllPendingPromises(errorMessage);
 
-        // check that all three promises are rejected with the same error message        
+        let results = await Promise.allSettled([
+            hover_promise,
+            definition_promise,
+            declaration_promise,
+            completion_promise,
+            signature_promise,
+            symbols_promise,
+            references_promise,
+            implementation_promise,
+            rename_promise
+        ]);
 
-        expect(await hover_promise).toThrow(errorMessage);
-        expect(await definition_promise).toThrow(errorMessage);
-        expect(await declaration_promise).toThrow(errorMessage);
-        expect(await completion_promise).toThrow(errorMessage);
-        expect(await signature_promise).toThrow(errorMessage);
-        expect(await symbols_promise).toThrow(errorMessage);
-        expect(await references_promise).toThrow(errorMessage);
-        expect(await implementation_promise).toThrow(errorMessage);
-        expect(await rename_promise).toThrow(errorMessage);
-
-
-        // await expect(hover_promise).rejects.toThrow();
-        // await expect(definition_promise).rejects.toThrow();
-        // await expect(declaration_promise).rejects.toThrow();
-        // await expect(completion_promise).rejects.toThrow();
-        // await expect(signature_promise).rejects.toThrow();
-        // await expect(symbols_promise).rejects.toThrow();
-        // await expect(references_promise).rejects.toThrow();
-        // await expect(implementation_promise).rejects.toThrow();
-        // await expect(rename_promise).rejects.toThrow();
+        results.forEach(result => { 
+            expect(result.status).toBe('rejected');
+            if (result.status === 'rejected') {
+                expect(result.reason).toBe(errorMessage);
+            }
+        });
     });
 
     it('should set the server manager', () => {
@@ -150,6 +160,11 @@ jest.mock('../src/config-event-emitter');
     });
 
     it('should start listening on handleListen', () => {
+        // create a mock ServerManager
+        responseHandler.server_manager = {
+            startListening: () => {}
+        } as ServerManager;
+
         const startListeningSpy = jest.spyOn(responseHandler.server_manager, 'startListening');
         responseHandler.handleListen();
         expect(startListeningSpy).toHaveBeenCalled();
@@ -221,22 +236,22 @@ jest.mock('../src/config-event-emitter');
         const definitionPromise = responseHandler.expectDefinition();
         const definitionResolveSpy = jest.spyOn(responseHandler._definition_promise_queue, 'resolve');
 
-        const definitionLines = ['file:///path/to/file:1:1'];
+        const definitionLines = ['file:///path/to/file\t1\t20\t2\t30'];
         responseHandler.handleDefinition(definitionLines);
 
         const definitionResult = await definitionPromise;
         expect(definitionResolveSpy).toHaveBeenCalledWith({
             uri: 'file:///path/to/file',
             range: {
-                start: { line: 0, character: 0 },
-                end: { line: 0, character: 0 }
+                start: { line: 0, character: 19 },
+                end: { line: 1, character: 30 }
             }
         });
         expect(definitionResult).toEqual({
             uri: 'file:///path/to/file',
             range: {
-                start: { line: 0, character: 0 },
-                end: { line: 0, character: 0 }
+                start: { line: 0, character: 19 },
+                end: { line: 1, character: 30 }
             }
         });
     });
@@ -245,7 +260,7 @@ jest.mock('../src/config-event-emitter');
         const declarationPromise = responseHandler.expectDeclaration();
         const declarationResolveSpy = jest.spyOn(responseHandler._declaration_promise_queue, 'resolve');
 
-        const declarationLines = ['file:///path/to/file:1:1'];
+        const declarationLines = ['file:///path/to/file\t1\t20\t2\t30'];
         responseHandler.handleDeclaration(declarationLines);
 
         const declarationResult = await declarationPromise;
@@ -253,8 +268,8 @@ jest.mock('../src/config-event-emitter');
             {
                 uri: 'file:///path/to/file',
                 range: {
-                    start: { line: 0, character: 0 },
-                    end: { line: 0, character: 0 }
+                    start: { line: 0, character: 19 },
+                    end: { line: 1, character: 30 }
                 }
             }
         ]);
@@ -262,8 +277,8 @@ jest.mock('../src/config-event-emitter');
             {
                 uri: 'file:///path/to/file',
                 range: {
-                    start: { line: 0, character: 0 },
-                    end: { line: 0, character: 0 }
+                    start: { line: 0, character: 19 },
+                    end: { line: 1, character: 30 }
                 }
             }
         ]);
@@ -415,7 +430,7 @@ jest.mock('../src/config-event-emitter');
         const referencesPromise = responseHandler.expectReferences();
         const referencesResolveSpy = jest.spyOn(responseHandler._references_promise_queue, 'resolve');
 
-        const referencesLines = ['file:///path/to/file:1:1'];
+        const referencesLines = ['file:///path/to/file\t1\t20\t2\t30'];
         responseHandler.handleReferences(referencesLines);
 
         const referencesResult = await referencesPromise;
@@ -423,8 +438,8 @@ jest.mock('../src/config-event-emitter');
             {
                 uri: 'file:///path/to/file',
                 range: {
-                    start: { line: 0, character: 0 },
-                    end: { line: 0, character: 0 }
+                    start: { line: 0, character: 19 },
+                    end: { line: 1, character: 30 }
                 }
             }
         ]);
@@ -433,8 +448,8 @@ jest.mock('../src/config-event-emitter');
             {
                 uri: 'file:///path/to/file',
                 range: {
-                    start: { line: 0, character: 0 },
-                    end: { line: 0, character: 0 }
+                    start: { line: 0, character: 19 },
+                    end: { line: 1, character: 30 }
                 }
             }
         ]);

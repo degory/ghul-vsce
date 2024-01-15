@@ -21,4 +21,7 @@
             "cacheBetweenTests": false           
         }
     ],
+    "lib": [
+        "es2020"
+    ],
 }
