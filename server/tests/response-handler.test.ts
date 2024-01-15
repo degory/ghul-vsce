@@ -403,44 +403,34 @@ jest.mock('../src/config-event-emitter');
 
     it('should enqueue and resolve signature promise on expectSignature and handleSignature', async () => {
         const signaturePromise = responseHandler.expectSignature();
-        // const signatureResolveSpy = jest.spyOn(responseHandler._signature_promise_queue, 'resolve');
 
-        const signatureLines = ['1', '2', 'label1\tparam1\t', 'label2\tparam2\t'];
+        const signatureLines = [
+            '1', 
+            '2', 
+            'function1\tf1 param1\tf1 param2\tf1 param3', 
+            'function2\tf2 param1\tf2 param2\tf2 param3'
+        ];
+
         responseHandler.handleSignature(signatureLines);
 
         const signatureResult = await signaturePromise;
 
-        // expect(signatureResolveSpy).toHaveBeenCalledWith({
-        //     signatures: [
-        //         {
-        //             label: 'label1',
-        //             parameters: [
-        //                 { label: 'param1' }
-        //             ]
-        //         },
-        //         {
-        //             label: 'label2',
-        //             parameters: [
-        //                 { label: 'param2' }
-        //             ]
-        //         }
-        //     ],
-        //     activeSignature: 1,
-        //     activeParameter: 2
-        // });
-
         expect(signatureResult).toEqual({
             signatures: [
                 {
-                    label: 'label1',
+                    label: 'function1',
                     parameters: [
-                        { label: 'param1' }
+                        { label: 'f1 param1' },
+                        { label: 'f1 param2' },
+                        { label: 'f1 param3' }
                     ]
                 },
                 {
-                    label: 'label2',
+                    label: 'function2',
                     parameters: [
-                        { label: 'param2' }
+                        { label: 'f2 param1' },
+                        { label: 'f2 param2' },
+                        { label: 'f2 param3' }
                     ]
                 }
             ],
