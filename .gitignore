@@ -77,3 +77,6 @@ Thumbs.db
 client/dist/**/*
 client/src/version.js
 server/src/version.js
+server/coverage/**/*
+server/coverage/lcov-report/index.html
+server/coverage/cobertura-coverage.xml

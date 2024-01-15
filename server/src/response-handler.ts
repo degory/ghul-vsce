@@ -40,8 +40,6 @@ class PromiseQueue<T> {
     _queue: ResolveReject<T>[];
 
     constructor(name: string) {
-        log("PromiseQueue: " + name);
-
         this._name = name;
         this._queue = [];
     }
@@ -68,6 +66,10 @@ class PromiseQueue<T> {
                 reject: error => console.log(this._name + ": oops: unexpected reject: " + error)
             }
         );
+    }
+
+    isEmpty(): boolean {
+        return this._queue.length == 0;
     }
 
     resolve(value: T) {
@@ -118,8 +120,6 @@ export class ResponseHandler {
         problems: ProblemStore,
         config_event_source: ConfigEventEmitter
     ) {
-        log("response handler constructor...");
-
         this.connection = connection;
         this.problems = problems;
 
