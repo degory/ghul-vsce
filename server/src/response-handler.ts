@@ -1,10 +1,26 @@
-import { Connection, CompletionItem, CompletionItemKind, Definition, SignatureHelp, SymbolKind, Hover, SignatureInformation, ParameterInformation, SymbolInformation, Location, WorkspaceEdit, TextEdit } from 'vscode-languageserver';
+import { 
+    Connection, 
+    CompletionItem, 
+    CompletionItemKind, 
+    Definition, 
+    SignatureHelp, 
+    SymbolKind, 
+    Hover, 
+    SignatureInformation, 
+    ParameterInformation, 
+    SymbolInformation, 
+    Location, 
+    WorkspaceEdit, 
+    TextEdit, 
+    Diagnostic,
+} from 'vscode-languageserver';
 
-import { log, rejectAllAndThrow } from './server';
+import { log } from './log';
+
+import { rejectAllAndThrow } from './extension-state';
 
 import { normalizeFileUri } from './normalize-file-uri';
 
-import { ProblemStore } from './problem-store';
 import { SeverityMapper } from './severity-map';
 
 import { ServerManager } from './server-manager';
@@ -51,6 +67,10 @@ class PromiseQueue<T> {
         );
     }
 
+    isEmpty(): boolean {
+        return this._queue.length == 0;
+    }
+
     resolve(value: T) {
         this.dequeueAlways().resolve(value);
     }
@@ -81,7 +101,6 @@ export class ResponseHandler {
 
     server_manager: ServerManager;
     connection: Connection;
-    problems: ProblemStore;
     edit_queue: EditQueue;
 
     _hover_promise_queue: PromiseQueue<Hover>;
@@ -96,14 +115,12 @@ export class ResponseHandler {
 
     constructor(
         connection: Connection,
-        problems: ProblemStore,
         config_event_source: ConfigEventEmitter
     ) {
         this.connection = connection;
-        this.problems = problems;
 
 		config_event_source.onConfigAvailable((_workspace: string, config: GhulConfig) => {
-            this.want_plaintext_hover = config.want_plaintext_hover;
+            this.onConfigAvailable(_workspace, config);
         });
 
         this._hover_promise_queue = new PromiseQueue<Hover>("HOVER");
@@ -115,6 +132,10 @@ export class ResponseHandler {
         this._references_promise_queue = new PromiseQueue<Location[]>("REFERENCES");
         this._implementation_promise_queue = new PromiseQueue<Location[]>("IMPLEMENTATION");
         this._rename_promise_queue = new PromiseQueue<WorkspaceEdit>("RENAMEREQUEST");
+    }
+
+    onConfigAvailable(_workspace: string, config: GhulConfig) {
+        this.want_plaintext_hover = config.want_plaintext_hover;
     }
 
     resolveAllPendingPromises() {
@@ -174,14 +195,20 @@ export class ResponseHandler {
         this.connection.window.showErrorMessage(error);
     }
 
-    handleDiagnostics(kind: string, lines: string[]) {
-        this.addDiagnostics(kind, lines);
-
-        if (kind == "analysis") {
-            for (let p of this.problems) {
-                this.connection.sendDiagnostics(p);
-            }
+    handleDiagnostics(lines: string[]) {
+        for (let diagnostic of this.parseDiagnostics(lines)) {
+            this.connection.sendDiagnostics( {uri: diagnostic[0], diagnostics: diagnostic[1]})
         }
+
+        this.edit_queue.onDiagnosticsReceived();
+    }
+
+    handleFullCompileDone() {
+        this.edit_queue.onFullCompileDone();
+    }
+
+    handlePartialCompileDone() {
+        this.edit_queue.onPartialCompileDone();
     }
 
     expectHover(): Promise<Hover> {
@@ -347,7 +374,7 @@ export class ResponseHandler {
             if (lines.length > 0) {
                 let uri: string = "unknown";
                 
-                for (let i = 1; i < lines.length; i++) {
+                for (let i = 0; i < lines.length; i++) {
                     let line = lines[i];
                     let fields = line.split('\t');
 
@@ -505,20 +532,76 @@ export class ResponseHandler {
         this.server_manager.abort();
     }
 
-    addDiagnostics(kind: string, lines: string[]) {
+    // addDiagnostics(kind: string, lines: string[]) {
+    //     log("addDiagnostics: ", kind, lines);
+
+    //     for (var i = 0; i < lines.length; i++) {
+    //         let line = lines[i];
+
+    //         let fields = line.split('\t');
+
+    //         if (fields.length != 7 || fields[0] == 'internal' || fields[0] == 'reflected') {
+    //             continue;
+    //         }
+
+    //         let uri = normalizeFileUri(fields[0]);
+
+    //         let problem = {
+    //             severity: SeverityMapper.getSeverity(fields[5], kind),
+    //             range: {
+    //                 start: { line: Number(fields[1]) - 1, character: Number(fields[2]) - 1 },
+    //                 end: { line: Number(fields[3]) - 1, character: Number(fields[4]) - 1 }
+    //             },
+    //             message: fields[6],
+    //             source: 'ghūl'
+    //         }
+
+    //         this.problems.add(kind, uri, problem);
+    //     }
+
+    //     log("addDiagnostics: ", this.problems);
+    // }
+
+    parseDiagnostics(lines: string[]) {
+        let problems = new Map<string, Diagnostic[]>();
+
         for (var i = 0; i < lines.length; i++) {
             let line = lines[i];
 
             let fields = line.split('\t');
 
-            if (fields.length != 7 || fields[0] == 'internal' || fields[0] == 'reflected') {
+            if (fields.length == 0) {
+                // log("PD empty diagnostics line");
                 continue;
             }
 
-            let uri = normalizeFileUri(fields[0]);
+            let uri = fields[0];
+
+            if (uri == "internal" || uri == "reflected") {
+                // log("PD ignore " + uri);
+                continue;
+            }
+
+            // log("PD will try to normalize: " + uri);
+
+            if (!uri.startsWith("file://")) {
+                uri = "file://" + uri;
+            }
+
+            uri = normalizeFileUri(uri);
+
+            if (!problems.has(uri)) {
+                // log("PD add new problems uri: " + uri);
+                problems.set(uri, []);
+            }
+
+            if (fields.length != 7) {
+                // log("PD ignore uri only diagnostic: " + uri);
+                continue;
+            }
 
             let problem = {
-                severity: SeverityMapper.getSeverity(fields[5], kind),
+                severity: SeverityMapper.getSeverity(fields[5], "new"),
                 range: {
                     start: { line: Number(fields[1]) - 1, character: Number(fields[2]) - 1 },
                     end: { line: Number(fields[3]) - 1, character: Number(fields[4]) - 1 }
@@ -527,9 +610,14 @@ export class ResponseHandler {
                 source: 'ghūl'
             }
 
-            this.problems.add(kind, uri, problem);
+            let list = problems.get(uri);
+
+            list.push(problem);
         }
+
+        return problems;
     }
+
 
     private parseLocation(line: string) {
         let fields = line.split('\t');
@@ -547,6 +635,7 @@ export class ResponseHandler {
                 }
             }
         };
+
         return location;
     }
 }
