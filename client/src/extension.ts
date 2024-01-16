@@ -1,13 +1,17 @@
 'use strict';
 
+import { log } from 'console';
 import * as path from 'path';
 
 import { workspace, ExtensionContext } from 'vscode';
 import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient/node';
 
 export function activate(context: ExtensionContext) {
+	log("client entry point...")
+
 	// The server is implemented in node
 	let serverModule = context.asAbsolutePath(path.join('server', 'out', 'server.js'));
+
 	// The debug options for the server
 	let debugOptions = { execArgv: ["--nolazy", "--inspect=6009"] };
 		
@@ -35,8 +39,12 @@ export function activate(context: ExtensionContext) {
 	
 	// Create the language client and start the client.
 	let disposable = new LanguageClient('ghul', 'ghūl language extension', serverOptions, clientOptions).start();
+
+	log("client started...");
 	
 	// Push the disposable to the context's subscriptions so that the 
 	// client can be deactivated on extension deactivation
 	context.subscriptions.push(disposable);
+
+	log("client activated...");
 }
