@@ -142,9 +142,7 @@ jobs:
         path: ghul-${{ needs.version.outputs.package }}.vsix
 
     - name: VSCE publish
-      run: npx vsce publish -p ${{ secrets.VSCE_TOKEN }}
-      env:
-        VSCE_TOKEN: ${{ secrets.VSCE_TOKEN }}
+      run: npx vsce publish -p ${{ secrets.VSCE_PAT }}
 
   create_release:
     needs: [version, unit_tests]
