@@ -8,7 +8,7 @@ import {
     WorkspaceEdit
 } from 'vscode-languageserver';
 
-import { log } from './server';
+import { log } from './log';
 
 import { ChildProcess } from 'child_process';
 
@@ -30,6 +30,7 @@ export class Requester {
         server_event_emitter: ServerEventEmitter,
         response_handler: ResponseHandler
     ) {
+        log("requester constructor...");
         this.response_handler = response_handler;
 
         this.analysed = true;
@@ -196,6 +197,10 @@ export class Requester {
         } else {
             return null;
         }
+    }
+
+    sendFullCompileRequest() {
+        this.write('#COMPILE#\n');
     }
  
     sendRestart() {
