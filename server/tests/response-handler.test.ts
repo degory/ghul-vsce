@@ -443,7 +443,7 @@ jest.mock('../src/config-event-emitter');
         const symbolsPromise = responseHandler.expectSymbols();
         // const symbolsResolveSpy = jest.spyOn(responseHandler._symbols_promise_queue, 'resolve');
 
-        const symbolsLines = ['file:///path/to/file', 'symbol1\t1\t1\t1\t1\t1\tcontainer1', 'symbol2\t2\t2\t2\t2\t2\tcontainer2'];
+        const symbolsLines = [ 'file:///path/to/file', 'symbol1\t1\t1\t1\t1\t1\tcontainer1', 'symbol2\t2\t2\t2\t2\t2\tcontainer2'];
         responseHandler.handleSymbols(symbolsLines);
 
         const symbolsResult = await symbolsPromise;

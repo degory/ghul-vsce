@@ -374,7 +374,7 @@ export class ResponseHandler {
             if (lines.length > 0) {
                 let uri: string = "unknown";
                 
-                for (let i = 1; i < lines.length; i++) {
+                for (let i = 0; i < lines.length; i++) {
                     let line = lines[i];
                     let fields = line.split('\t');
 
@@ -418,23 +418,13 @@ export class ResponseHandler {
     }
 
     handleReferences(lines: string[]) {
-        log("handleReferences: enter");
-
         let {resolve, reject} = this._references_promise_queue.dequeueAlways();
 
-        log("handleReferences: have promise");
-
         try {
-            log("handleReferences: ", lines);
-
             let locations: Location[] = [];
 
             if (lines.length > 0) {
-                log("handleReferences: lines.length > 0");
-
                 for (let i = 0; i < lines.length; i++) {
-                    log("handleReferences: line: ", lines[i]);
-
                     let line = lines[i];
 
                     let location = this.parseLocation(line);
@@ -443,18 +433,12 @@ export class ResponseHandler {
                 }
             }
 
-            log("handleReferences: resolve");
-
             resolve(
                 locations
             );
         } catch(e) {
-            log("handleReferences: reject: ", e);
-
             reject("" + e);
         }
-
-        log("handleReferences: exit");
     }        
 
     expectImplementation(): Promise<Location[]> {
@@ -579,8 +563,6 @@ export class ResponseHandler {
     // }
 
     parseDiagnostics(lines: string[]) {
-        log("parseDiagnostics: ", lines);
-
         let problems = new Map<string, Diagnostic[]>();
 
         for (var i = 0; i < lines.length; i++) {
@@ -628,14 +610,10 @@ export class ResponseHandler {
                 source: 'ghūl'
             }
 
-            log("add problem: uri: ", uri, " problem: ", problem);
-
             let list = problems.get(uri);
 
             list.push(problem);
         }
-
-        log("parseDiagnostics: ", problems);
 
         return problems;
     }
@@ -643,8 +621,6 @@ export class ResponseHandler {
 
     private parseLocation(line: string) {
         let fields = line.split('\t');
-
-        log("parseLocation: ", fields);
 
         let location: Location = {
             uri: fields[0],
@@ -659,8 +635,6 @@ export class ResponseHandler {
                 }
             }
         };
-
-        log("parseLocation: ", location);
 
         return location;
     }
