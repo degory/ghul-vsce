@@ -1,10 +1,11 @@
 import { TextDocumentChangeEvent } from 'vscode-languageserver'
 
-import { log, rejectAllAndThrow } from './server';
+import { log } from './log';
+
+import { rejectAllAndThrow } from './extension-state';
 
 import { Requester } from './requester'
 
-import { ProblemStore } from './problem-store'
 import { clearTimeout } from 'timers';
 import { normalizeFileUri } from './normalize-file-uri';
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -13,7 +14,9 @@ enum QueueState {
     START,
     IDLE,
     WAITING_FOR_MORE_EDITS,
-    SENDING,
+    DOING_PARTIAL_COMPILE,
+    WAITING_FOR_MORE_EDITS_AFTER_PARTIAL_COMPILE,
+    DOING_FULL_COMPILE,
 }
 
 interface Document {
@@ -28,7 +31,7 @@ export class EditQueue {
 
     expected_build_time: number;
 
-    edit_timeout: number;
+    // edit_timeout: number;
     edit_timer: NodeJS.Timer;
 
     build_count: number;
@@ -38,22 +41,24 @@ export class EditQueue {
 
     pending_changes: Map<string,Document>;
     requester: Requester;
-    problems: ProblemStore;
 
     send_start_time: number;
     analyse_start_time: number;
 
     state: QueueState;
+
+    static readonly FULL_BUILD_EDIT_TIMEOUT = 1000;
+    static readonly PARTIAL_BUILD_EDIT_TIMEOUT = 300;
     
     constructor(
-        requester: Requester,
-        problems: ProblemStore
+        requester: Requester
     ) {
+        log("edit queue: constructor");
+
         this.build_count = 0;
         this.fake_version = -1;
 
         this.requester = requester;
-        this.problems = problems;
 
         this.pending_changes = new Map();
 
@@ -61,7 +66,6 @@ export class EditQueue {
     }
 
     reset() {
-        this.problems.clear();
         this.pending_changes.clear();
 
         this.state = QueueState.IDLE;
@@ -72,11 +76,17 @@ export class EditQueue {
     }
 
     sendMultiEdits(documents: { uri: string, source: string}[]) {
-        this.state = QueueState.SENDING;
+        if (this.state == QueueState.START) {
+            // do nothing
+        } else if (this.state == QueueState.IDLE || this.state == QueueState.WAITING_FOR_MORE_EDITS) {
+            this.state = QueueState.DOING_PARTIAL_COMPILE;
+        } else if (this.state == QueueState.WAITING_FOR_MORE_EDITS_AFTER_PARTIAL_COMPILE) { 
+            this.state = QueueState.DOING_PARTIAL_COMPILE;
+        } else {
+            rejectAllAndThrow("send multi edits: unexpected queue state (B): " + QueueState[this.state]);
+        }
 
         this.requester.sendDocuments(documents);
-
-        this.state = QueueState.IDLE;
     }
 
     queueEdit3(uri: string, version: number, text: string) {
@@ -88,7 +98,7 @@ export class EditQueue {
             // Visual Studio Code seems to needlessly resend the same edits occasionally: 
             if (existing.version == version &&
                 existing.text == text) {
-                
+
                 return;
             }
         }
@@ -102,12 +112,21 @@ export class EditQueue {
             });
 
         if (this.state == QueueState.START) {
+            // do nothing
         } else if (this.state == QueueState.IDLE) {
             this.state = QueueState.WAITING_FOR_MORE_EDITS;
             
             this.startEditTimer();
         } else if (this.state == QueueState.WAITING_FOR_MORE_EDITS) {
             this.resetEditTimer();
+        } else if (this.state == QueueState.DOING_PARTIAL_COMPILE) {
+            // do nothing, wait for partial compiler to complete
+        } else if (this.state == QueueState.WAITING_FOR_MORE_EDITS_AFTER_PARTIAL_COMPILE) {
+            this.state = QueueState.WAITING_FOR_MORE_EDITS;
+            
+            this.resetEditTimer();
+        } else if (this.state == QueueState.DOING_FULL_COMPILE) {
+            // do nothing, wait for full compiler to complete
         } else {
             rejectAllAndThrow("queue edit: unexpected queue state (A): " + QueueState[this.state]);
         }
@@ -115,45 +134,87 @@ export class EditQueue {
 
     onEditTimeout() {
         if (this.state == QueueState.WAITING_FOR_MORE_EDITS) {
-            this.sendQueued();
+            this.sendQueued("edit timeout when waiting for more edits");
+        } else if(this.state == QueueState.WAITING_FOR_MORE_EDITS_AFTER_PARTIAL_COMPILE) {
+            if (this.wouldSendAny()) {
+                this.sendQueued("edit timeout when waiting for more edits after partial compile");
+            } else {
+                this.requestFullCompile();
+            }
         } else {
             log("timer expired but not waiting for edits: " + QueueState[this.state] + " (" + this.state + ")");
         }
     }
 
-    resetEditTimer() {
-        clearTimeout(this.edit_timer);
-        this.startEditTimer();
+    onDiagnosticsReceived() {
+        if (this.state == QueueState.START) {
+            this.state = QueueState.IDLE;
+        }
     }
 
-    startEditTimer() {
-        this.edit_timer = setTimeout(() => { this.onEditTimeout() }, 100);
+    onPartialCompileDone() {
+        if (this.state == QueueState.DOING_PARTIAL_COMPILE) {
+            this.state = QueueState.WAITING_FOR_MORE_EDITS_AFTER_PARTIAL_COMPILE;
+
+            this.startEditTimer(EditQueue.FULL_BUILD_EDIT_TIMEOUT);
+        } else {
+            log("edit queue: on partial compile done: unexpected queue state (C): " + QueueState[this.state] + " (" + this.state + ")");
+
+            // rejectAllAndThrow("partial compile done: unexpected queue state (C): " + QueueState[this.state]);
+        }
+    }
+
+    onFullCompileDone() {
+        if (this.state == QueueState.DOING_FULL_COMPILE) {
+            this.state = QueueState.IDLE;
+        } else {
+            rejectAllAndThrow("full compile done: unexpected queue state (D): " + QueueState[this.state]);
+        }
+    }
+
+    private requestFullCompile() {
+        this.requester.sendFullCompileRequest();
+
+        this.state = QueueState.DOING_FULL_COMPILE;
+    }
+
+    resetEditTimer(timeout: number = EditQueue.FULL_BUILD_EDIT_TIMEOUT) {
+        clearTimeout(this.edit_timer);
+        this.startEditTimer(timeout);
+    }
+
+    startEditTimer(timeout: number = EditQueue.PARTIAL_BUILD_EDIT_TIMEOUT) {
+        this.edit_timer = setTimeout(() => { this.onEditTimeout() }, timeout);
     }
 
     start(documents: { uri: string, source: string}[]) {
         this.sendMultiEdits(documents);
     }
 
-    sendQueued() {
-        if (this.state == QueueState.WAITING_FOR_MORE_EDITS) {
+    wouldSendAny() {
+        return [...this.pending_changes.values()].some(change => change.is_pending);
+    }
+
+    sendQueued(_why: string = "send queued") {
+        if (this.state == QueueState.WAITING_FOR_MORE_EDITS || this.state == QueueState.WAITING_FOR_MORE_EDITS_AFTER_PARTIAL_COMPILE) {
             clearTimeout(this.edit_timer);
+        } else if (this.state == QueueState.DOING_PARTIAL_COMPILE || this.state == QueueState.DOING_FULL_COMPILE) {
+            this.state = QueueState.IDLE;
         } else if (this.state != QueueState.IDLE) {
             rejectAllAndThrow("send queued: unexpected queue state (E): " + QueueState[this.state]);
         }
 
         this.send_start_time = Date.now();
         
-        this.problems.clear_all_analysis_problems();
+        let documents = <{ uri: string, source: string}[]>[];
 
-        let documents = <{ uri: string, source: string}[]>[]
-
-        for (let change of this.pending_changes.values()) {
+        for (let change of this.pending_changes.values()) {            
             if (change.is_pending) {
-                this.problems.clear_parse_problems(change.uri);
-
                 documents.push({uri: change.uri, source: change.text});
 
                 change.is_pending = false;
+            } else {
+                // ignore non-pending changes
             }
         }
 

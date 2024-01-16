@@ -1,6 +1,7 @@
 import { ResponseHandler } from './response-handler';
 
-import { log, rejectAllPendingPromises } from './server';
+import { log } from './log';
+import { rejectAllPendingPromises } from './extension-state';
 
 export class ResponseParser {
     buffer: string;
@@ -9,6 +10,8 @@ export class ResponseParser {
     constructor(
         response_handler: ResponseHandler
     ) {
+        log("response parser constructor...");
+
         this.buffer = '';
         this.response_handler = response_handler;
     }
@@ -56,16 +59,22 @@ export class ResponseParser {
             this.response_handler.handleListen();
             break;
 
-        case "DIAG PARSE":
-            // log("response parser: DIAG PARSE received");
-            this.response_handler.handleDiagnostics('parse', lines);
+        // new style diagnostics:
+        case "DIAGNOSTICS":
+            // this.response_handler.hand
+            this.response_handler.handleDiagnostics(lines);
             break;
 
-        case "DIAG ANALYSIS":
-            // log("response parser: DIAG ANALYSIS received");
-            this.response_handler.handleDiagnostics('analysis', lines);
+        case "PARTIAL DONE":
+            // log("response parser: PARTIAL DONE received");
+            this.response_handler.handlePartialCompileDone();
             break;
 
+        case "FULL DONE":
+            // log("response parser: FULL DONE received");
+            this.response_handler.handleFullCompileDone();
+            break;
+           
         case "HOVER":
             // log("response parser: HOVER received");
             this.response_handler.handleHover(lines);
