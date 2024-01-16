@@ -1,6 +1,6 @@
 import { Diagnostic } from 'vscode-languageserver';
 
-import { log } from './server';
+import { log } from './log';
 
 interface DiagnosticList {
 	uri: string;
@@ -12,6 +12,8 @@ class ProblemList {
 	analysis: Diagnostic[];
 
 	constructor() {
+		log("problem list: constructor");
+
 		this.parse = [];
 		this.analysis = [];
 	}
@@ -34,7 +36,6 @@ class ProblemList {
 	clear_analysis_problems() {
 		this.analysis = [];
 	}
-
 
 	all(): Diagnostic[] {
 		return this.parse.concat(this.analysis);
