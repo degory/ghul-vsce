@@ -1,0 +1,176 @@
+# CI/CD pipeline. 
+
+name: CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number'
+        required: true
+
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  CI: true
+
+jobs:
+  version:
+    name: Create a version number
+    runs-on: ubuntu-20.04
+    timeout-minutes: 1
+    outputs:
+      tag: ${{ steps.create_version.outputs.tag }}
+      package: ${{ steps.create_version.outputs.package }}
+      
+    permissions:
+      contents: 'write'
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: '0'    
+
+    - name: Create version
+      id: create_version
+      uses: degory/create-version@v0.0.2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+      env:
+        PRERELEASE: ${{ github.event_name == 'pull_request' }}
+        
+  unit_tests:
+    name: Run unit tests
+    needs: [version]
+    runs-on: ubuntu-20.04
+
+    timeout-minutes: 5
+
+    steps:
+    - name: Setup NodeJS
+      uses: actions/setup-node@v2
+      with:
+        node-version: '16.11.1'
+
+    - uses: actions/checkout@v3
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Run tests
+      run: npm test
+
+  publish_beta_package:
+    needs: [version, unit_tests]
+    name: Publish beta package
+
+    timeout-minutes: 5
+
+    runs-on: ubuntu-20.04
+
+    if: ${{ github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' }}
+    steps:
+    - name: Setup NodeJS
+      uses: actions/setup-node@v2
+      with:
+        node-version: '16.11.1'
+
+    - uses: actions/checkout@v3
+
+    - name: Set version number in all package.json files
+      run: |
+        npm version --no-git-tag-version ${{ needs.version.outputs.package }}
+        pushd server ; npm version --no-git-tag-version ${{ needs.version.outputs.package }} ; popd
+        pushd client ; npm version --no-git-tag-version ${{ needs.version.outputs.package }} ; popd 
+
+    - name: Build VSCE package
+      run: npm run build:vsce
+
+    - name: Upload beta package to GitHub
+      uses: actions/upload-artifact@v2
+      if: ${{ always() }}
+      with:
+        name: vsce-package
+        path: ghul-${{ needs.version.outputs.package }}.vsix
+
+  publish_release_package:
+    needs: [version, unit_tests]
+    name: Publish release package
+
+    timeout-minutes: 5
+
+    runs-on: ubuntu-20.04
+    container:
+      image: node:16.11.1
+
+    if: ${{ github.event_name != 'pull_request' }}
+    steps:
+    - name: Setup NodeJS
+      uses: actions/setup-node@v2
+      with:
+        node-version: '16.11.1'
+
+    - uses: actions/checkout@v3
+
+    - name: Set version number in all package.json files
+      run: |
+        npm version --no-git-tag-version ${{ needs.version.outputs.package }}
+        pushd server ; npm version --no-git-tag-version ${{ needs.version.outputs.package }} ; popd
+        pushd client ; npm version --no-git-tag-version ${{ needs.version.outputs.package }} ; popd 
+
+    - name: Build VSCE package
+      run: npm run build:vsce
+
+    - name: Upload release package to GitHub
+      uses: actions/upload-artifact@v2
+      if: ${{ always() }}
+      with:
+        name: vsce-package
+        path: ghul-${{ needs.version.outputs.package }}.vsix
+
+    - name: VSCE publish
+      run: npx vsce publish -p ${{ secrets.VSCE_TOKEN }}
+      env:
+        VSCE_TOKEN: ${{ secrets.VSCE_TOKEN }}
+
+  create_release:
+    needs: [version, unit_tests]
+    name: Create release
+    runs-on: ubuntu-20.04
+
+    timeout-minutes: 5
+    if: ${{ github.event_name != 'pull_request' || github.repository != 'degory/ghul' }}
+
+    steps:
+    - name: Setup NodeJS
+      uses: actions/setup-node@v2
+      with:
+        node-version: '16.11.1'
+
+    - uses: actions/checkout@v3
+
+    - name: Create changelog
+      run: git log -1 --format="%s%n%n%b%n%n" >changelog.txt
+
+    - name: Create a Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ needs.version.outputs.tag }}
+        release_name: ${{ needs.version.outputs.tag }}
+        body_path: changelog.txt
+        draft: false
+
+    - name: Upload VSCE VSIX asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ghul-${{ needs.version.outputs.package }}.vsix
+        asset_name: ghul-${{ needs.version.outputs.package }}.vsix
+        asset_content_type: application/octet-stream

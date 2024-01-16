@@ -2,7 +2,7 @@
 	"name": "ghul",
 	"displayName": "ghūl",
 	"description": "ghūl language support",
-	"version": "0.5.8",
+	"version": "0.6.1",
 	"publisher": "degory",
 	"license": "GPL-3.0",
 	"repository": {
@@ -99,7 +99,10 @@
 		"genversion": "genversion ./client/src/version.js && genversion ./server/src/version.js",
 		"watch": "tsc -b -w",
 		"clean": "rimraf client/out && rimraf server/out",
-		"postinstall": "cd client && npm install && cd ../server && npm install && cd .."
+		"postinstall": "cd client && npm install && cd ../server && npm install && cd ..",
+		"test": "npm run test:client && npm run test:server",
+		"test:client": "cd client && npm test",
+		"test:server": "cd server && npm test"
 	},
 	"devDependencies": {
 		"@types/mocha": "^2.2.42",
