@@ -88,10 +88,6 @@ jobs:
         name: vsce-package
         path: ghul-${{ needs.version.outputs.package }}.vsix
 
-      run: dotnet nuget push ./nupkg/ghul.compiler.${{ needs.version.outputs.package }}.nupkg -k ${GITHUB_TOKEN} -s https://nuget.pkg.github.com/degory/index.json --skip-duplicate --no-symbols
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   publish_release_package:
     needs: [version, unit_tests]
     name: Publish release package
