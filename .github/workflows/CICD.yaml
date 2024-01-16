@@ -68,7 +68,7 @@ jobs:
     - name: Run tests
       run: npm test
 
-  publish_beta_package:
+  upload_beta_package:
     needs: [version, unit_tests]
     name: Publish beta package
 
@@ -112,7 +112,8 @@ jobs:
 
     runs-on: ubuntu-20.04
 
-    if: ${{ github.event_name != 'pull_request' }}
+    # if push and branch is main
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     steps:
     - name: Setup NodeJS
       uses: actions/setup-node@v2
@@ -151,7 +152,7 @@ jobs:
     runs-on: ubuntu-20.04
 
     timeout-minutes: 5
-    if: ${{ github.event_name != 'pull_request' || github.repository != 'degory/ghul' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
     steps:
     - name: Setup NodeJS
