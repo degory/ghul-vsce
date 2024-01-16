@@ -145,7 +145,7 @@ jobs:
       run: npx vsce publish -p ${{ secrets.VSCE_PAT }}
 
   create_release:
-    needs: [version, unit_tests]
+    needs: [version, unit_tests, publish_release_package]
     name: Create release
     runs-on: ubuntu-20.04
 
