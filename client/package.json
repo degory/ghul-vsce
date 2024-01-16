@@ -95,7 +95,8 @@
     "webpack-dev": "webpack --mode development --watch",
     "test-compile": "tsc -p ./",
     "compile": "tsc -p ./",
-    "watch": "tsc -w -p ./"
+    "watch": "tsc -w -p ./",
+    "test": "echo \"No tests yet...\""
   },
   "dependencies": {
     "@types/vscode": "^1.63.1",
