@@ -1,5 +1,4 @@
 import { readFileSync } from "fs";
-import * as minimatch from "minimatch";
 import { DidOpenTextDocumentParams, DidChangeWatchedFilesParams, FileChangeType, TextDocumentChangeEvent } from "vscode-languageserver";
 import { URI } from "vscode-uri";
 import { TextDocument } from "vscode-languageserver-textdocument";
@@ -8,7 +7,9 @@ import { debounce } from "throttle-debounce";
 import { normalizeFileUri } from "./normalize-file-uri";
 import { EditQueue } from "./edit-queue";
 
-import { reinitialize } from './server'
+import { reinitialize } from './extension-state'
+import { log } from "console";
+import { minimatch } from 'minimatch';
 
 const debounced_reinitialize = debounce(5000, () => { reinitialize(); } );
 
@@ -22,6 +23,8 @@ export class DocumentChangeTracker {
         edit_queue: EditQueue,
         globs: string[]
     ) {
+        log("document change tracker: constructor");
+
         this.edit_queue = edit_queue;
         this.globs = globs;
         this.open_documents = new Set<string>();
