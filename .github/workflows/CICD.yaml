@@ -59,6 +59,12 @@ jobs:
     - name: Install dependencies
       run: npm install
 
+    - name: Set version number in all package.json files
+      run: |
+        npm version --no-git-tag-version ${{ needs.version.outputs.package }}
+        pushd server ; npm version --no-git-tag-version ${{ needs.version.outputs.package }} ; popd
+        pushd client ; npm version --no-git-tag-version ${{ needs.version.outputs.package }} ; popd
+
     - name: Run tests
       run: npm test
 
@@ -83,10 +89,10 @@ jobs:
       run: |
         npm version --no-git-tag-version ${{ needs.version.outputs.package }}
         pushd server ; npm version --no-git-tag-version ${{ needs.version.outputs.package }} ; popd
-        pushd client ; npm version --no-git-tag-version ${{ needs.version.outputs.package }} ; popd 
+        pushd client ; npm version --no-git-tag-version ${{ needs.version.outputs.package }} ; popd
 
     - name: Build VSCE package
-      run: npm run build:vsce
+      run: npx vsce package
 
     - name: Upload beta package to GitHub
       uses: actions/upload-artifact@v2
@@ -121,7 +127,7 @@ jobs:
         pushd client ; npm version --no-git-tag-version ${{ needs.version.outputs.package }} ; popd 
 
     - name: Build VSCE package
-      run: npm run build:vsce
+      run: npx vsce package
 
     - name: Upload release package to GitHub
       uses: actions/upload-artifact@v2
