@@ -80,7 +80,10 @@ jobs:
     - uses: actions/checkout@v3
 
     - name: Set version number in all package.json files
-      run: npm run set-version -- --version ${{ needs.version.outputs.package }}
+      run: |
+        npm version --no-git-tag-version ${{ needs.version.outputs.package }}
+        pushd server ; npm version --no-git-tag-version ${{ needs.version.outputs.package }} ; popd
+        pushd client ; npm version --no-git-tag-version ${{ needs.version.outputs.package }} ; popd 
 
     - name: Build VSCE package
       run: npm run build:vsce
@@ -112,7 +115,10 @@ jobs:
     - uses: actions/checkout@v3
 
     - name: Set version number in all package.json files
-      run: npm run set-version -- --version ${{ needs.version.outputs.package }}
+      run: |
+        npm version --no-git-tag-version ${{ needs.version.outputs.package }}
+        pushd server ; npm version --no-git-tag-version ${{ needs.version.outputs.package }} ; popd
+        pushd client ; npm version --no-git-tag-version ${{ needs.version.outputs.package }} ; popd 
 
     - name: Build VSCE package
       run: npm run build:vsce
