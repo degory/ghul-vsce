@@ -61,9 +61,9 @@ jobs:
 
     - name: Set version number in all package.json files
       run: |
-        npm version --no-git-tag-version ${{ needs.version.outputs.package }}
-        pushd server ; npm version --no-git-tag-version ${{ needs.version.outputs.package }} ; popd
-        pushd client ; npm version --no-git-tag-version ${{ needs.version.outputs.package }} ; popd
+        npm version --no-git-tag-version --allow-same-version ${{ needs.version.outputs.package }}
+        pushd server ; npm version --no-git-tag-version --allow-same-version ${{ needs.version.outputs.package }} ; popd
+        pushd client ; npm version --no-git-tag-version --allow-same-version ${{ needs.version.outputs.package }} ; popd
 
     - name: Run tests
       run: npm test
@@ -90,9 +90,9 @@ jobs:
 
     - name: Set version number in all package.json files
       run: |
-        npm version --no-git-tag-version ${{ needs.version.outputs.package }}
-        pushd server ; npm version --no-git-tag-version ${{ needs.version.outputs.package }} ; popd
-        pushd client ; npm version --no-git-tag-version ${{ needs.version.outputs.package }} ; popd
+        npm version --no-git-tag-version --allow-same-version ${{ needs.version.outputs.package }}
+        pushd server ; npm version --no-git-tag-version --allow-same-version ${{ needs.version.outputs.package }} ; popd
+        pushd client ; npm version --no-git-tag-version --allow-same-version ${{ needs.version.outputs.package }} ; popd
 
     - name: Build VSCE package
       run: npx vsce package
@@ -127,9 +127,9 @@ jobs:
 
     - name: Set version number in all package.json files
       run: |
-        npm version --no-git-tag-version ${{ needs.version.outputs.package }}
-        pushd server ; npm version --no-git-tag-version ${{ needs.version.outputs.package }} ; popd
-        pushd client ; npm version --no-git-tag-version ${{ needs.version.outputs.package }} ; popd 
+        npm version --no-git-tag-version --allow-same-version ${{ needs.version.outputs.package }}
+        pushd server ; npm version --no-git-tag-version --allow-same-version ${{ needs.version.outputs.package }} ; popd
+        pushd client ; npm version --no-git-tag-version --allow-same-version ${{ needs.version.outputs.package }} ; popd 
 
     - name: Build VSCE package
       run: npx vsce package
