@@ -3,7 +3,8 @@ import {
 	ChildProcess
 } from 'child_process';
 
-import { log, resolveAllPendingPromises } from './server';
+import { log } from './log';
+import { resolveAllPendingPromises } from './extension-state';
 
 import { GhulConfig } from './ghul-config';
 
@@ -39,6 +40,8 @@ export class ServerManager {
 		edit_queue: EditQueue,
 		response_parser: ResponseParser
 	) {
+		log("server manager constructor...")
+
 		this.event_emitter = event_emitter;
 		this.edit_queue = edit_queue;
 		this.response_parser = response_parser;

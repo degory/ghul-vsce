@@ -1,0 +1,27 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "module": "CommonJS",
+        "outDir": "./dist",
+        "noEmit": false,
+        "isolatedModules": true,
+        "esModuleInterop": true
+    },
+    "include": [
+        "src/**/*",
+        "tests/**/*"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist"
+    ],
+    "plugins": [
+        {
+            "transform": "ts-auto-mock/transformer",
+            "cacheBetweenTests": false           
+        }
+    ],
+    "lib": [
+        "es2020"
+    ],
+}
