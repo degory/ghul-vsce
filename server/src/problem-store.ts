@@ -12,8 +12,6 @@ class ProblemList {
 	analysis: Diagnostic[];
 
 	constructor() {
-		log("problem list: constructor");
-
 		this.parse = [];
 		this.analysis = [];
 	}
@@ -66,7 +64,7 @@ export class ProblemStore {
 		} else if (kind == 'analysis') {
 			this.add_analysis_problem(uri, diagnostic);
 		} else {
-			log("unknown diagnostic: " + kind);
+			log("unknown diagnostic kind: " + kind);
 		}
 	}
 

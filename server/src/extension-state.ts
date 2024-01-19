@@ -28,6 +28,7 @@ import { ServerManager } from './server-manager';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import { log } from './log';
+import { DocumentChangeTracker } from './document-change-tracker';
 
 export class ExtensionState {
     private static instance: ExtensionState;
@@ -48,6 +49,8 @@ export class ExtensionState {
     public server_manager: ServerManager;
     
     public documents: TextDocuments<TextDocument>;
+
+    public document_change_tracker: DocumentChangeTracker;
     
     public connection_event_handler: ConnectionEventHandler;
 
@@ -71,12 +74,9 @@ export class ExtensionState {
     }
 
     private constructor() {
-        log("ExtensionState constructor...")
     }
 
     public connect() {
-        log("ExtensionState connect...")
-
         this.server_event_emitter = new ServerEventEmitter();
         this.config_event_emitter = new ConfigEventEmitter();
         
@@ -123,24 +123,15 @@ export class ExtensionState {
             this.requester,
             this.edit_queue
         );
-        
 
         this.documents.listen(this.connection);
         this.connection.listen();
-
-        log("ExtensionState listening...");        
     }
 
     public static getInstance(): ExtensionState {
-        log("ExtensionState getInstance...");
-
         if (!ExtensionState.instance) {
-            log("ExtensionState getInstance: creating new instance...");
-
             ExtensionState.instance = new ExtensionState();
         }
-
-        log("ExtensionState getInstance: returning instance...");
 
         return ExtensionState.instance;
     }
