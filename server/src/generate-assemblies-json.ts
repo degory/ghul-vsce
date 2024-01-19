@@ -1,14 +1,14 @@
 import { execSync } from 'child_process';
-import { log } from 'console';
 import { readdirSync } from 'fs';
+import { log } from './log';
 
 export function generateAssembliesJson(workspace: string) {
-    log("generateAssembliesJson");
-
     let files = readdirSync(workspace);
 
     if (files.find(file => file.endsWith(".ghulproj"))) {
-        console.log("generate .assemblies.json...");
-        console.log(execSync("dotnet build -verbosity:minimal -t:GenerateAssembliesJson").toString());
+        log("generate .assemblies.json...");
+        log(execSync("dotnet build -verbosity:minimal -t:GenerateAssembliesJson").toString());
+    } else {
+        log("no .guleproj so will not attempt to generate .assemblies.json");
     }
 }

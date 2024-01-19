@@ -53,8 +53,6 @@ export class EditQueue {
     constructor(
         requester: Requester
     ) {
-        log("edit queue: constructor");
-
         this.build_count = 0;
         this.fake_version = -1;
 

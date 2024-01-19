@@ -10,8 +10,6 @@ export class ResponseParser {
     constructor(
         response_handler: ResponseHandler
     ) {
-        log("response parser constructor...");
-
         this.buffer = '';
         this.response_handler = response_handler;
     }
@@ -55,68 +53,55 @@ export class ResponseParser {
 
         switch (command) {
         case "LISTEN":
-            // log("response parser: LISTEN received: compiler is listening");
             this.response_handler.handleListen();
             break;
 
         // new style diagnostics:
         case "DIAGNOSTICS":
-            // this.response_handler.hand
             this.response_handler.handleDiagnostics(lines);
             break;
 
         case "PARTIAL DONE":
-            // log("response parser: PARTIAL DONE received");
             this.response_handler.handlePartialCompileDone();
             break;
 
         case "FULL DONE":
-            // log("response parser: FULL DONE received");
             this.response_handler.handleFullCompileDone();
             break;
            
         case "HOVER":
-            // log("response parser: HOVER received");
             this.response_handler.handleHover(lines);
             break;
 
         case "DEFINITION":
-            // log("response parser: DEFINITION received");
             this.response_handler.handleDefinition(lines);
             break;
 
         case "DECLARATION":
-            // log("response parser: DECLARATION received");
             this.response_handler.handleDeclaration(lines);
             break;
     
         case "COMPLETION":
-            // log("response parser: COMPLETION received");
             this.response_handler.handleCompletion(lines);
             break;            
 
         case "SIGNATURE":
-            // log("response parser: SIGNATURE received");
             this.response_handler.handleSignature(lines);
             break;            
 
         case "SYMBOLS":
-            // log("response parser: SYMBOLS received");
             this.response_handler.handleSymbols(lines);
             break;            
             
         case "EXCEPT":
-            // log("response parser: EXCEPT received: " + JSON.stringify(lines));
             this.response_handler.handleExcept(lines);
             break;
 
         case "REFERENCES":
-            // log("response parser: REFERENCES received");
             this.response_handler.handleReferences(lines);
             break;
 
         case "IMPLEMENTATION":
-            // log("response parser: IMPLEMENTATION received");
             this.response_handler.handleImplementation(lines);
             break;
 
@@ -125,12 +110,10 @@ export class ResponseParser {
             break;
 
         case "RESTART":
-            // log("response parser: RESTART received");
             this.response_handler.handleRestart();
             break;
 
         default:
-            // log("response parser: unrecognized command received: " + command);
             this.response_handler.handleUnexpected();
         }
     }

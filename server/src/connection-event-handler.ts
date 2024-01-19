@@ -22,7 +22,8 @@ import {
     WorkspaceEdit,
     DidOpenTextDocumentParams,
     TextDocumentSyncKind,
-    TextDocumentChangeEvent
+    TextDocumentChangeEvent,
+    DidCloseTextDocumentParams
 } from 'vscode-languageserver';
 
 import {
@@ -63,8 +64,6 @@ export class ConnectionEventHandler {
         requester: Requester,
         edit_queue: EditQueue
     ) {
-        log("connection event handler: constructor");
-
         this.connection = connection;
         this.server_manager = server_manager;
         this.documents = documents;
@@ -83,21 +82,6 @@ export class ConnectionEventHandler {
 
         connection.onDidChangeConfiguration((change: DidChangeConfigurationParams) =>
             this.onDidChangeConfiguration(change));
-
-        connection.onDidOpenTextDocument((params: DidOpenTextDocumentParams) =>
-            this.document_change_tracker?.onDidOpenTextDocument(params));
-
-        documents.onDidOpen((params: TextDocumentChangeEvent<TextDocument>) =>
-            this.document_change_tracker?.onDidOpen(params));
-
-        connection.onDidCloseTextDocument((params: DidOpenTextDocumentParams) =>
-            this.document_change_tracker?.onDidCloseTextDocument(params));
-
-        documents.onDidClose((params: TextDocumentChangeEvent<TextDocument>) =>
-            this.document_change_tracker?.onDidClose(params));
-
-        connection.onDidChangeWatchedFiles((change: DidChangeWatchedFilesParams) =>
-            this.document_change_tracker?.onDidChangeWatchedFiles(change));
 
         connection.onCompletion(
             (textDocumentPosition: CompletionParams): Promise<CompletionItem[]> =>
@@ -141,8 +125,6 @@ export class ConnectionEventHandler {
     }
 
     initialize() {
-        log("conection event handler: initialize");
-
         restoreDotNetTools(this.workspace_root)
         generateAssembliesJson(this.workspace_root);
 
@@ -155,6 +137,21 @@ export class ConnectionEventHandler {
             );
 
         this.config_event_emitter.configAvailable(this.workspace_root, this.config);
+
+        this.connection.onDidOpenTextDocument((params: DidOpenTextDocumentParams) =>
+            this.document_change_tracker?.onDidOpenTextDocument(params));
+
+        this.documents.onDidOpen((params: TextDocumentChangeEvent<TextDocument>) =>
+            this.document_change_tracker?.onDidOpen(params));
+
+        this.connection.onDidCloseTextDocument((params: DidCloseTextDocumentParams) =>
+            this.document_change_tracker?.onDidCloseTextDocument(params));
+
+        this.documents.onDidClose((params: TextDocumentChangeEvent<TextDocument>) =>
+            this.document_change_tracker?.onDidClose(params));
+
+        this.connection.onDidChangeWatchedFiles((change: DidChangeWatchedFilesParams) =>
+            this.document_change_tracker?.onDidChangeWatchedFiles(change));
     }
 
     onInitialize(params: any): InitializeResult {
@@ -197,6 +194,9 @@ export class ConnectionEventHandler {
     }
 
     onDidChangeConfiguration(_change: DidChangeConfigurationParams) {
+        log("ghūl language extension: configuration changed");
+
+        // TODO: handle configuration change
     }
 
     onCompletion(textDocumentPosition: CompletionParams): Promise<CompletionItem[]> {

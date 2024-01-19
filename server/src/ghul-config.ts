@@ -1,4 +1,3 @@
-import { log } from 'console';
 import { readFileSync, existsSync } from 'fs';
 
 import { glob } from 'glob';
@@ -53,8 +52,6 @@ interface GhulProjectXml {
 }
 
 export function getGhulConfig(workspace: string): GhulConfig {
-	log("getGhulConfig: " + workspace);
-	
 	let config: GhulConfigJson;
 
 	if (existsSync(workspace + "/ghul.json")) {

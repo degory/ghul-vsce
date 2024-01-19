@@ -1,5 +1,5 @@
 import { readFileSync } from "fs";
-import { DidOpenTextDocumentParams, DidChangeWatchedFilesParams, FileChangeType, TextDocumentChangeEvent } from "vscode-languageserver";
+import { DidOpenTextDocumentParams, DidChangeWatchedFilesParams, FileChangeType, TextDocumentChangeEvent, DidCloseTextDocumentParams } from "vscode-languageserver";
 import { URI } from "vscode-uri";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { debounce } from "throttle-debounce";
@@ -13,6 +13,11 @@ import { minimatch } from 'minimatch';
 
 const debounced_reinitialize = debounce(5000, () => { reinitialize(); } );
 
+
+// Right now this doesn't seem to do anything useful - I don't really
+// care if files are opened and closed, I want to know if they're deleted
+// or renamed, but I don't seem to get passed that information.
+
 export class DocumentChangeTracker {
     edit_queue: EditQueue;
     globs: string[];
@@ -23,8 +28,6 @@ export class DocumentChangeTracker {
         edit_queue: EditQueue,
         globs: string[]
     ) {
-        log("document change tracker: constructor");
-
         this.edit_queue = edit_queue;
         this.globs = globs;
         this.open_documents = new Set<string>();
@@ -35,6 +38,9 @@ export class DocumentChangeTracker {
     }
 
     onDidOpen(event: TextDocumentChangeEvent<TextDocument>) {
+        // TODO don't think this is ever called - can probably be removed
+
+        log("XXXXXX: >>>> open document: " + event.document.uri + " language ID: " + event.document.languageId);
         if (!this.tryGetValidSourceFile(event.document.uri)) {
             return;
         }
@@ -47,29 +53,29 @@ export class DocumentChangeTracker {
     }
 
     onDidClose(event: TextDocumentChangeEvent<TextDocument>) {
+        // TODO don't think this is ever called - can probably be removed
+
+        log("XXXXXX: <<<< close document: " + event.document.uri);
         let uri = normalizeFileUri(event.document.uri);
 
         this.open_documents.delete(uri);
     }
 
     onDidOpenTextDocument(params: DidOpenTextDocumentParams) {
-        console.log("QQQQQQ: >>>> open document: " + params.textDocument.uri + " language ID: " + params.textDocument.languageId);
-
         if (!this.tryGetValidSourceFile(params.textDocument.uri)) {
+            log("open text document: not a valid project source file: " + params.textDocument.uri);
             return;
         }
 
         let uri = normalizeFileUri(params.textDocument.uri);
 
         this.edit_queue.queueEdit3(uri, null, params.textDocument.text);
-
         this.open_documents.add(uri);
     }
 
-    onDidCloseTextDocument(params: DidOpenTextDocumentParams) {
-        console.log("QQQQQQ: <<<< close document: " + params.textDocument.uri + " language ID: " + params.textDocument.languageId);
-
+    onDidCloseTextDocument(params: DidCloseTextDocumentParams) {
         if (!this.tryGetValidSourceFile(params.textDocument.uri)) {
+            log("close text document: not a valid project source file: " + params.textDocument.uri);
             return;
         }
 
@@ -89,7 +95,7 @@ export class DocumentChangeTracker {
                 c.uri.endsWith("Directory.Build.props") ||
                 c.uri.endsWith("dotnet-tools.json")
             ) {
-                console.log("project file changed: " + c.uri);
+                log("project file changed: " + c.uri);
 
                 debounced_reinitialize();
 
