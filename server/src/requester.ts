@@ -30,7 +30,6 @@ export class Requester {
         server_event_emitter: ServerEventEmitter,
         response_handler: ResponseHandler
     ) {
-        log("requester constructor...");
         this.response_handler = response_handler;
 
         this.analysed = true;

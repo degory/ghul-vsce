@@ -1,4 +1,3 @@
-import { log } from 'console';
 import { readFileSync, existsSync } from 'fs';
 
 import { glob } from 'glob';
@@ -6,6 +5,7 @@ import { glob } from 'glob';
 import { parseString as parseXmlString } from 'xml2js';
 
 export interface GhulConfig {
+	block: boolean,
 	compiler: string,
 	source: string[],
 	arguments: string[],
@@ -53,8 +53,6 @@ interface GhulProjectXml {
 }
 
 export function getGhulConfig(workspace: string): GhulConfig {
-	log("getGhulConfig: " + workspace);
-	
 	let config: GhulConfigJson;
 
 	if (existsSync(workspace + "/ghul.json")) {
@@ -62,6 +60,12 @@ export function getGhulConfig(workspace: string): GhulConfig {
 		config = <GhulConfigJson>JSON.parse(buffer);
 	} else {
 		config = {}
+	}
+
+	let block = false;
+
+	if (existsSync(workspace + "/.block-compiler")) {
+		block = true;
 	}
 
 	let args = config.other_flags ?? [];
@@ -176,6 +180,7 @@ export function getGhulConfig(workspace: string): GhulConfig {
 	let source = [...(config.source ?? ["./**/*.ghul"])];
 
     return {
+		block,
 		compiler: config.compiler ?? "ghul-compiler",
 		source,
 		arguments: args,
