@@ -517,50 +517,20 @@ export class ResponseHandler {
                 { changes }
             );
         } catch(e) {
-            console.log("have caught: " + e);
+            log("have caught: " + e);
 
             reject("" + e);
         }
     }    
 
     handleRestart() {
-        console.log("compiler requested restart");
+        log("compiler requested restart");
         this.edit_queue.reset();
     }
     
     handleUnexpected() {
         this.server_manager.abort();
     }
-
-    // addDiagnostics(kind: string, lines: string[]) {
-    //     log("addDiagnostics: ", kind, lines);
-
-    //     for (var i = 0; i < lines.length; i++) {
-    //         let line = lines[i];
-
-    //         let fields = line.split('\t');
-
-    //         if (fields.length != 7 || fields[0] == 'internal' || fields[0] == 'reflected') {
-    //             continue;
-    //         }
-
-    //         let uri = normalizeFileUri(fields[0]);
-
-    //         let problem = {
-    //             severity: SeverityMapper.getSeverity(fields[5], kind),
-    //             range: {
-    //                 start: { line: Number(fields[1]) - 1, character: Number(fields[2]) - 1 },
-    //                 end: { line: Number(fields[3]) - 1, character: Number(fields[4]) - 1 }
-    //             },
-    //             message: fields[6],
-    //             source: 'ghūl'
-    //         }
-
-    //         this.problems.add(kind, uri, problem);
-    //     }
-
-    //     log("addDiagnostics: ", this.problems);
-    // }
 
     parseDiagnostics(lines: string[]) {
         let problems = new Map<string, Diagnostic[]>();
@@ -571,18 +541,14 @@ export class ResponseHandler {
             let fields = line.split('\t');
 
             if (fields.length == 0) {
-                // log("PD empty diagnostics line");
                 continue;
             }
 
             let uri = fields[0];
 
             if (uri == "internal" || uri == "reflected") {
-                // log("PD ignore " + uri);
                 continue;
             }
-
-            // log("PD will try to normalize: " + uri);
 
             if (!uri.startsWith("file://")) {
                 uri = "file://" + uri;
@@ -591,12 +557,10 @@ export class ResponseHandler {
             uri = normalizeFileUri(uri);
 
             if (!problems.has(uri)) {
-                // log("PD add new problems uri: " + uri);
                 problems.set(uri, []);
             }
 
             if (fields.length != 7) {
-                // log("PD ignore uri only diagnostic: " + uri);
                 continue;
             }
 

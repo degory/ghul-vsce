@@ -1,12 +1,12 @@
 import { execSync } from 'child_process';
-import { log } from 'console';
+import { log } from './log';
 import { existsSync } from 'fs';
 
 export function restoreDotNetTools(workspace: string) {
-    log("restore .NET tools");
-
     if (existsSync(workspace + '/.config/dotnet-tools.json')) {
-        console.log("restore .NET tools...");
-        console.log(execSync("dotnet tool restore").toString());
+        log("restore .NET tools...");
+        log(execSync("dotnet tool restore").toString());
+    } else {
+        log("no .config/dotnet-tools.json found: won't attempt to restore .NET tools");
     }
 }

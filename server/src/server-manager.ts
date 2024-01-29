@@ -19,7 +19,8 @@ export enum ServerState {
 	Cold,
 	StartingUp,
 	Listening,
-	Aborted
+	Aborted,
+	Blocked
 }
 
 export class ServerManager {
@@ -40,8 +41,6 @@ export class ServerManager {
 		edit_queue: EditQueue,
 		response_parser: ResponseParser
 	) {
-		log("server manager constructor...")
-
 		this.event_emitter = event_emitter;
 		this.edit_queue = edit_queue;
 		this.response_parser = response_parser;
@@ -61,10 +60,16 @@ export class ServerManager {
 		let ghul_compiler = this.ghul_config.compiler;
 
 		if (this.child) {
-			console.log("killing running compiler PID " + this.child.pid);
+			log("killing running compiler PID " + this.child.pid);
 			this.expecting_exit = true;
 
 			this.child.kill();
+		}
+
+		if (this.ghul_config.block) {
+			log("compiler block requested: won't spawn compiler");
+			this.server_state = ServerState.Blocked;
+			return;
 		}
 
 		this.child = spawn(ghul_compiler, this.ghul_config.arguments);
@@ -120,12 +125,20 @@ export class ServerManager {
 	}
 
 	startListening() {
+		if (this.server_state == ServerState.Blocked) {
+			return;
+		}
+
 		this.server_state = ServerState.Listening;
 
 		this.event_emitter.listening();
 	}
 
 	abort() {
+		if (this.server_state == ServerState.Blocked) {
+			return;
+		}
+
 		this.server_state = ServerState.Aborted;
 
 		this.event_emitter.abort();
