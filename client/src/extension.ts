@@ -29,7 +29,7 @@ export function activate(context: ExtensionContext) {
 		synchronize: {
 			// Notify the server about file changes to '.ghul' and '.ghulproj' files contain in the workspace
 			fileEvents: [
-				workspace.createFileSystemWatcher('**/.block'),
+				workspace.createFileSystemWatcher('**/.block-compiler'),
 				workspace.createFileSystemWatcher('**/*.ghulproj'),
 				workspace.createFileSystemWatcher('**/Directory.Build.props'),
 				workspace.createFileSystemWatcher('**/dotnet-tools.json'),
@@ -45,7 +45,7 @@ export function activate(context: ExtensionContext) {
 
 	log("client started...");
 	
-	log("should be watching for **/.block in ", workspace.workspaceFolders);
+	log("should be watching for **/.block-compiler in ", workspace.workspaceFolders);
 	// Push the disposable to the context's subscriptions so that the 
 	// client can be deactivated on extension deactivation
 	context.subscriptions.push(disposable);

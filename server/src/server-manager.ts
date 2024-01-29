@@ -69,9 +69,7 @@ export class ServerManager {
 		if (this.ghul_config.block) {
 			log("compiler block requested: won't spawn compiler");
 			this.server_state = ServerState.Blocked;
-			return;	
-		} else {
-			log("compiler block not requested: spawning compiler");
+			return;
 		}
 
 		this.child = spawn(ghul_compiler, this.ghul_config.arguments);

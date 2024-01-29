@@ -3,7 +3,6 @@ import { readFileSync, existsSync } from 'fs';
 import { glob } from 'glob';
 
 import { parseString as parseXmlString } from 'xml2js';
-import { log } from './log';
 
 export interface GhulConfig {
 	block: boolean,
@@ -65,11 +64,8 @@ export function getGhulConfig(workspace: string): GhulConfig {
 
 	let block = false;
 
-	if (existsSync(workspace + "/.block")) {
-		log("found .block file in workspace " + workspace);
+	if (existsSync(workspace + "/.block-compiler")) {
 		block = true;
-	} else {
-		log("no .block file in workspace " + workspace);
 	}
 
 	let args = config.other_flags ?? [];

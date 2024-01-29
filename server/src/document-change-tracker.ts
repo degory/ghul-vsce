@@ -54,7 +54,7 @@ export class DocumentChangeTracker {
                 debounced_reinitialize();
 
                 return;
-            } else if(c.uri.endsWith(".block")) {
+            } else if(c.uri.endsWith(".block-compiler")) {
                 log("compiler block requested: " + c.uri);
 
                 reinitialize();
@@ -88,8 +88,6 @@ export class DocumentChangeTracker {
         }
 
         let fn = parsed_uri.fsPath;
-
-        log("have file name: ", fn, " attempt to match against globs: ", this.globs);
 
         if (
             this.globs
