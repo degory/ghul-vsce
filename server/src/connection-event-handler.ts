@@ -20,10 +20,7 @@ import {
     Location,
     RenameParams,
     WorkspaceEdit,
-    DidOpenTextDocumentParams,
     TextDocumentSyncKind,
-    TextDocumentChangeEvent,
-    DidCloseTextDocumentParams
 } from 'vscode-languageserver';
 
 import {
@@ -137,18 +134,6 @@ export class ConnectionEventHandler {
             );
 
         this.config_event_emitter.configAvailable(this.workspace_root, this.config);
-
-        this.connection.onDidOpenTextDocument((params: DidOpenTextDocumentParams) =>
-            this.document_change_tracker?.onDidOpenTextDocument(params));
-
-        this.documents.onDidOpen((params: TextDocumentChangeEvent<TextDocument>) =>
-            this.document_change_tracker?.onDidOpen(params));
-
-        this.connection.onDidCloseTextDocument((params: DidCloseTextDocumentParams) =>
-            this.document_change_tracker?.onDidCloseTextDocument(params));
-
-        this.documents.onDidClose((params: TextDocumentChangeEvent<TextDocument>) =>
-            this.document_change_tracker?.onDidClose(params));
 
         this.connection.onDidChangeWatchedFiles((change: DidChangeWatchedFilesParams) =>
             this.document_change_tracker?.onDidChangeWatchedFiles(change));

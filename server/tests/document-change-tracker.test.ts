@@ -1,5 +1,4 @@
-import { DidChangeWatchedFilesParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams, FileChangeType, TextDocumentChangeEvent } from 'vscode-languageserver';
-import { TextDocument } from "vscode-languageserver-textdocument";
+import { DidChangeWatchedFilesParams, DidCloseTextDocumentParams, FileChangeType } from 'vscode-languageserver';
 
 import * as fs from 'fs';
 
@@ -13,40 +12,6 @@ jest.mock('../src/edit-queue');
 jest.mock('../src/requester');
 jest.mock('fs');
 
-function createTextDocumentChangeEvent(uri: string, text: string): TextDocumentChangeEvent<TextDocument> {
-    return {
-        document: {
-            uri,
-            languageId: "plaintext",
-            version: 1,
-            getText: () => text,
-            positionAt: (_offset: number) => {
-                // Convert offset to position
-                return { line: 0, character: 0 };
-            },
-            offsetAt: (_position: { line: number, character: number }) => {
-                // Convert position to offset
-                return 0;
-            },
-            lineCount: 1
-        }
-    };        
-}
-
-// function getValidWorkspacePathUrl(path: string): string {
-//     return URI.file( path).toString();
-// }
-
-function createDidOpenTextDocumentParams(uri: string, text: string): DidOpenTextDocumentParams {
-    return {
-        textDocument: {
-            uri,
-            languageId: "plaintext",
-            version: 1,
-            text
-        }
-    };
-}
 
 // @ts-ignore
 function _createDidCloseTextDocumentParams(uri: string): DidCloseTextDocumentParams {
@@ -88,36 +53,6 @@ describe('DocumentChangeTracker', () => {
         } as unknown as EditQueue;
 
         documentChangeTracker = new DocumentChangeTracker(editQueue, globs);
-    });
-
-    it('should add an open document to the set', () => {
-        const uri = 'file:///path/to/document.ghul';
-        const event = createTextDocumentChangeEvent(uri, 'console.log("Hello, world!");');
-
-        documentChangeTracker.onDidOpen(event);
-
-        expect(documentChangeTracker.isOpen(uri)).toBe(true);
-    });
-
-    it('should remove a closed document from the set', () => {
-        const uri = 'file:///path/to/document.ghul';
-        const event = createTextDocumentChangeEvent(uri, 'console.log("Hello, world!");');
-
-        documentChangeTracker.open_documents.add(uri);
-
-        documentChangeTracker.onDidClose(event);
-
-        expect(documentChangeTracker.isOpen(uri)).toBe(false);
-    });
-
-    it('should queue an edit when a text document is opened', () => {
-        const uri = 'file:///path/to/document.ghul';
-        const text = 'console.log("Hello, world!");';
-        const params = createDidOpenTextDocumentParams(uri, text);
-
-        documentChangeTracker.onDidOpenTextDocument(params);
-
-        expect(editQueue.queueEdit3).toHaveBeenCalledWith(uri, null, text);
     });
 
     it('should queue edits for changed or created files', () => {

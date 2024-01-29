@@ -3,8 +3,10 @@ import { readFileSync, existsSync } from 'fs';
 import { glob } from 'glob';
 
 import { parseString as parseXmlString } from 'xml2js';
+import { log } from './log';
 
 export interface GhulConfig {
+	block: boolean,
 	compiler: string,
 	source: string[],
 	arguments: string[],
@@ -59,6 +61,15 @@ export function getGhulConfig(workspace: string): GhulConfig {
 		config = <GhulConfigJson>JSON.parse(buffer);
 	} else {
 		config = {}
+	}
+
+	let block = false;
+
+	if (existsSync(workspace + "/.block")) {
+		log("found .block file in workspace " + workspace);
+		block = true;
+	} else {
+		log("no .block file in workspace " + workspace);
 	}
 
 	let args = config.other_flags ?? [];
@@ -173,6 +184,7 @@ export function getGhulConfig(workspace: string): GhulConfig {
 	let source = [...(config.source ?? ["./**/*.ghul"])];
 
     return {
+		block,
 		compiler: config.compiler ?? "ghul-compiler",
 		source,
 		arguments: args,

@@ -19,7 +19,8 @@ export enum ServerState {
 	Cold,
 	StartingUp,
 	Listening,
-	Aborted
+	Aborted,
+	Blocked
 }
 
 export class ServerManager {
@@ -63,6 +64,14 @@ export class ServerManager {
 			this.expecting_exit = true;
 
 			this.child.kill();
+		}
+
+		if (this.ghul_config.block) {
+			log("compiler block requested: won't spawn compiler");
+			this.server_state = ServerState.Blocked;
+			return;	
+		} else {
+			log("compiler block not requested: spawning compiler");
 		}
 
 		this.child = spawn(ghul_compiler, this.ghul_config.arguments);
@@ -118,12 +127,20 @@ export class ServerManager {
 	}
 
 	startListening() {
+		if (this.server_state == ServerState.Blocked) {
+			return;
+		}
+
 		this.server_state = ServerState.Listening;
 
 		this.event_emitter.listening();
 	}
 
 	abort() {
+		if (this.server_state == ServerState.Blocked) {
+			return;
+		}
+
 		this.server_state = ServerState.Aborted;
 
 		this.event_emitter.abort();

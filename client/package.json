@@ -2,7 +2,7 @@
   "name": "ghul",
   "displayName": "ghūl",
   "description": "ghūl language support",
-  "version": "0.6.1",
+  "version": "0.6.6-alpha.5",
   "publisher": "degory",
   "license": "GPL-3.0",
   "repository": {
