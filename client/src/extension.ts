@@ -33,9 +33,7 @@ export function activate(context: ExtensionContext) {
 				workspace.createFileSystemWatcher('**/*.ghulproj'),
 				workspace.createFileSystemWatcher('**/Directory.Build.props'),
 				workspace.createFileSystemWatcher('**/dotnet-tools.json'),
-
-				// FIXME not getting useful created and deleted events from these:
-				// workspace.createFileSystemWatcher('**/*.ghul', false, true, false),
+				workspace.createFileSystemWatcher('**/*.ghul', false, true, false),
 			]
 		}
 	}

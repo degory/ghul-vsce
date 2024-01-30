@@ -1,4 +1,3 @@
-import * as path from 'path';
 
 import {
     DidChangeConfigurationParams,
@@ -127,10 +126,13 @@ export class ConnectionEventHandler {
 
         this.config = getGhulConfig(this.workspace_root);
 
+        // FIXME is there a better way to do this?
+        const workspace_root_munged = this.workspace_root.replace(/\\/g, '/');
+        
         this.document_change_tracker = 
             new DocumentChangeTracker(
                 this.edit_queue,
-                this.config.source.map(glob => path.join(this.workspace_root, glob))
+                this.config.source.map(glob => `${workspace_root_munged}/${glob}`)
             );
 
         this.config_event_emitter.configAvailable(this.workspace_root, this.config);
