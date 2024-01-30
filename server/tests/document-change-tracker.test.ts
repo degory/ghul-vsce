@@ -1,7 +1,5 @@
 import { DidChangeWatchedFilesParams, DidCloseTextDocumentParams, FileChangeType } from 'vscode-languageserver';
 
-import * as fs from 'fs';
-
 import { DocumentChangeTracker } from '../src/document-change-tracker';
 import { EditQueue } from '../src/edit-queue';
 import { Requester } from '../src/requester';
@@ -55,18 +53,15 @@ describe('DocumentChangeTracker', () => {
         documentChangeTracker = new DocumentChangeTracker(editQueue, globs);
     });
 
-    it('should queue edits for changed or created files', () => {
+    it('should queue edit with empty file text for deleted files', () => {
         const uri = 'file:///path/to/document.ghul';
-        const type = 1 /* FileChangeType.Changed */;
+        const type = FileChangeType.Deleted;
 
         const params = createDidChangeWatchedFilesParams(uri, type);
-        const file_contents = "file contents";
-
-        jest.spyOn(fs, 'readFileSync').mockImplementation((_path, _encoding) => file_contents);
 
         documentChangeTracker.onDidChangeWatchedFiles(params);
 
-        expect(editQueue.queueEdit3).toHaveBeenCalledWith(uri, null, file_contents);
+        expect(editQueue.queueEdit3).toHaveBeenCalledWith(uri, null, "");
     });
 
     it('should return the valid source file', () => {
@@ -83,4 +78,28 @@ describe('DocumentChangeTracker', () => {
 
         expect(invalidSourceFile).toBeNull();
     });
+
+    it('should return the valid source file for a Windows path', () => {
+        const path = 'C:\\path\\to\\document.ghul';
+        const uri = URI.file(path).toString();
+        const validSourceFile = documentChangeTracker.tryGetValidSourceFile(uri);
+
+        expect(validSourceFile?.toLowerCase()).toBe(path.toLowerCase());
+    });
+
+    it('should send an edit for a newly created file with contents read from disk', () => {
+        const uri = 'file:///path/to/document.ghul';
+        const type = FileChangeType.Created;
+
+        // mock fs.readFileSync to return "contents of file"
+
+        const fs = require('fs');
+        fs.readFileSync = jest.fn(() => "contents of file");
+
+        const params = createDidChangeWatchedFilesParams(uri, type);
+
+        documentChangeTracker.onDidChangeWatchedFiles(params);
+
+        expect(editQueue.queueEdit3).toHaveBeenCalledWith(uri, null, "contents of file");
+    })
 });
