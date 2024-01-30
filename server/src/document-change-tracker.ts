@@ -1,4 +1,3 @@
-import { readFileSync } from "fs";
 import { DidChangeWatchedFilesParams, FileChangeType } from "vscode-languageserver";
 import { URI } from "vscode-uri";
 import { debounce } from "throttle-debounce";
@@ -9,19 +8,13 @@ import { EditQueue } from "./edit-queue";
 import { reinitialize } from './extension-state'
 import { log } from "console";
 import { minimatch } from 'minimatch';
+import { readFileSync } from "fs";
 
 const debounced_reinitialize = debounce(5000, () => { reinitialize(); } );
-
-
-// FIXME: right now this doesn't seem to do anything useful - I don't really
-// care if files are opened and closed, I want to know if they're deleted
-// or renamed, but I don't seem to get passed that information.
 
 export class DocumentChangeTracker {
     edit_queue: EditQueue;
     globs: string[];
-
-    open_documents: Set<string>;
 
     constructor(
         edit_queue: EditQueue,
@@ -29,11 +22,6 @@ export class DocumentChangeTracker {
     ) {
         this.edit_queue = edit_queue;
         this.globs = globs;
-        this.open_documents = new Set<string>();
-    }
-
-    isOpen(fn: string) {
-        return this.open_documents.has(fn);
     }
 
     onDidChangeWatchedFiles(params: DidChangeWatchedFilesParams) {
@@ -68,14 +56,16 @@ export class DocumentChangeTracker {
 
             let uri = normalizeFileUri(c.uri);
 
-            log("valid source file changed: " + uri);
+            if(c.type == FileChangeType.Deleted) {
+                log("source file deleted: '", uri, "', clearing in memory");
 
-            if(c.type == FileChangeType.Changed || c.type == FileChangeType.Created) {
-                log("changed or created");
-                this.edit_queue.queueEdit3(uri, null, readFileSync(fn).toString());
-            } else if(c.type == FileChangeType.Deleted && this.isOpen(uri)) {
-                log("deleted");
                 this.edit_queue.queueEdit3(uri, null, "");
+            } else if(c.type == FileChangeType.Created) {
+                log("source file created: '", uri, "', initializing from from file contents");
+
+                let file_contents = readFileSync(fn, "utf8");
+
+                this.edit_queue.queueEdit3(uri, null, file_contents);
             }
         }
     }
@@ -89,10 +79,18 @@ export class DocumentChangeTracker {
 
         let fn = parsed_uri.fsPath;
 
+        if (!fn) {
+            log("file URI gives null fsPath: " + uri);
+            return null;
+        }
+
+        // FIXME: is there a better way to do this?
+        let fn_munged = fn.replace(/\\/g, "/");
+
         if (
             this.globs
                 .find(
-                    glob => minimatch(fn, glob)
+                    glob => minimatch(fn_munged, glob)
                 )
         ) {
             return fn;
