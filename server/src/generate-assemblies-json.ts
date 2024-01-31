@@ -6,9 +6,10 @@ export function generateAssembliesJson(workspace: string) {
     let files = readdirSync(workspace);
 
     if (files.find(file => file.endsWith(".ghulproj"))) {
-        log("generate .assemblies.json...");
+        log("generating .assemblies.json...");
         log(execSync("dotnet build -verbosity:minimal -t:GenerateAssembliesJson").toString());
+        log("finished generating .assemblies.json");
     } else {
-        log("no .guleproj so will not attempt to generate .assemblies.json");
+        log("no .ghulproj found: cannot generate .assemblies.json");
     }
 }

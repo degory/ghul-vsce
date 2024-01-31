@@ -44,7 +44,7 @@ export class Requester {
         try {
             this.stream.write(text);
         } catch(ex) {            
-            log("caught exception trying to send, compiler may have died" + ex);
+            log("caught exception trying to send request data: compiler may have died:" + ex);
         }
     }
     

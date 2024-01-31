@@ -8,7 +8,7 @@
 [![License](https://img.shields.io/github/license/degory/ghul-vsce)](https://github.com/degory/ghul-vsce/blob/main/LICENSE)
 [![ghūl](https://img.shields.io/badge/gh%C5%ABl-100%25!-information)](https://ghul.dev)
 
-This Visual Studio Code extension provides support for the [ghūl programming language](https://www.ghul.io/), including:
+This Visual Studio Code extension provides support for the [ghūl programming language](https://www.ghul.dev/), including:
 - syntax highlighting
 - error highlighting as you type
 - code snippets

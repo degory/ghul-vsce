@@ -75,7 +75,7 @@ export class ServerManager {
 		this.child = spawn(ghul_compiler, this.ghul_config.arguments);
 
 		this.child.on("error", err => {
-			log(`ghūl compiler: failed to start: ${err.message}`);			
+			log(`compiler: failed to start: ${err.message}`);			
 		});
 
 		// FIXME: why does this event not fire?
@@ -99,9 +99,9 @@ export class ServerManager {
 					const was_expecting_exit = this.expecting_exit;
 
 					if (!was_expecting_exit) {
-						log(`ghūl compiler ${pid}: unexpected exit`);
+						log(`compiler PID ${pid}: unexpected exit`);
 					} else {
-						log(`ghūl compiler ${pid}: exited`);
+						log(`compiler PID ${pid}: exited`);
 					}
 
 					this.child = null;
@@ -110,7 +110,7 @@ export class ServerManager {
 
 					if (!was_expecting_exit) {
 						this.edit_queue.reset();
-						log(`ghūl compiler ${pid}: will restart after unexpected exit`);
+						log(`compiler PID ${pid}: will restart after unexpected exit`);
 			
 						this.start();
 					} else {
@@ -147,14 +147,15 @@ export class ServerManager {
 	kill() {
 		this.event_emitter.killing();
 
-		log("kill any running ghūl compiler...");
+		log("killing any running compiler...");
 
 		try {
 			this.expecting_exit = true;
 			this.child.kill();
 			this.event_emitter.killed();
+			log("finished killing compiler");
 		} catch (e) {
-			log("something went wrong killing ghūl compiler container: " + e);			
+			log("killing compiler caught: " + e);			
 			this.abort();
 		}
 	}

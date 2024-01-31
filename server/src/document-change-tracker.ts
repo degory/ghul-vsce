@@ -80,7 +80,6 @@ export class DocumentChangeTracker {
         let fn = parsed_uri.fsPath;
 
         if (!fn) {
-            log("file URI gives null fsPath: " + uri);
             return null;
         }
 

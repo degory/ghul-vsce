@@ -3,6 +3,7 @@ import { readFileSync, existsSync } from 'fs';
 import { glob } from 'glob';
 
 import { parseString as parseXmlString } from 'xml2js';
+import { log } from './log';
 
 export interface GhulConfig {
 	block: boolean,
@@ -122,11 +123,11 @@ export function getGhulConfig(workspace: string): GhulConfig {
 					config.source = config.source.map(directory => directory + "/**/*.ghul");
 				}
 			} else {
-				console.log("failed to parse ghul project file " + ghulProjFileName);
+				log("failed to parse ghul project file " + ghulProjFileName);
 			}
 		})
 	} else if(projects.length > 0) {
-		console.log("ignoring multiple .ghulproj files:" + projects.join(','));
+		log("ignoring multiple .ghulproj files:" + projects.join(','));
 	}
 
 	if (!config.compiler || config.compiler == "") {
@@ -142,17 +143,17 @@ export function getGhulConfig(workspace: string): GhulConfig {
 			if (ghulCompilerTool && ghulCompilerTool.commands.length == 1) {
 				let compilerCommand = ghulCompilerTool.commands[0];
 
-				console.log(`will use local .NET tool compiler '${compilerCommand}' version ${ghulCompilerTool.version}`);
+				log(`will use compiler '${compilerCommand}' version ${ghulCompilerTool.version} from local tool manifest`);
 				config.compiler = "dotnet";
 
 				["tool", "run", ghulCompilerTool.commands[0]].forEach(
 					(a) => args.push(a)
 				);
 			} else {
-				console.log("cannot find a useable compiler in .config/dotnet-tools.json: assuming 'ghul-compiler' is on the PATH");
+				log("cannot find a useable compiler in .config/dotnet-tools.json: assuming 'ghul-compiler' is on the PATH");
 			}
 		} else {
-			console.log("no .config/dotnet-tools.json found: assuming 'ghul-compiler' is on the PATH");
+			log("no .config/dotnet-tools.json found: assuming 'ghul-compiler' is on the PATH");
 		}
 	} else {
 		let compilerCommandLineParts = config.compiler.split(" ").map(s => s.trim())

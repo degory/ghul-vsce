@@ -1,3 +1,3 @@
 export function log(...args: any[]) {
-	console.log(...args);
+	console.log("ghūl:",...args);
 }
