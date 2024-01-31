@@ -153,8 +153,8 @@ export class ConnectionEventHandler {
                     change: TextDocumentSyncKind.Full
                 },
                 completionProvider: {
-                    triggerCharacters: ['.'],                    
-                    resolveProvider: false,                    
+                    triggerCharacters: ['.'],
+                    resolveProvider: false,
                 },
                 documentSymbolProvider: true,
                 workspaceSymbolProvider: true,
@@ -172,16 +172,16 @@ export class ConnectionEventHandler {
     }
 
     onShutdown() {
-	    log("ghūl language extension: shutting down...");
+	    log("language extension: shutting down...");
 	    this.server_manager.kill();
     }
 
     onExit() {
-	    log("ghūl language extension: exit");
+	    log("language extension: exit");
     }
 
     onDidChangeConfiguration(_change: DidChangeConfigurationParams) {
-        log("ghūl language extension: configuration changed");
+        log("language extension: configuration changed");
 
         // TODO: handle configuration change
     }

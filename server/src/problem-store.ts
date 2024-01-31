@@ -64,7 +64,7 @@ export class ProblemStore {
 		} else if (kind == 'analysis') {
 			this.add_analysis_problem(uri, diagnostic);
 		} else {
-			log("unknown diagnostic kind: " + kind);
+			log("ignoring unknown diagnostic kind: " + kind, diagnostic);
 		}
 	}
 
