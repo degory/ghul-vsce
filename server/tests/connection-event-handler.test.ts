@@ -208,7 +208,7 @@ describe('ConnectionEventHandler', () => {
         connectionEventHandler.onShutdown();
 
         // Assert
-        expect(logSpy).toHaveBeenCalledWith("ghūl language extension: shutting down...");
+        expect(logSpy).toHaveBeenCalledWith("ghūl:", "language extension: shutting down...");
         expect(killSpy).toHaveBeenCalled();
     })
 
@@ -220,7 +220,7 @@ describe('ConnectionEventHandler', () => {
         connectionEventHandler.onExit();
 
         // Assert
-        expect(logSpy).toHaveBeenCalledWith("ghūl language extension: exit");
+        expect(logSpy).toHaveBeenCalledWith("ghūl:", "language extension: exit");
     })
 
     it('should handle onDidChangeConfiguration event', () => {
@@ -241,8 +241,9 @@ describe('ConnectionEventHandler', () => {
 
         // Assert
 
-        // TODO: handle configuration change is currently a NOOP
-        expect(logSpy).toHaveBeenCalledWith("ghūl language extension: configuration changed");
+        // TODO: handle configuration change is currently a NOOP, because we have no extension
+        // configuration to handle:
+        expect(logSpy).toHaveBeenCalledWith("ghūl:", "language extension: configuration changed");
     })
 
     it('should handle onCompletion event with triggerCharacter dot', async () => {

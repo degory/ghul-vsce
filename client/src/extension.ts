@@ -39,14 +39,15 @@ export function activate(context: ExtensionContext) {
 	}
 	
 	// Create the language client and start the client.
-	let disposable = new LanguageClient('ghul', 'ghūl language extension', serverOptions, clientOptions).start();
+	let client = new LanguageClient('ghul', 'ghūl language extension', serverOptions, clientOptions);
 
-	log("client started...");
+	client.start().then(() => {
+		log("client started...");
 	
-	log("should be watching for **/.block-compiler in ", workspace.workspaceFolders);
-	// Push the disposable to the context's subscriptions so that the 
-	// client can be deactivated on extension deactivation
-	context.subscriptions.push(disposable);
-
-	log("client activated...");
+		// Push the disposable to the context's subscriptions so that the 
+		// client can be deactivated on extension deactivation
+		context.subscriptions.push(client);
+	
+		log("client activated...");	
+	});
 }

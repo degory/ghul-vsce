@@ -2,14 +2,14 @@
 	"name": "ghul",
 	"displayName": "ghūl",
 	"description": "ghūl language support",
-	"version": "0.6.7-alpha.16",
+	"version": "0.6.10-alpha.1",
 	"publisher": "degory",
 	"license": "GPL-3.0",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/degory/ghul-vsce"
 	},
-	"icon": "images/ghul.png",
+	"icon": "images/ghul-logo-icon.png",
 	"engines": {
 		"vscode": "^1.18.0"
 	},

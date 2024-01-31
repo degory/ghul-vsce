@@ -517,7 +517,7 @@ export class ResponseHandler {
                 { changes }
             );
         } catch(e) {
-            log("have caught: " + e);
+            log("rename request: caught: " + e);
 
             reject("" + e);
         }
