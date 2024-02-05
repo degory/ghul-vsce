@@ -82,12 +82,12 @@ export class ServerManager {
 		// this.child.on("spawn", () => {
 			log(`spawned compiler process PID ${this.child.pid}`);
 
-			this.child.stderr.on('data', (chunk: string) => {
+			this.child.stderr.on('data', (chunk: Buffer) => {
 				process.stderr.write(chunk);
 			});
 	
-			this.child.stdout.on('data', (chunk: string) => {
-				this.response_parser.handleChunk(chunk);
+			this.child.stdout.on('data', (chunk: Buffer) => {
+				this.response_parser.handleChunk(chunk.toString());
 			});
 	
 			this.event_emitter.running(this.child);
