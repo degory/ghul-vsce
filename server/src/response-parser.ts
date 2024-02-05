@@ -15,6 +15,8 @@ export class ResponseParser {
     }
 
     handleChunk(chunk: string) {
+        chunk = chunk.replace(/\r/g, '');
+
 		this.buffer += chunk;
 
 		let sections = this.buffer.split('\f');
