@@ -1,0 +1,95 @@
+namespace Test is
+    use Npgsql.NpgsqlDataSource; // try to be as explicit as possible
+    use Npgsql.NpgsqlCommand;    // try to be as explicit as possible
+    use Collections.LIST;
+    use System.DateTime;
+    use System.Diagnostics;
+
+    class Main is 
+    // always create transaction in planned
+    // create actual when money spent
+
+        entry() static is 
+                       
+            var db = new Db();
+            var view = db.read_all_planned();
+
+            for trans in view do
+                IO.Std.out.write( trans.id); 
+                IO.Std.out.write(", " + trans.description); 
+                IO.Std.out.write(", " + trans.date); 
+                IO.Std.out.write_line(", " + trans.amount);
+            od     
+        si
+    si
+
+    // Db is a connection to an open database
+    class Db is
+        use Npgsql.NpgsqlDataSource; 
+      
+        datasource:  Npgsql.NpgsqlDataSource;
+
+        init() is
+            var connectionString = "Host=localhost;Port=5432;Database=cashflow; " +
+            " Username=dbuser;Password=password";
+            datasource = NpgsqlDataSource.create(connectionString);
+        si
+        
+        read_all_planned()-> LIST[Transaction] is
+
+
+            var command: Npgsql.NpgsqlCommand;
+            var view: LIST[Transaction];
+
+            view = new LIST[Transaction]();
+
+            var sql = "SELECT * FROM planned";
+            command = datasource.create_command(sql);
+            reader =  command.execute_reader();
+
+            while (reader.read()) do
+                let trans = new Transaction(reader.get_int64(0), 
+                                            reader.get_date_time(1), 
+                                            reader.get_string(2),
+                                            reader.get_int64(3));
+
+                view.add(trans);
+            od
+            return view;
+            
+        si
+        
+        insert(trans: Transaction) -> void is
+            var sql = "INSERT INTO planned (date, description, amount)VALUES (" 
+            + trans.date_as_ISO_string() + ", "
+            + trans.description + ", "
+            + trans.amount + ")";
+            
+        si
+        
+    si
+
+    // Transaction is a row
+    class Transaction is
+        id: long public;
+        description: string public; 
+        date: DateTime public;
+        amount: long public;
+      
+
+        init(id_: long, date_: DateTime, description_: string, amount_: long) is
+            id = id_;
+            description = description_;
+            date = date_;
+            amount = amount_;
+           
+
+        si
+
+        date_as_ISO_string() -> string is
+            date.to_string("o");
+        si
+        
+    si
+si
+

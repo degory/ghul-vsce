@@ -1,4 +1,5 @@
 # project specific
+<<<<<<< HEAD
 ghul
 ghul/ghul
 test_definitions
@@ -77,3 +78,21 @@ Thumbs.db
 client/dist/**/*
 client/src/version.js
 server/src/version.js
+=======
+.build.rsp
+
+**/obj/
+**/bin/
+**/nupkg/
+
+.assemblies.json
+*.runtimeconfig.json
+*.exe
+*.dll
+*.pdb
+*.mdb
+**/out.txt
+**/output.txt
+
+**/out.il
+>>>>>>> 2f63754 (commit for degs)
