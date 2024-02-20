@@ -7,71 +7,148 @@
 			"match": "//.*$"
 		},
 		{
-			"name": "comment.ghul",
-			"begin": "/\\*",
-			"end": "\\*/"
+			"include": "#other"
 		},
-		{
-			"name": "delimiter.ghul",
-			"match": "\\(|\\)"
-		},
-		{
-			"name": "constant.language.ghul",
-			"match": "\\b(?<!\\`)(null|true|false|self|super|none)\\b"
-		},
-		{
-			"name": "constant.numeric.ghul",
-			"match": "\\b([0-9]+)\\b"
-		},
-		{
-			"name": "keyword.type.ghul",
-			"match": "(=>|->|:)"
-		},
-		{
-			"name": "storage.modifier.ghul",
-			"match": "(\\b(?<!\\`)(static|public|protected|private|let|@)\\b)|(\\b_(?=[A-Za-z]))"
-		},
-		{
-			"name": "keyword.operator.ghul",
-			"match": "(!|\\$|%|\\^|&|\\*|-|\\+|=|\\||~|#|\\\\|<|>|\\.|\\?|\\/|\\*)+"
-		},
-		{
-			"name": "keyword.other.ghul",
-			"match": "\\b(?<!\\`)(new|cast|isa|typeof|namespace|class|struct|trait|enum|use|innate|is|si)\\b"
-		},				
-		{
-			"name": "entity.name.type.ghul",
-			"match": "\\b(?<!\\`)(void|object|string|ref|ptr|bool|byte|ubyte|short|ushort|int|uint|long|ulong|word|uword|single|double|char)\\b"
-		},		
-		{
-			"name": "keyword.control.ghul",
-			"match": "\\b(?<!\\`)(assert|if|then|elif|else|fi|for|in|while|do|od|continue|break|case|when|default|esac|throw|try|catch|finally|yrt|return)\\b"
-		},		
-		{
-			"name": "entity.name.function.ghul",
-			"match": "((?<=_)|(\\b))([a-zA-Z_][a-zA-Z0-9_]*)(?=\\s*\\()"
-		},
-		{
-			"name": "entity.name.type.ghul",
-			"match": "\\b([A-Z][a-zA-Z0-9_\\`]*)\\b"
-		},
-		{
-			"name": "variable.other.ghul",
-			"match": "((?<=_)|(\\b))([a-zA-Z\\`][a-zA-Z0-9_]*)\\b"
-		},		
 		{
 			"include": "#strings"
 		}
 	],
 	"repository": {
 		"strings": {
-			"name": "string.quoted.double.ghul",
-			"begin": "\"",
-			"end": "\"",
 			"patterns": [
 				{
-					"name": "constant.character.escape.ghul",
-					"match": "\\\\."
+					"name": "constant.character.ghul",
+					"begin": "'",
+					"end": "'",
+					"patterns": [
+						{
+							"name": "constant.character.escape.ghul",
+							"match": "\\\\."
+						}
+					]
+				},
+				{
+					"name": "string.quoted.double.ghul",
+					"begin": "\"",
+					"end": "\"",
+					"patterns": [
+						{
+							"name": "constant.character.escape.ghul",
+							"match": "\\\\."
+						}
+					]
+				},
+				{
+					"name": "string.interpolated.ghul",
+					"begin": "\\{",
+					"end": "\\}",
+					"patterns": [
+						{
+							"name": "constant.character.escape.ghul",
+							"match": "\\\\."
+						},
+						{
+							"name": "expression.level1.ghul",
+							"begin": "\\{",
+							"end": "\\}",
+							"patterns": [
+								{
+									"include": "#other"
+								},
+								{
+									"name": "string.interpolated.level1.ghul",
+									"begin": "\\{",
+									"end": "\\}",
+									"patterns": [
+										{
+											"name": "expression.level2.ghul",
+											"begin": "\\{",
+											"end": "\\}",
+											"patterns": [
+												{
+													"include": "#other"
+												},				
+												{
+													"name": "string.interpolated.level3.ghul",
+													"begin": "\\{",
+													"end": "\\}"
+												}
+											]
+										}
+									]
+								}
+							]
+						}
+					]
+				}
+			]
+		},
+		"other": {
+			"patterns": [
+				{
+					"name": "comment.ghul",
+					"begin": "/\\*",
+					"end": "\\*/"
+				},
+				{
+					"name": "keyword.operator",
+					"match": "\\(|\\)"
+				},
+				{
+					"name": "constant.language.ghul",
+					"match": "\\b(?<!\\`)(null|true|false|self|super|none)\\b"
+				},
+				{
+					"name": "constant.numeric.ghul",
+					"match": "\\b([0-9]+)\\b"
+				},
+				{
+					"name": "keyword.type.ghul",
+					"match": "(=>|->|:)"
+				},
+				{
+					"name": "storage.modifier.ghul",
+					"match": "(\\b(?<!\\`)(static|public|protected|private|let|@)\\b)|(\\b_(?=[A-Za-z]))"
+				},
+				{
+					"name": "keyword.operator.ghul",
+					"match": "(!|\\$|%|\\^|&|\\*|-|\\+|=|\\||~|#|\\\\|<|>|\\.|\\?|\\/|\\*)+"
+				},
+				{
+					"name": "keyword.other.ghul",
+					"match": "\\b(?<!\\`)(new|cast|isa|typeof|namespace|class|struct|trait|enum|use|innate|is|si)\\b"
+				},
+				{
+					"name": "entity.name.type.ghul",
+					"match": "\\b([A-Z][a-zA-Z0-9_\\`]*)\\b"
+				},
+				{
+					"name": "keyword.control.ghul",
+					"match": "\\b(?<!\\`)(assert|if|then|elif|else|fi|for|in|while|do|od|continue|break|case|when|default|esac|throw|try|catch|finally|yrt|return)\\b"
+				},
+				{
+					"name": "entity.name.function.ghul",
+					"match": "((?<=_)|(\\b))([a-zA-Z_][a-zA-Z0-9_]*)(?=\\s*\\()"
+				},
+				{
+					"name": "entity.name.type.ghul",
+					"match": "\\b(?<!\\`)(void|object|string|ref|ptr|bool|byte|ubyte|short|ushort|int|uint|long|ulong|word|uword|single|double|char)\\b"
+				},
+				{
+					"name": "variable.other.ghul",
+					"match": "((?<=_)|(\\b))([a-zA-Z\\`][a-zA-Z0-9_]*)\\b"
+				},
+				{
+					"name": "entity.name.function.ghul",
+					"match": "((?<=_)|(\\b))([a-zA-Z_][a-zA-Z0-9_]*)(?=\\s*\\()"
+				},
+				{
+					"name": "entity.name.type.ghul",
+					"match": "\\b([A-Z][a-zA-Z0-9_\\`]*)\\b"
+				},
+				{
+					"name": "variable.other.ghul",
+					"match": "((?<=_)|(\\b))([a-zA-Z\\`][a-zA-Z0-9_]*)\\b"
 				}
 			]
 		}
