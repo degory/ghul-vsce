@@ -91,10 +91,6 @@
 					"end": "\\*/"
 				},
 				{
-					"name": "keyword.operator",
-					"match": "\\(|\\)"
-				},
-				{
 					"name": "constant.language.ghul",
 					"match": "\\b(?<!\\`)(null|true|false|self|super|none)\\b"
 				},
@@ -112,7 +108,7 @@
 				},
 				{
 					"name": "keyword.operator.ghul",
-					"match": "(!|\\$|%|\\^|&|\\*|-|\\+|=|\\||~|#|\\\\|<|>|\\.|\\?|\\/|\\*)+"
+					"match": "(!|\\$|%|\\^|&|\\*|-|\\+|=|\\||~|#|\\\\|<|>|\\.|\\?|\\/|\\*|\\(|\\))+"
 				},
 				{
 					"name": "keyword.other.ghul",
