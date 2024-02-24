@@ -28,24 +28,12 @@
 					]
 				},
 				{
-					"name": "string.quoted.double.ghul",
-					"begin": "\"",
-					"end": "\"",
-					"patterns": [
-						{
-							"name": "constant.character.escape.ghul",
-							"match": "\\\\."
-						}
-					]
-				},
-				{
 					"name": "string.interpolated.ghul",
-					"begin": "\\{",
-					"end": "\\}",
+					"begin": "\\\"",
+					"end": "\\\"",
 					"patterns": [
 						{
-							"name": "constant.character.escape.ghul",
-							"match": "\\\\."
+							"include": "#string-escapes"
 						},
 						{
 							"name": "expression.level1.ghul",
@@ -57,9 +45,12 @@
 								},
 								{
 									"name": "string.interpolated.level1.ghul",
-									"begin": "\\{",
-									"end": "\\}",
+									"begin": "\\\"",
+									"end": "\\\"",
 									"patterns": [
+										{
+											"include": "#string-escapes"
+										},				
 										{
 											"name": "expression.level2.ghul",
 											"begin": "\\{",
@@ -70,8 +61,13 @@
 												},				
 												{
 													"name": "string.interpolated.level3.ghul",
-													"begin": "\\{",
-													"end": "\\}"
+													"begin": "\\\"",
+													"end": "\\\"",
+													"patterns": [
+														{
+															"include": "#string-escapes"
+														}
+													]
 												}
 											]
 										}
@@ -80,6 +76,18 @@
 							]
 						}
 					]
+				}
+			]
+		},
+		"string-escapes":{
+			"patterns": [
+				{
+					"name": "constant.character.escape.ghul",
+					"match": "\\\\."
+				},
+				{
+					"name": "constant.character.escape.braces.ghul",
+					"match": "(\\{\\{|\\}\\})"					
 				}
 			]
 		},
@@ -92,7 +100,7 @@
 				},
 				{
 					"name": "constant.language.ghul",
-					"match": "\\b(?<!\\`)(null|true|false|self|super|none)\\b"
+					"match": "\\b(?<!\\`)(null|true|false|self|super)\\b"
 				},
 				{
 					"name": "constant.numeric.ghul",

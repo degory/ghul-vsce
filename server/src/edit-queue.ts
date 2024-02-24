@@ -48,7 +48,7 @@ export class EditQueue {
     state: QueueState;
 
     static readonly FULL_BUILD_EDIT_TIMEOUT = 1000;
-    static readonly PARTIAL_BUILD_EDIT_TIMEOUT = 300;
+    static readonly PARTIAL_BUILD_EDIT_TIMEOUT = 100;
     
     constructor(
         requester: Requester
