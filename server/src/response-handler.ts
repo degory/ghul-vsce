@@ -203,12 +203,24 @@ export class ResponseHandler {
         this.edit_queue.onDiagnosticsReceived();
     }
 
-    handleFullCompileDone() {
-        this.edit_queue.onFullCompileDone();
+    handleFullCompileDone(lines: string[]) {
+        let milliseconds: number = undefined;
+
+        if (lines.length > 0) {
+            milliseconds = parseFloat(lines[0]);
+        }
+
+        this.edit_queue.onFullCompileDone(milliseconds);
     }
 
-    handlePartialCompileDone() {
-        this.edit_queue.onPartialCompileDone();
+    handlePartialCompileDone(lines: string[]) {
+        let milliseconds: number = undefined;
+
+        if (lines.length > 0) {
+            milliseconds = parseFloat(lines[0]);
+        }
+
+        this.edit_queue.onPartialCompileDone(milliseconds);
     }
 
     expectHover(): Promise<Hover> {
