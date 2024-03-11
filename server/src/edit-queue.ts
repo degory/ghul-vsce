@@ -158,8 +158,12 @@ export class EditQueue {
         if (milliseconds) {
             this.edit_timeout = milliseconds * 1.5;
 
+            if (this.full_build_timeout < this.edit_timeout) {
+                this.full_build_timeout = this.edit_timeout;
+            }
+
             if ((this.edit_count & 31) == 0) {
-                log(`partial compile time: ${milliseconds.toFixed()}ms, edit timeout: ${this.edit_timeout.toFixed()} ms, `);
+                log(`edit request average: ${milliseconds.toFixed()} ms, edit timeout: ${this.edit_timeout.toFixed()} ms, compile timeout: ${this.full_build_timeout.toFixed()} ms`);
             }
 
             this.edit_count++;
@@ -185,7 +189,7 @@ export class EditQueue {
             }
 
             if ((this.build_count & 31) == 0) {
-                log(`compiler reports full compile time: ${milliseconds.toFixed()}ms, ${this.build_count ? "updating" : "initializing"} full build timeout to ${this.full_build_timeout.toFixed()} ms`);
+                log(`compile request average: ${milliseconds.toFixed()} ms, edit timeout: ${this.edit_timeout.toFixed()} ms, compile timeout: ${this.full_build_timeout.toFixed()} ms`);
             }
 
             this.build_count++;
