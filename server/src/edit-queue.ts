@@ -159,7 +159,7 @@ export class EditQueue {
             this.edit_timeout = milliseconds * 1.5;
 
             if ((this.edit_count & 31) == 0) {
-                log(`compiler reports partial compile time: ${milliseconds.toFixed()}ms, ${this.edit_count ? "updating" : "initializing"} edit timeout to ${this.edit_timeout.toFixed()} ms`);
+                log(`partial compile time: ${milliseconds.toFixed()}ms, edit timeout: ${this.edit_timeout.toFixed()} ms, `);
             }
 
             this.edit_count++;
