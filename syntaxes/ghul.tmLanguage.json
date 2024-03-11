@@ -14,6 +14,19 @@
 		}
 	],
 	"repository": {
+		"escaped_characters": {
+			"patterns": [
+			  {
+				"name": "constant.character.escape.ghul",
+				"match": "\\\\."
+			  },
+			  {
+				"name": "constant.character.escape.ghul",
+				"match": "\\{\\{|\\}\\}"
+			  }
+			]
+		  },
+
 		"strings": {
 			"patterns": [
 				{
@@ -33,7 +46,7 @@
 					"end": "\\\"",
 					"patterns": [
 						{
-							"include": "#string-escapes"
+							"include": "#escaped_characters"
 						},
 						{
 							"name": "expression.level1.ghul",
@@ -49,8 +62,8 @@
 									"end": "\\\"",
 									"patterns": [
 										{
-											"include": "#string-escapes"
-										},				
+											"include": "#escaped_characters"
+										},
 										{
 											"name": "expression.level2.ghul",
 											"begin": "\\{",
@@ -65,7 +78,7 @@
 													"end": "\\\"",
 													"patterns": [
 														{
-															"include": "#string-escapes"
+															"include": "#escaped_characters"
 														}
 													]
 												}
@@ -76,18 +89,6 @@
 							]
 						}
 					]
-				}
-			]
-		},
-		"string-escapes":{
-			"patterns": [
-				{
-					"name": "constant.character.escape.ghul",
-					"match": "\\\\."
-				},
-				{
-					"name": "constant.character.escape.braces.ghul",
-					"match": "(\\{\\{|\\}\\})"					
 				}
 			]
 		},
