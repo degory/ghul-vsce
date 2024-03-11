@@ -18,6 +18,8 @@ import { ServerEventEmitter } from './server-event-emitter';
 
 import { ResponseHandler } from './response-handler';
 
+import { rejectAllAndThrow, resetWatchdog } from './extension-state';
+
 const version = require('./version') as string;
 
 export class Requester {
@@ -26,12 +28,13 @@ export class Requester {
 
     response_handler: ResponseHandler;
 
+    watchdog_timer: NodeJS.Timer;
+
     constructor(
         server_event_emitter: ServerEventEmitter,
         response_handler: ResponseHandler
     ) {
         this.response_handler = response_handler;
-
         this.analysed = true;
 
         server_event_emitter.onRunning((child: ChildProcess) => {
@@ -45,10 +48,13 @@ export class Requester {
             this.stream.write(text);
         } catch(ex) {            
             log("caught exception trying to send request data: compiler may have died:" + ex);
+            rejectAllAndThrow(ex);
         }
     }
     
     sendDocuments(documents: { uri: string, source: string }[]) {        
+        resetWatchdog();
+
         this.write('#EDIT#\n');
 
         for (let { uri } of documents) {
@@ -64,6 +70,8 @@ export class Requester {
     }
 
     sendDocument(uri: string, source: string) {
+        resetWatchdog();
+
         this.write('#EDIT#\n');
         this.write(normalizeFileUri(uri) + '\n');
         this.write('\n');
@@ -73,6 +81,8 @@ export class Requester {
 
     sendHover(uri: string, line: number, character: number): Promise<Hover> {
         if (this.analysed) {
+            resetWatchdog();
+
             this.write('#HOVER#\n');
             this.write(normalizeFileUri(uri) + '\n');
             this.write((line+1) + '\n');
@@ -86,6 +96,8 @@ export class Requester {
 
     sendDefinition(uri: string, line: number, character: number): Promise<Definition> {
         if (this.analysed) {
+            resetWatchdog();
+
             this.write('#DEFINITION#\n');
             this.write(normalizeFileUri(uri) + '\n');
             this.write((line+1) + '\n');
@@ -99,6 +111,8 @@ export class Requester {
 
     sendDeclaration(uri: string, line: number, character: number): Promise<Definition> {
         if (this.analysed) {
+            resetWatchdog();
+
             this.write('#DECLARATION#\n');
             this.write(normalizeFileUri(uri) + '\n');
             this.write((line+1) + '\n');
@@ -112,6 +126,8 @@ export class Requester {
 
     sendCompletion(uri: string, line: number, character: number): Promise<CompletionItem[]> {
         if (this.analysed) {
+            resetWatchdog();
+
             this.write("#COMPLETE#\n");
             this.write(normalizeFileUri(uri) + '\n');
             this.write((line+1) + '\n');
@@ -125,6 +141,8 @@ export class Requester {
 
     sendSignature(uri: string, line: number, character: number): Promise<SignatureHelp> {
         if (this.analysed) {
+            resetWatchdog();
+
             this.write('#SIGNATURE#\n');
             this.write(normalizeFileUri(uri) + '\n');
             this.write((line+1) + '\n');
@@ -138,6 +156,8 @@ export class Requester {
     
     sendDocumentSymbol(uri: string): Promise<SymbolInformation[]> {
         if (this.analysed) {
+            resetWatchdog();
+
             this.write('#SYMBOLS#\n');
             this.write(normalizeFileUri(uri) + '\n');
 
@@ -149,6 +169,8 @@ export class Requester {
 
     sendWorkspaceSymbol(): Promise<SymbolInformation[]> {
         if (this.analysed) {
+            resetWatchdog();
+
             this.write('#SYMBOLS#\n');
             this.write('\n');
 
@@ -160,6 +182,8 @@ export class Requester {
 
     sendReferences(uri: string, line: number, character: number): Promise<Location[]> {
         if (this.analysed) {
+            resetWatchdog();
+
             this.write('#REFERENCES#\n');
             this.write(normalizeFileUri(uri) + '\n');
             this.write((line+1) + '\n');
@@ -173,6 +197,8 @@ export class Requester {
 
     sendImplementation(uri: string, line: number, character: number): Promise<Location[]> {
         if (this.analysed) {
+            resetWatchdog();
+
             this.write('#IMPLEMENTATION#\n');
             this.write(normalizeFileUri(uri) + '\n');
             this.write((line+1) + '\n');
@@ -186,6 +212,8 @@ export class Requester {
 
     sendRenameRequest(uri: string, line: number, character: number, newName: string): Promise<WorkspaceEdit> {
         if (this.analysed) {
+            resetWatchdog();
+
             this.write('#RENAMEREQUEST#\n');
             this.write(normalizeFileUri(uri) + '\n');
             this.write((line+1) + '\n');
@@ -199,11 +227,15 @@ export class Requester {
     }
 
     sendFullCompileRequest() {
+        resetWatchdog();
+
         this.write('#COMPILE#\n');
     }
  
     sendRestart() {
         if (this.analysed) {
+            resetWatchdog();
+
             this.write('#RESTART#\n');
         }        
     }

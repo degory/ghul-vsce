@@ -30,6 +30,8 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { log } from './log';
 import { DocumentChangeTracker } from './document-change-tracker';
 
+import { Watchdog } from './watchdog';
+
 export class ExtensionState {
     private static instance: ExtensionState;
 
@@ -54,6 +56,8 @@ export class ExtensionState {
     
     public connection_event_handler: ConnectionEventHandler;
 
+    public watchdog: Watchdog;
+
     public resolveAllPendingPromises() {
         this.response_handler.resolveAllPendingPromises();
     }
@@ -77,6 +81,8 @@ export class ExtensionState {
     }
 
     public connect() {
+        this.watchdog = new Watchdog();
+
         this.server_event_emitter = new ServerEventEmitter();
         this.config_event_emitter = new ConfigEventEmitter();
         
@@ -137,6 +143,18 @@ export class ExtensionState {
     }
 }
 
+export function startWatchdog() {
+    ExtensionState.getInstance().watchdog.startWatchdog();
+}
+
+export function resetWatchdog() {
+    ExtensionState.getInstance().watchdog.resetWatchdog();
+}
+
+export function clearWatchdog() {
+    ExtensionState.getInstance().watchdog.clearWatchdog();
+}
+
 export function resolveAllPendingPromises() {
     ExtensionState.getInstance().resolveAllPendingPromises();
 }
@@ -152,4 +170,3 @@ export function rejectAllAndThrow(message: string) {
 export function reinitialize() {
     ExtensionState.getInstance().reinitialize();
 }
-
