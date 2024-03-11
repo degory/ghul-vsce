@@ -277,7 +277,7 @@ jest.mock('../src/config-event-emitter');
 
         const onFullCompileDoneSpy = jest.spyOn(responseHandler.edit_queue, 'onFullCompileDone');
 
-        responseHandler.handleFullCompileDone();
+        responseHandler.handleFullCompileDone(undefined);
         expect(onFullCompileDoneSpy).toHaveBeenCalled();
     });
 
@@ -288,7 +288,7 @@ jest.mock('../src/config-event-emitter');
 
         const onPartialCompileDoneSpy = jest.spyOn(responseHandler.edit_queue, 'onPartialCompileDone');
 
-        responseHandler.handlePartialCompileDone();
+        responseHandler.handlePartialCompileDone(undefined);
         expect(onPartialCompileDoneSpy).toHaveBeenCalled();
     });
 
