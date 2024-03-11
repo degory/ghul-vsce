@@ -1,7 +1,7 @@
 import { ResponseHandler } from './response-handler';
 
 import { log } from './log';
-import { rejectAllPendingPromises } from './extension-state';
+import { clearWatchdog, rejectAllPendingPromises } from './extension-state';
 
 export class ResponseParser {
     buffer: string;
@@ -55,67 +55,100 @@ export class ResponseParser {
 
         switch (command) {
         case "LISTEN":
+            clearWatchdog();
+
             this.response_handler.handleListen();
             break;
 
         // new style diagnostics:
         case "DIAGNOSTICS":
+            clearWatchdog();
+
             this.response_handler.handleDiagnostics(lines);
             break;
 
         case "PARTIAL DONE":
-            this.response_handler.handlePartialCompileDone();
+            clearWatchdog();
+
+            this.response_handler.handlePartialCompileDone(lines);
             break;
 
         case "FULL DONE":
-            this.response_handler.handleFullCompileDone();
+            clearWatchdog();
+
+            this.response_handler.handleFullCompileDone(lines);
             break;
            
         case "HOVER":
+            clearWatchdog();
+
             this.response_handler.handleHover(lines);
             break;
 
         case "DEFINITION":
+            clearWatchdog();
+
             this.response_handler.handleDefinition(lines);
             break;
 
         case "DECLARATION":
+            clearWatchdog();
+
             this.response_handler.handleDeclaration(lines);
             break;
     
         case "COMPLETION":
+            clearWatchdog();
+
             this.response_handler.handleCompletion(lines);
             break;            
 
         case "SIGNATURE":
+            clearWatchdog();
+
             this.response_handler.handleSignature(lines);
             break;            
 
         case "SYMBOLS":
+            clearWatchdog();
+
             this.response_handler.handleSymbols(lines);
             break;            
             
         case "EXCEPT":
+            clearWatchdog();
+
             this.response_handler.handleExcept(lines);
             break;
 
         case "REFERENCES":
+            clearWatchdog();
+
             this.response_handler.handleReferences(lines);
             break;
 
         case "IMPLEMENTATION":
+            clearWatchdog();
+
             this.response_handler.handleImplementation(lines);
             break;
 
         case "RENAMEREQUEST":
+            clearWatchdog();
+
             this.response_handler.handleRenameRequest(lines);
             break;
 
         case "RESTART":
+            clearWatchdog();
+
             this.response_handler.handleRestart();
             break;
 
         default:
+            // not a known command, but compiler presumably still alive
+            clearWatchdog();
+
             this.response_handler.handleUnexpected();
         }
     }
