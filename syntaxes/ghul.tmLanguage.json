@@ -113,7 +113,7 @@
 				},
 				{
 					"name": "storage.modifier.ghul",
-					"match": "(\\b(?<!\\`)(static|public|protected|private|let|@)\\b)|(\\b_(?=[A-Za-z]))"
+					"match": "(\\b(?<!\\`)(static|public|protected|private|field|let|@)\\b)|(\\b_(?=[A-Za-z]))"
 				},
 				{
 					"name": "keyword.operator.ghul",
