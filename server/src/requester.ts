@@ -18,7 +18,7 @@ import { ServerEventEmitter } from './server-event-emitter';
 
 import { ResponseHandler } from './response-handler';
 
-import { rejectAllAndThrow, resetWatchdog } from './extension-state';
+import { rejectAllAndThrow, startWatchdogIfNotRunning } from './extension-state';
 
 const version = require('./version') as string;
 
@@ -53,7 +53,7 @@ export class Requester {
     }
     
     sendDocuments(documents: { uri: string, source: string }[]) {        
-        resetWatchdog();
+        startWatchdogIfNotRunning();
 
         this.write('#EDIT#\n');
 
@@ -70,7 +70,7 @@ export class Requester {
     }
 
     sendDocument(uri: string, source: string) {
-        resetWatchdog();
+        startWatchdogIfNotRunning();
 
         this.write('#EDIT#\n');
         this.write(normalizeFileUri(uri) + '\n');
@@ -81,12 +81,12 @@ export class Requester {
 
     sendHover(uri: string, line: number, character: number): Promise<Hover> {
         if (this.analysed) {
-            resetWatchdog();
+            startWatchdogIfNotRunning();
 
             this.write('#HOVER#\n');
             this.write(normalizeFileUri(uri) + '\n');
             this.write((line+1) + '\n');
-            this.write((character) + '\n');
+            this.write((character+1) + '\n');
 
             return this.response_handler.expectHover();
         } else {
@@ -96,7 +96,7 @@ export class Requester {
 
     sendDefinition(uri: string, line: number, character: number): Promise<Definition> {
         if (this.analysed) {
-            resetWatchdog();
+            startWatchdogIfNotRunning();
 
             this.write('#DEFINITION#\n');
             this.write(normalizeFileUri(uri) + '\n');
@@ -111,7 +111,7 @@ export class Requester {
 
     sendDeclaration(uri: string, line: number, character: number): Promise<Definition> {
         if (this.analysed) {
-            resetWatchdog();
+            startWatchdogIfNotRunning();
 
             this.write('#DECLARATION#\n');
             this.write(normalizeFileUri(uri) + '\n');
@@ -126,7 +126,7 @@ export class Requester {
 
     sendCompletion(uri: string, line: number, character: number): Promise<CompletionItem[]> {
         if (this.analysed) {
-            resetWatchdog();
+            startWatchdogIfNotRunning();
 
             this.write("#COMPLETE#\n");
             this.write(normalizeFileUri(uri) + '\n');
@@ -141,7 +141,7 @@ export class Requester {
 
     sendSignature(uri: string, line: number, character: number): Promise<SignatureHelp> {
         if (this.analysed) {
-            resetWatchdog();
+            startWatchdogIfNotRunning();
 
             this.write('#SIGNATURE#\n');
             this.write(normalizeFileUri(uri) + '\n');
@@ -156,7 +156,7 @@ export class Requester {
     
     sendDocumentSymbol(uri: string): Promise<SymbolInformation[]> {
         if (this.analysed) {
-            resetWatchdog();
+            startWatchdogIfNotRunning();
 
             this.write('#SYMBOLS#\n');
             this.write(normalizeFileUri(uri) + '\n');
@@ -169,7 +169,7 @@ export class Requester {
 
     sendWorkspaceSymbol(): Promise<SymbolInformation[]> {
         if (this.analysed) {
-            resetWatchdog();
+            startWatchdogIfNotRunning();
 
             this.write('#SYMBOLS#\n');
             this.write('\n');
@@ -182,12 +182,12 @@ export class Requester {
 
     sendReferences(uri: string, line: number, character: number): Promise<Location[]> {
         if (this.analysed) {
-            resetWatchdog();
+            startWatchdogIfNotRunning();
 
             this.write('#REFERENCES#\n');
             this.write(normalizeFileUri(uri) + '\n');
             this.write((line+1) + '\n');
-            this.write((character) + '\n');
+            this.write((character+1) + '\n');
 
             return this.response_handler.expectReferences();
         } else {
@@ -197,7 +197,7 @@ export class Requester {
 
     sendImplementation(uri: string, line: number, character: number): Promise<Location[]> {
         if (this.analysed) {
-            resetWatchdog();
+            startWatchdogIfNotRunning();
 
             this.write('#IMPLEMENTATION#\n');
             this.write(normalizeFileUri(uri) + '\n');
@@ -212,7 +212,7 @@ export class Requester {
 
     sendRenameRequest(uri: string, line: number, character: number, newName: string): Promise<WorkspaceEdit> {
         if (this.analysed) {
-            resetWatchdog();
+            startWatchdogIfNotRunning();
 
             this.write('#RENAMEREQUEST#\n');
             this.write(normalizeFileUri(uri) + '\n');
@@ -227,14 +227,14 @@ export class Requester {
     }
 
     sendFullCompileRequest() {
-        resetWatchdog();
+        startWatchdogIfNotRunning();
 
         this.write('#COMPILE#\n');
     }
  
     sendRestart() {
         if (this.analysed) {
-            resetWatchdog();
+            startWatchdogIfNotRunning();
 
             this.write('#RESTART#\n');
         }        

@@ -2,7 +2,7 @@ import { TextDocumentChangeEvent } from 'vscode-languageserver'
 
 import { log } from './log';
 
-import { rejectAllAndThrow } from './extension-state';
+import { getWatchdogTimeout, rejectAllAndThrow, setWatchdogTimeout } from './extension-state';
 
 import { Requester } from './requester'
 
@@ -160,10 +160,12 @@ export class EditQueue {
 
             if (this.full_build_timeout < this.edit_timeout) {
                 this.full_build_timeout = this.edit_timeout;
+
+                setWatchdogTimeout(this.full_build_timeout * 2);
             }
 
             if ((this.edit_count & 31) == 0) {
-                log(`edit request average: ${milliseconds.toFixed()} ms, edit timeout: ${this.edit_timeout.toFixed()} ms, compile timeout: ${this.full_build_timeout.toFixed()} ms`);
+                log(`edit request average: ${milliseconds.toFixed()} ms, edit timeout: ${this.edit_timeout.toFixed()} ms, compile timeout: ${this.full_build_timeout.toFixed()} ms, watchdog timeout: ${getWatchdogTimeout().toFixed()} ms`);
             }
 
             this.edit_count++;
@@ -188,8 +190,10 @@ export class EditQueue {
                 this.full_build_timeout = this.edit_timeout;
             }
 
+            setWatchdogTimeout(this.full_build_timeout * 2);
+
             if ((this.build_count & 31) == 0) {
-                log(`compile request average: ${milliseconds.toFixed()} ms, edit timeout: ${this.edit_timeout.toFixed()} ms, compile timeout: ${this.full_build_timeout.toFixed()} ms`);
+                log(`compile request average: ${milliseconds.toFixed()} ms, edit timeout: ${this.edit_timeout.toFixed()} ms, compile timeout: ${this.full_build_timeout.toFixed()} ms, watchdog timeout: ${getWatchdogTimeout().toFixed()} ms`);
             }
 
             this.build_count++;

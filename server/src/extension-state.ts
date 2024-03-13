@@ -81,7 +81,7 @@ export class ExtensionState {
     }
 
     public connect() {
-        this.watchdog = new Watchdog();
+        this.watchdog = new Watchdog(10000);
 
         this.server_event_emitter = new ServerEventEmitter();
         this.config_event_emitter = new ConfigEventEmitter();
@@ -141,6 +141,18 @@ export class ExtensionState {
 
         return ExtensionState.instance;
     }
+}
+
+export function getWatchdogTimeout() {
+    return ExtensionState.getInstance().watchdog.timeout_milliseconds;
+}
+
+export function setWatchdogTimeout(timeout_milliseconds: number) {
+    ExtensionState.getInstance().watchdog.setTimeout(timeout_milliseconds);
+}
+
+export function startWatchdogIfNotRunning() {
+    ExtensionState.getInstance().watchdog.startWatchdogIfNotRunning();
 }
 
 export function startWatchdog() {

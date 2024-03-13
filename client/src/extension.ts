@@ -32,6 +32,7 @@ export function activate(context: ExtensionContext) {
 				workspace.createFileSystemWatcher('**/.block-compiler'),
 				workspace.createFileSystemWatcher('**/*.ghulproj'),
 				workspace.createFileSystemWatcher('**/Directory.Build.props'),
+				workspace.createFileSystemWatcher('**/Directory.Packages.props'),
 				workspace.createFileSystemWatcher('**/dotnet-tools.json'),
 				workspace.createFileSystemWatcher('**/*.ghul', false, true, false),
 			]
