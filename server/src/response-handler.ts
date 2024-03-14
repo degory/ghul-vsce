@@ -339,6 +339,10 @@ export class ResponseHandler {
                 active_signature = parseInt(lines[0], 10);
                 active_parameter = parseInt(lines[1], 10);
 
+                if (active_signature < 0) {
+                    active_signature = undefined;
+                }
+
                 for (let i = 2; i < lines.length; i++) {
                     let parameters: ParameterInformation[] = [];
 
@@ -378,7 +382,7 @@ export class ResponseHandler {
     }
 
     handleSymbols(lines: string[]) {
-        let {resolve, reject} = this._symbols_promise_queue.dequeueAlways();
+        let {resolve} = this._symbols_promise_queue.dequeueAlways();
 
         try {
             let symbols: SymbolInformation[] = [];
@@ -412,6 +416,18 @@ export class ResponseHandler {
                             containerName: fields[6]
                         };
 
+                        if (symbol.location.uri == "internal" || symbol.location.uri == "reflected") {
+                            log("oops: unexpected internal/reflected uri in symbols response: " + symbol.location.uri);
+                            continue;
+                        }
+
+                        if (symbol.location.range.start.line < 0 || symbol.location.range.start.character < 0 ||
+                            symbol.location.range.end.line < 0 || symbol.location.range.end.character < 0)
+                        {
+                            log("oops: unexpected negative line/character in symbols response: " + JSON.stringify(symbol.location.range));
+                            continue;
+                        }    
+
                         symbols.push(symbol);
                     }
                 }
@@ -421,7 +437,8 @@ export class ResponseHandler {
                 symbols
             );
         } catch(e) {
-            reject("" + e);
+            log("symbols: caught: " + e);
+            resolve([]);
         }
     }    
     
