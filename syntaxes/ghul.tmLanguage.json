@@ -1,6 +1,9 @@
 {
 	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
 	"name": "ghul",
+	"colors": {
+		"invalid.illegal.ghul": "#FF0000"
+	},
 	"patterns": [
 		{
 			"name": "comment.ghul",
@@ -85,6 +88,10 @@
 					"end": "\\*/"
 				},
 				{
+					"name": "invalid.illegal.ghul",
+					"match": "!!!|\\?\\?\\?"
+				},
+				{
 					"name": "constant.language.ghul",
 					"match": "\\b(?<!\\`)(null|true|false|self|super)\\b"
 				},
@@ -106,7 +113,7 @@
 				},
 				{
 					"name": "keyword.other.ghul",
-					"match": "\\b(?<!\\`)(new|cast|isa|typeof|namespace|class|struct|trait|enum|use|innate|is|si)\\b"
+					"match": "\\b(?<!\\`)(new|cast|isa|typeof|namespace|class|struct|union|trait|enum|use|innate|is|si)\\b"
 				},
 				{
 					"name": "entity.name.type.ghul",
