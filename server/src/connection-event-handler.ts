@@ -5,11 +5,9 @@ import {
     Definition,
     CompletionItem,
     Hover,
-    // HoverRequest,
     Connection,
     InitializeResult,
     InitializedParams,
-    TextDocuments,
     TextDocumentPositionParams,
     SignatureHelp,
     CompletionParams,
@@ -21,10 +19,6 @@ import {
     WorkspaceEdit,
     TextDocumentSyncKind,
 } from 'vscode-languageserver';
-
-import {
-    TextDocument
-} from 'vscode-languageserver-textdocument';
 
 import { log } from './log';
 
@@ -44,7 +38,6 @@ import { DocumentChangeTracker } from './document-change-tracker';
 export class ConnectionEventHandler {
     connection: Connection; 
     server_manager: ServerManager;
-    documents: TextDocuments<TextDocument>;
     config_event_emitter: ConfigEventEmitter;
     requester: Requester;
     edit_queue: EditQueue;
@@ -55,14 +48,12 @@ export class ConnectionEventHandler {
     constructor(
         connection: Connection,
         server_manager: ServerManager,
-        documents: TextDocuments<TextDocument>,
         config_event_emitter: ConfigEventEmitter,        
         requester: Requester,
         edit_queue: EditQueue
     ) {
         this.connection = connection;
         this.server_manager = server_manager;
-        this.documents = documents;
         this.config_event_emitter = config_event_emitter;
         this.requester = requester;
         this.edit_queue = edit_queue;
@@ -150,7 +141,7 @@ export class ConnectionEventHandler {
             capabilities: {
                 textDocumentSync: {
                     openClose: true,
-                    change: TextDocumentSyncKind.Full
+                    change: TextDocumentSyncKind.Incremental
                 },
                 completionProvider: {
                     triggerCharacters: ['.'],

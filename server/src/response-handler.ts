@@ -140,13 +140,13 @@ export class ResponseHandler {
 
     resolveAllPendingPromises() {
         this._hover_promise_queue.resolveAll(null);
-        this._definition_promise_queue.resolveAll(null);
-        this._declaration_promise_queue.resolveAll(null);
-        this._completion_promise_queue.resolveAll(null);
+        this._definition_promise_queue.resolveAll([]);
+        this._declaration_promise_queue.resolveAll([]);
+        this._completion_promise_queue.resolveAll([]);
         this._signature_promise_queue.resolveAll(null);
-        this._symbols_promise_queue.resolveAll(null);
-        this._references_promise_queue.resolveAll(null);
-        this._implementation_promise_queue.resolveAll(null);
+        this._symbols_promise_queue.resolveAll([]);
+        this._references_promise_queue.resolveAll([]);
+        this._implementation_promise_queue.resolveAll([]);
         this._rename_promise_queue.resolveAll(null);
     }
 
@@ -228,7 +228,7 @@ export class ResponseHandler {
     }
 
     handleHover(lines: string[]) {
-        let {resolve, reject} = this._hover_promise_queue.dequeueAlways();
+        let {resolve} = this._hover_promise_queue.dequeueAlways();
 
         try {
             if (lines.length > 0 && lines[0] != null && lines[0].length > 0) {
@@ -245,7 +245,8 @@ export class ResponseHandler {
                 resolve(null);
             }    
         } catch(e) {
-            reject("" + e);
+            log("hover caught:", e);
+            resolve(null);
         }
     }
 
@@ -254,7 +255,7 @@ export class ResponseHandler {
     }
 
     handleDefinition(lines: string[]) {
-        let {resolve, reject} = this._definition_promise_queue.dequeueAlways();
+        let {resolve} = this._definition_promise_queue.dequeueAlways();
 
         try {
             if (lines.length == 1) {
@@ -263,7 +264,8 @@ export class ResponseHandler {
                 resolve(null);
             }    
         } catch(e) {
-            reject(e);
+            log("definition caught:", e);
+            resolve([]);
         }
     }
 
@@ -272,7 +274,7 @@ export class ResponseHandler {
     }
 
     handleDeclaration(lines: string[]) {
-        let {resolve, reject} = this._declaration_promise_queue.dequeueAlways();
+        let {resolve} = this._declaration_promise_queue.dequeueAlways();
 
         try {
             let locations: Location[] = [];
@@ -290,7 +292,8 @@ export class ResponseHandler {
                 locations
             );
         } catch(e) {
-            reject("" + e);
+            log("declaration caught:", e);
+            resolve([]);
         }
     }
 
@@ -299,7 +302,7 @@ export class ResponseHandler {
     }
 
     handleCompletion(lines: string[]) {
-        let {resolve, reject} = this._completion_promise_queue.dequeueAlways();
+        let {resolve} = this._completion_promise_queue.dequeueAlways();
 
         try {
             let results: CompletionItem[] = [];
@@ -318,7 +321,8 @@ export class ResponseHandler {
             
             resolve(results)
         } catch(e) {
-            reject("" + e);
+            log("completion caught:", e);
+            resolve([]);
         }
     }    
 
@@ -327,7 +331,7 @@ export class ResponseHandler {
     }
 
     handleSignature(lines: string[]) {
-        let {resolve, reject} = this._signature_promise_queue.dequeueAlways();
+        let {resolve} = this._signature_promise_queue.dequeueAlways();
 
         try {
             let active_signature = 0;
@@ -373,7 +377,8 @@ export class ResponseHandler {
                 result
             );
         } catch(e) {
-            reject("" + e);
+            log("signature caught:", e);
+            resolve({signatures: []})
         }
     }    
 
@@ -437,7 +442,7 @@ export class ResponseHandler {
                 symbols
             );
         } catch(e) {
-            log("symbols: caught: " + e);
+            log("symbols caught:" + e);
             resolve([]);
         }
     }    
@@ -447,7 +452,7 @@ export class ResponseHandler {
     }
 
     handleReferences(lines: string[]) {
-        let {resolve, reject} = this._references_promise_queue.dequeueAlways();
+        let {resolve} = this._references_promise_queue.dequeueAlways();
 
         try {
             let locations: Location[] = [];
@@ -466,7 +471,8 @@ export class ResponseHandler {
                 locations
             );
         } catch(e) {
-            reject("" + e);
+            log("references caught:", e);
+            resolve([]);
         }
     }        
 
@@ -475,7 +481,7 @@ export class ResponseHandler {
     }
 
     handleImplementation(lines: string[]) {
-        let {resolve, reject} = this._implementation_promise_queue.dequeueAlways();
+        let {resolve} = this._implementation_promise_queue.dequeueAlways();
 
         try {
             let locations: Location[] = [];
@@ -494,7 +500,8 @@ export class ResponseHandler {
                 locations
             );
         } catch(e) {
-            reject("" + e);
+            log("implementation caught:", e);
+            resolve([])
         }
     }    
 
@@ -503,7 +510,7 @@ export class ResponseHandler {
     }
 
     handleRenameRequest(lines: string[]) {
-        let {resolve, reject} = this._rename_promise_queue.dequeueAlways();
+        let {resolve} = this._rename_promise_queue.dequeueAlways();
 
         try {
             let changes: {
@@ -546,9 +553,8 @@ export class ResponseHandler {
                 { changes }
             );
         } catch(e) {
-            log("rename request: caught: " + e);
-
-            reject("" + e);
+            log("rename request: caught:" + e);
+            resolve({});
         }
     }    
 
