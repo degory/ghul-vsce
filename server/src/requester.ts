@@ -69,16 +69,6 @@ export class Requester {
         }
     }
 
-    sendDocument(uri: string, source: string) {
-        startWatchdogIfNotRunning();
-
-        this.write('#EDIT#\n');
-        this.write(normalizeFileUri(uri) + '\n');
-        this.write('\n');
-        this.write(source);
-        this.write('\f');
-    }
-
     sendHover(uri: string, line: number, character: number): Promise<Hover> {
         if (this.analysed) {
             startWatchdogIfNotRunning();

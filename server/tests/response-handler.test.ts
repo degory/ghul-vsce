@@ -86,7 +86,7 @@ jest.mock('../src/config-event-emitter');
 
     });
 
-    it('should resolve all pending promises to null', async () => {
+    it('should resolve all pending promises to no result', async () => {
         let hover_promise = responseHandler._hover_promise_queue.enqueue();
         let definition_promise = responseHandler._definition_promise_queue.enqueue();
         let declaration_promise = responseHandler._declaration_promise_queue.enqueue();
@@ -98,15 +98,15 @@ jest.mock('../src/config-event-emitter');
         let rename_promise = responseHandler._rename_promise_queue.enqueue();
         
         responseHandler.resolveAllPendingPromises();
-
+       
         expect(await hover_promise).toBe(null);
-        expect(await definition_promise).toBe(null);
-        expect(await declaration_promise).toBe(null);
-        expect(await completion_promise).toBe(null);
+        expect(await definition_promise).toEqual([]);
+        expect(await declaration_promise).toEqual([]);
+        expect(await completion_promise).toEqual([]);
         expect(await signature_promise).toBe(null);
-        expect(await symbols_promise).toBe(null);
-        expect(await references_promise).toBe(null);
-        expect(await implementation_promise).toBe(null);
+        expect(await symbols_promise).toEqual([]);
+        expect(await references_promise).toEqual([]);
+        expect(await implementation_promise).toEqual([]);
         expect(await rename_promise).toBe(null);
     });
 

@@ -124,7 +124,6 @@ export class ExtensionState {
         this.connection_event_handler = new ConnectionEventHandler(
             this.connection,
             this.server_manager,
-            this.documents,
             this.config_event_emitter,
             this.requester,
             this.edit_queue

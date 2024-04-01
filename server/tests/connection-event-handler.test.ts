@@ -1,8 +1,10 @@
 import { ConnectionEventHandler } from '../src/connection-event-handler';
-import { CompletionParams, Connection, DocumentSymbolParams, InitializeResult, InitializedParams, ReferenceParams, TextDocumentPositionParams, TextDocuments } from 'vscode-languageserver';
-import {
-    TextDocument
-} from 'vscode-languageserver-textdocument';
+import { CompletionParams, Connection, DocumentSymbolParams, InitializeResult, InitializedParams, ReferenceParams, TextDocumentPositionParams, 
+    // TextDocuments 
+} from 'vscode-languageserver';
+// import {
+//     TextDocument
+// } from 'vscode-languageserver-textdocument';
 
 
 import { ServerManager } from '../src/server-manager';
@@ -28,7 +30,6 @@ jest.mock('../src/document-change-tracker');
 describe('ConnectionEventHandler', () => {
     let connection: Connection;
     let serverManager: ServerManager;
-    let documents: TextDocuments<TextDocument>;
     let configEventEmitter: ConfigEventEmitter;
     let requester: Requester;
     let editQueue: EditQueue;
@@ -41,7 +42,7 @@ describe('ConnectionEventHandler', () => {
                     capabilities: {
                         textDocumentSync: {
                             openClose: true,
-                            change: 1
+                            change: 2
                         },
                         completionProvider: {
                             triggerCharacters: ['.'],
@@ -85,11 +86,11 @@ describe('ConnectionEventHandler', () => {
             kill: jest.fn(),
         } as any as ServerManager;
 
-        documents = {
-            onDidOpen: jest.fn(),
-            onDidClose: jest.fn(),
-            onDidChangeContent: jest.fn(),
-        } as any as TextDocuments<TextDocument>;
+        // documents = {
+        //     onDidOpen: jest.fn(),
+        //     onDidClose: jest.fn(),
+        //     onDidChangeContent: jest.fn(),
+        // } as any as TextDocuments<TextDocument>;
 
         configEventEmitter = {
             onConfigAvailable: jest.fn(),
@@ -112,7 +113,7 @@ describe('ConnectionEventHandler', () => {
             sendQueued: jest.fn(),
         } as any as EditQueue;
 
-        connectionEventHandler = new ConnectionEventHandler(connection, serverManager, documents, configEventEmitter, requester, editQueue);
+        connectionEventHandler = new ConnectionEventHandler(connection, serverManager, configEventEmitter, requester, editQueue);
     });
 
     afterEach(() => {
@@ -177,7 +178,7 @@ describe('ConnectionEventHandler', () => {
             capabilities: {
                 textDocumentSync: {
                     openClose: true,
-                    change: 1
+                    change: 2
                 },
                 completionProvider: {
                     triggerCharacters: ['.'],
