@@ -4,6 +4,7 @@ import { glob } from 'glob';
 
 import { parseString as parseXmlString } from 'xml2js';
 import { log } from './log';
+import { spawnSync } from 'child_process';
 
 export interface GhulConfig {
 	block: boolean,
@@ -18,6 +19,7 @@ interface GhulConfigJson {
 	source?: string[],
 	other_flags?: string[],
 	want_plaintext_hover?: boolean,
+	update_compiler_tool?: boolean
 }
 
 interface DotNetToolsJson {
@@ -38,7 +40,8 @@ interface GhulProjectXml {
 		},
 		PropertyGroup: [
 			{
-				GhulCompiler: string[]
+				GhulCompiler: string[],
+				UpdateCompilerTool: boolean
 			}
 		],
 		ItemGroup: [
@@ -84,6 +87,18 @@ export function getGhulConfig(workspace: string): GhulConfig {
 
 		parseXmlString(buffer, (error, projectXml: GhulProjectXml) => {
 			if (!error && projectXml.Project) {
+				if (!config.update_compiler_tool && projectXml.Project.PropertyGroup) {
+					let updateCompilerTool =
+						projectXml.Project.PropertyGroup
+						.filter(pg => pg.UpdateCompilerTool)
+						.map(pg => pg.UpdateCompilerTool)[0]
+
+					if (updateCompilerTool) {
+						log('will update any locally installed compiler tool to latest version');
+						config.update_compiler_tool = true;
+					}
+				}
+
 				if (!config.compiler && projectXml.Project.PropertyGroup) {
 					let compilerCommandLine =
 						projectXml.Project.PropertyGroup
@@ -149,11 +164,30 @@ export function getGhulConfig(workspace: string): GhulConfig {
 				["tool", "run", ghulCompilerTool.commands[0]].forEach(
 					(a) => args.push(a)
 				);
-			} else {
-				log("cannot find a useable compiler in .config/dotnet-tools.json: assuming 'ghul-compiler' is on the PATH");
 			}
-		} else {
-			log("no .config/dotnet-tools.json found: assuming 'ghul-compiler' is on the PATH");
+		}
+
+		if (!config.compiler) {
+			let result = spawnSync("dotnet", ["ghul-compiler"], { encoding: "utf-8" });
+
+			if (result.status === 0 && result.stdout.startsWith("ghūl")) {
+				config.compiler = "dotnet"
+				args = ["ghul-compiler", ...args];
+				log(`will use compiler '${config.compiler} ${args.join(" ")}'`);
+			}
+		}
+
+		if (!config.compiler) {
+			let result = spawnSync("ghul-compiler", { encoding: "utf-8" });
+
+			if (result.status === 0 && result.stdout.startsWith("ghūl")) {
+				config.compiler = "ghul-compiler"
+				log(`will use compiler '${config.compiler}'`);
+			}
+		}
+
+		if (!config.compiler) {
+			log("no usable ghūl compiler found")
 		}
 	} else {
 		let compilerCommandLineParts = config.compiler.split(" ").map(s => s.trim())
@@ -161,8 +195,19 @@ export function getGhulConfig(workspace: string): GhulConfig {
 		config.compiler = compilerCommandLineParts[0];
 		
 		args.splice(1, 0, ...compilerCommandLineParts.slice(1));
+	}
 
-		// compilerCommandLineParts.slice(1).forEach(s => args.push(s));
+	if (config.update_compiler_tool) {
+		let result = spawnSync("dotnet", ["tool", "update", "ghul.compiler", "--local"], { encoding: "utf-8" });
+
+		log(result.stdout);
+
+		if (result.status === 0) {
+			log('compiler tool update successful');
+		} else {
+			log(result.stderr);
+			log('compiler tool update failed');			
+		}
 	}
 
 	if (existsSync(workspace + "/.assemblies.json")) {		
