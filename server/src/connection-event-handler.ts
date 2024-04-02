@@ -112,10 +112,10 @@ export class ConnectionEventHandler {
     }
 
     initialize() {
+        this.config = getGhulConfig(this.workspace_root);
+
         restoreDotNetTools(this.workspace_root)
         generateAssembliesJson(this.workspace_root);
-
-        this.config = getGhulConfig(this.workspace_root);
 
         // FIXME is there a better way to do this?
         const workspace_root_munged = this.workspace_root.replace(/\\/g, '/');
