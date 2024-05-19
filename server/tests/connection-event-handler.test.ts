@@ -126,7 +126,7 @@ describe('ConnectionEventHandler', () => {
         const restoreDotNetToolsSpy = jest.spyOn(restoreDotNetTools, 'restoreDotNetTools').mockImplementation();
         const generateAssembliesJsonSpy = jest.spyOn(generateAssembliesJson, 'generateAssembliesJson').mockImplementation();
         const getGhulConfigSpy = jest.spyOn(GetGhulConfig, 'getGhulConfig').mockReturnValue({
-            compiler: 'ghul',
+            compiler: ['ghul'],
             source: ["test.ghul"],
             arguments: [],
             want_plaintext_hover: false,
@@ -157,7 +157,7 @@ describe('ConnectionEventHandler', () => {
         expect(getGhulConfigSpy).toHaveBeenCalledWith(connectionEventHandler.workspace_root);
         expect(connectionEventHandler.document_change_tracker).toBe(documentChangeTracker);
         expect(configAvailableSpy).toHaveBeenCalledWith(connectionEventHandler.workspace_root, {
-            compiler: 'ghul',
+            compiler: ['ghul'],
             source: ["test.ghul"],
             arguments: [],
             want_plaintext_hover: false,

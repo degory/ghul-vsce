@@ -12,7 +12,6 @@ import { ConfigEventEmitter } from './config-event-emitter';
 
 import { ServerEventEmitter } from './server-event-emitter';
 import { EditQueue } from './edit-queue';
-import { log } from 'console';
 
 export class GhulAnalyser {
     server_event_emitter: ServerEventEmitter;
@@ -27,8 +26,6 @@ export class GhulAnalyser {
         config_event_emitter: ConfigEventEmitter,
         server_event_emitter: ServerEventEmitter
     ) {
-        log('GhulAnalyser constructor');
-
         this.edit_queue = edit_queue;
 
         this.server_event_emitter = server_event_emitter;
