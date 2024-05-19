@@ -1,3 +1,6 @@
+import { writeFileSync } from 'fs';
+import { quote } from 'shell-quote';
+
 import {
 	spawn,
 	ChildProcess
@@ -72,52 +75,53 @@ export class ServerManager {
 			return;
 		}
 
-		this.child = spawn(ghul_compiler, this.ghul_config.arguments);
+		writeFileSync(".analysis.rsp", quote(this.ghul_config.arguments));
+
+		log(`compiler is "${quote(ghul_compiler)}"`);
+
+		this.child = spawn(ghul_compiler[0], [...ghul_compiler.slice(1), "@.analysis.rsp"]);
 
 		this.child.on("error", err => {
 			log(`compiler: failed to start: ${err.message}`);			
 		});
 
-		// FIXME: why does this event not fire?
-		// this.child.on("spawn", () => {
-			log(`spawned compiler process PID ${this.child.pid}`);
+		log(`spawned compiler process PID ${this.child.pid}`);
 
-			this.child.stderr.on('data', (chunk: Buffer) => {
-				process.stderr.write(chunk);
-			});
-	
-			this.child.stdout.on('data', (chunk: Buffer) => {
-				this.response_parser.handleChunk(chunk.toString());
-			});
-	
-			this.event_emitter.running(this.child);
+		this.child.stderr.on('data', (chunk: Buffer) => {
+			process.stderr.write(chunk);
+		});
 
-			const pid = this.child?.pid;
+		this.child.stdout.on('data', (chunk: Buffer) => {
+			this.response_parser.handleChunk(chunk.toString());
+		});
+
+		this.event_emitter.running(this.child);
+
+		const pid = this.child?.pid;
+	
+		this.child.on('exit',
+			(_code: number, _signal: string) => {
+				const was_expecting_exit = this.expecting_exit;
+
+				if (!was_expecting_exit) {
+					log(`compiler PID ${pid}: unexpected exit`);
+				} else {
+					log(`compiler PID ${pid}: exited`);
+				}
+
+				this.child = null;
+
+				resolveAllPendingPromises();
+
+				if (!was_expecting_exit) {
+					this.edit_queue.reset();
+					log(`compiler PID ${pid}: will restart after unexpected exit`);
 		
-			this.child.on('exit',
-				(_code: number, _signal: string) => {
-					const was_expecting_exit = this.expecting_exit;
-
-					if (!was_expecting_exit) {
-						log(`compiler PID ${pid}: unexpected exit`);
-					} else {
-						log(`compiler PID ${pid}: exited`);
-					}
-
-					this.child = null;
-
-					resolveAllPendingPromises();
-
-					if (!was_expecting_exit) {
-						this.edit_queue.reset();
-						log(`compiler PID ${pid}: will restart after unexpected exit`);
-			
-						this.start();
-					} else {
-						this.expecting_exit = false;
-					}
-				});
-		// });			
+					this.start();
+				} else {
+					this.expecting_exit = false;
+				}
+			});
 	}	
 	
 	state() {

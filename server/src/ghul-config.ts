@@ -5,19 +5,20 @@ import { glob } from 'glob';
 import { parseString as parseXmlString } from 'xml2js';
 import { log } from './log';
 import { spawnSync } from 'child_process';
+import { parse, quote } from 'shell-quote';
 
 export interface GhulConfig {
 	block: boolean,
-	compiler: string,
+	compiler: string[],
 	source: string[],
 	arguments: string[],
 	want_plaintext_hover: boolean,
 }
 
 interface GhulConfigJson {
-	compiler?: string,
+	compiler?: string[] | string,
 	source?: string[],
-	other_flags?: string[],
+	other_flags?: string[] | string,
 	want_plaintext_hover?: boolean,
 	update_compiler_tool?: boolean
 }
@@ -66,6 +67,16 @@ export function getGhulConfig(workspace: string): GhulConfig {
 		config = {}
 	}
 
+	let compiler: string[];
+
+	if (config.compiler) {
+		if (typeof config.compiler == "string") {
+			compiler = parse(config.compiler).map(e => e.toString());
+		} else {
+			compiler = config.compiler;
+		}
+	}
+
 	let block = false;
 
 	if (existsSync(workspace + "/.block-compiler")) {
@@ -75,7 +86,7 @@ export function getGhulConfig(workspace: string): GhulConfig {
 	let args = config.other_flags ?? [];
 
 	if (typeof args == "string") {
-		args = (args as string).split(" ").map(option => option.trim());
+		args = parse(args as string).map(e => e.toString());
 	}
 
 	let projects = glob.sync(workspace + "/*.ghulproj");
@@ -99,7 +110,7 @@ export function getGhulConfig(workspace: string): GhulConfig {
 					}
 				}
 
-				if (!config.compiler && projectXml.Project.PropertyGroup) {
+				if (!compiler && projectXml.Project.PropertyGroup) {
 					let compilerCommandLine =
 						projectXml.Project.PropertyGroup
 							.filter(pg => pg.GhulCompiler)
@@ -107,13 +118,9 @@ export function getGhulConfig(workspace: string): GhulConfig {
 								[0]?.[0];
 
 					if ((compilerCommandLine ?? "") != "") {
-						let compilerCommandLineParts = compilerCommandLine.split(" ").map(s => s.trim())
+						compiler = parse(compilerCommandLine).map(e => e.toString());
 
-						config.compiler = compilerCommandLineParts[0];
-
-						compilerCommandLineParts.slice(1).forEach(s => args.push(s));
-
-						log(`will use compiler '${compilerCommandLine}' specified in ${ghulProjFileName}`);						
+						log(`will use compiler '${quote([...compiler, ...args])}' specified in ${ghulProjFileName}`);						
 					}
 				}
 
@@ -145,7 +152,7 @@ export function getGhulConfig(workspace: string): GhulConfig {
 		log("ignoring multiple .ghulproj files:" + projects.join(','));
 	}
 
-	if (!config.compiler || config.compiler == "") {
+	if (!compiler) {
 		if (existsSync(workspace + "/.config/dotnet-tools.json")) {
 			let buffer = ('' + readFileSync(workspace + "/.config/dotnet-tools.json", "utf-8")).replace(/^\uFEFF/, '');
 
@@ -156,45 +163,35 @@ export function getGhulConfig(workspace: string): GhulConfig {
 			let ghulCompilerTool = tools["ghul.compiler"]; 
 
 			if (ghulCompilerTool && ghulCompilerTool.commands.length == 1) {
-				let compilerCommand = ghulCompilerTool.commands[0];
+				compiler = ["dotnet", "tool", "run", ghulCompilerTool.commands[0]]
 
-				log(`will use compiler '${compilerCommand}' version ${ghulCompilerTool.version} from local tool manifest`);
-				config.compiler = "dotnet";
-
-				["tool", "run", ghulCompilerTool.commands[0]].forEach(
-					(a) => args.push(a)
-				);
+				log(`will use compiler '${quote([...compiler, ...args])}' version ${ghulCompilerTool.version} from local tool manifest`);
 			}
 		}
 
-		if (!config.compiler) {
+		if (!compiler) {
 			let result = spawnSync("dotnet", ["ghul-compiler"], { encoding: "utf-8" });
 
 			if (result.status === 0 && result.stdout.startsWith("ghūl")) {
-				config.compiler = "dotnet"
-				args = ["ghul-compiler", ...args];
-				log(`will use compiler '${config.compiler} ${args.join(" ")}'`);
+				compiler = ["dotnet", "ghul-compiler"];
+
+				log(`will use compiler '${quote([...compiler, ...args])}'`);
 			}
 		}
 
-		if (!config.compiler) {
+		if (!compiler) {
 			let result = spawnSync("ghul-compiler", { encoding: "utf-8" });
 
 			if (result.status === 0 && result.stdout.startsWith("ghūl")) {
-				config.compiler = "ghul-compiler"
-				log(`will use compiler '${config.compiler}'`);
+				compiler = ["ghul-compiler"]
+
+				log(`will use compiler '${quote([...compiler, ...args])}'`);
 			}
 		}
+	}
 
-		if (!config.compiler) {
-			log("no usable ghūl compiler found")
-		}
-	} else {
-		let compilerCommandLineParts = config.compiler.split(" ").map(s => s.trim())
-
-		config.compiler = compilerCommandLineParts[0];
-		
-		args.splice(1, 0, ...compilerCommandLineParts.slice(1));
+	if (!compiler) {
+		log("no usable ghūl compiler found")
 	}
 
 	if (config.update_compiler_tool) {
@@ -227,7 +224,7 @@ export function getGhulConfig(workspace: string): GhulConfig {
 
     return {
 		block,
-		compiler: config.compiler ?? "ghul-compiler",
+		compiler,
 		source,
 		arguments: args,
 		want_plaintext_hover: config.want_plaintext_hover ?? false
