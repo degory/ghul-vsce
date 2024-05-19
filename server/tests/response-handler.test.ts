@@ -51,7 +51,7 @@ jest.mock('../src/config-event-emitter');
     it('should set want_plaintext_hover when config is available', () => {
         const config: GhulConfig = {
             block: false,
-            compiler: '',
+            compiler: [''],
             source: [],
             arguments: [],
             want_plaintext_hover: true
