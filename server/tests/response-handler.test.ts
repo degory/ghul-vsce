@@ -533,4 +533,196 @@ jest.mock('../src/config-event-emitter');
             }
         ]);
     });
+
+    it('handleImplementation parses location lines like handleReferences', async () => {
+        const p = responseHandler.expectImplementation();
+        responseHandler.handleImplementation([
+            'file:///a.ghul\t1\t1\t1\t10',
+            'file:///b.ghul\t2\t1\t2\t5',
+        ]);
+
+        await expect(p).resolves.toEqual([
+            { uri: 'file:///a.ghul', range: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } } },
+            { uri: 'file:///b.ghul', range: { start: { line: 1, character: 0 }, end: { line: 1, character: 5 } } },
+        ]);
+    });
+
+    it('handleRenameRequest groups edits by uri', async () => {
+        const p = responseHandler.expectRenameRequest();
+        responseHandler.handleRenameRequest([
+            'file:///a.ghul\t1\t1\t1\t5\tnewA1',
+            'file:///a.ghul\t2\t1\t2\t5\tnewA2',
+            'file:///b.ghul\t1\t1\t1\t5\tnewB',
+        ]);
+
+        const result = await p;
+        expect(result.changes!['file:///a.ghul']).toHaveLength(2);
+        expect(result.changes!['file:///b.ghul']).toHaveLength(1);
+        expect(result.changes!['file:///b.ghul']![0].newText).toBe('newB');
+    });
+
+    it('handleRenameRequest resolves with an empty changes object when given no lines', async () => {
+        const p = responseHandler.expectRenameRequest();
+        responseHandler.handleRenameRequest([]);
+
+        await expect(p).resolves.toEqual({ changes: {} });
+    });
+
+    it('handleHover returns plaintext when want_plaintext_hover is set', async () => {
+        responseHandler.want_plaintext_hover = true;
+        const p = responseHandler.expectHover();
+
+        responseHandler.handleHover(['some hover text']);
+
+        await expect(p).resolves.toEqual({
+            contents: { kind: 'plaintext', value: 'some hover text' },
+        });
+    });
+
+    it('handleHover resolves to null on empty lines', async () => {
+        const p = responseHandler.expectHover();
+
+        responseHandler.handleHover([]);
+
+        await expect(p).resolves.toBeNull();
+    });
+
+    it('handleDefinition resolves to null when no lines are given', async () => {
+        const p = responseHandler.expectDefinition();
+
+        responseHandler.handleDefinition([]);
+
+        await expect(p).resolves.toBeNull();
+    });
+
+    it('handleDeclaration resolves to [] when no lines are given', async () => {
+        const p = responseHandler.expectDeclaration();
+
+        responseHandler.handleDeclaration([]);
+
+        await expect(p).resolves.toEqual([]);
+    });
+
+    it('handleCompletion drops lines without enough fields', async () => {
+        const p = responseHandler.expectCompletion();
+
+        responseHandler.handleCompletion([
+            'ok-item\t5\tDetail',  // valid
+            'too-few-fields',       // invalid – dropped
+            '',                     // invalid – dropped
+        ]);
+
+        await expect(p).resolves.toEqual([
+            { label: 'ok-item', kind: 5, detail: 'Detail' },
+        ]);
+    });
+
+    it('handleSymbols filters out internal/reflected sentinel uris', async () => {
+        const p = responseHandler.expectSymbols();
+
+        responseHandler.handleSymbols([
+            'internal',
+            'symbolA\t1\t1\t1\t1\t1\tcontainer',
+            'reflected',
+            'symbolB\t1\t1\t1\t1\t1\tcontainer',
+            'file:///real.ghul',
+            'symbolC\t1\t1\t1\t1\t1\tcontainer',
+        ]);
+
+        const result = await p;
+        expect(result.find(s => s.location.uri === 'internal')).toBeUndefined();
+        expect(result.find(s => s.location.uri === 'reflected')).toBeUndefined();
+        expect(result.map(s => s.name).sort()).toEqual(['symbolC']);
+    });
+
+    it('handleSymbols filters out entries with negative line/character coordinates', async () => {
+        const p = responseHandler.expectSymbols();
+
+        responseHandler.handleSymbols([
+            'file:///a.ghul',
+            'bad\t1\t-1\t1\t1\t1\tcontainer',
+            'good\t1\t1\t1\t1\t1\tcontainer',
+        ]);
+
+        const result = await p;
+        expect(result.map(s => s.name)).toEqual(['good']);
+    });
+
+    it('handleSignature handles negative active_signature by leaving it undefined', async () => {
+        const p = responseHandler.expectSignature();
+
+        responseHandler.handleSignature(['-1', '0', 'fn\tparam']);
+
+        const result = await p;
+        expect(result.activeSignature).toBeUndefined();
+        expect(result.activeParameter).toBe(0);
+        expect(result.signatures).toHaveLength(1);
+    });
+
+    it('handleSignature returns an empty signature set when given no lines', async () => {
+        const p = responseHandler.expectSignature();
+
+        responseHandler.handleSignature([]);
+
+        const result = await p;
+        expect(result.signatures).toEqual([]);
+    });
+
+    it('handleRestart calls edit_queue.reset', () => {
+        const reset = jest.fn();
+        responseHandler.edit_queue = { reset } as any;
+
+        responseHandler.handleRestart();
+
+        expect(reset).toHaveBeenCalledTimes(1);
+    });
+
+    it('handleUnexpected calls server_manager.abort', () => {
+        const abort = jest.fn();
+        responseHandler.server_manager = { abort } as any;
+
+        responseHandler.handleUnexpected();
+
+        expect(abort).toHaveBeenCalledTimes(1);
+    });
+
+    it('setServerManager throws on a second assignment', () => {
+        // First assignment is OK; second goes through rejectAllAndThrow.
+        // We rely on a singleton response_handler being present (set up by
+        // an earlier test) so rejectAllAndThrow doesn't NPE before throwing.
+        // setEditQueue follows the same shape.
+        const ExtensionState = require('../src/extension-state').ExtensionState;
+        ExtensionState.getInstance().response_handler = responseHandler;
+
+        responseHandler.server_manager = { startListening: jest.fn() } as any;
+
+        expect(() => responseHandler.setServerManager({} as any)).toThrow();
+    });
+
+    it('setEditQueue throws on a second assignment', () => {
+        const ExtensionState = require('../src/extension-state').ExtensionState;
+        ExtensionState.getInstance().response_handler = responseHandler;
+
+        responseHandler.edit_queue = { reset: jest.fn() } as any;
+
+        expect(() => responseHandler.setEditQueue({} as any)).toThrow();
+    });
+
+    it('parseDiagnostics tolerates non-file uri prefixes and adds file://', () => {
+        const result = responseHandler.parseDiagnostics([
+            '/abs/path/x.ghul\t1\t1\t1\t5\t1\tmessage',
+        ]);
+        const uris = Array.from(result.keys());
+        expect(uris[0].startsWith('file://')).toBe(true);
+    });
+
+    it('parseDiagnostics drops internal and reflected lines', () => {
+        const result = responseHandler.parseDiagnostics([
+            'internal\t1\t1\t1\t5\t1\tmsg',
+            'reflected\t1\t1\t1\t5\t1\tmsg',
+            'file:///real.ghul\t1\t1\t1\t5\t1\tmsg',
+        ]);
+        const uris = Array.from(result.keys());
+        expect(uris).toEqual(['file:///real.ghul']);
+    });
 });

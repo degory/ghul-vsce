@@ -1,6 +1,6 @@
 import { readFileSync, existsSync } from 'fs';
 
-import { glob } from 'glob';
+import { globSync } from 'glob';
 
 import { parseString as parseXmlString } from 'xml2js';
 import { log } from './log';
@@ -89,7 +89,7 @@ export function getGhulConfig(workspace: string): GhulConfig {
 		args = parse(args as string).map(e => e.toString());
 	}
 
-	let projects = glob.sync(workspace + "/*.ghulproj");
+	let projects = globSync(workspace + "/*.ghulproj");
 
 	if (projects.length == 1) {
 		let ghulProjFileName = projects[0];

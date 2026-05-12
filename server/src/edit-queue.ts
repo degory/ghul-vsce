@@ -31,7 +31,7 @@ export class EditQueue {
     expected_build_time: number;
 
     edit_timeout: number;
-    edit_timer: NodeJS.Timer;
+    edit_timer: NodeJS.Timeout;
 
     edit_count: number;
     build_count: number;

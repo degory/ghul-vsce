@@ -15,13 +15,7 @@
         "node_modules",
         "dist"
     ],
-    "plugins": [
-        {
-            "transform": "ts-auto-mock/transformer",
-            "cacheBetweenTests": false           
-        }
-    ],
     "lib": [
         "es2020"
-    ],
+    ]
 }
