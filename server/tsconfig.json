@@ -12,7 +12,8 @@
 		"outDir": "../client/server"
 	},
 	"exclude": [
-		"node_modules"
+		"node_modules",
+		"tests"
 	],
 	"lib": [
 		"es2020"

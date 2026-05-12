@@ -4,7 +4,7 @@ import {
 
 import { URL, pathToFileURL, fileURLToPath } from 'url';
 
-import glob = require('glob');
+import { globSync } from 'glob';
 
 import { GhulConfig } from './ghul-config'; 
 
@@ -48,7 +48,7 @@ export class GhulAnalyser {
         config.source.forEach(pattern => {
             sourceFiles
                 .push(
-                    ...glob.sync(pattern)
+                    ...globSync(pattern)
                         .filter(f => f.endsWith('.ghul'))
                         .map(f => pathToFileURL(f))
                 );
