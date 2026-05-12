@@ -101,5 +101,57 @@ describe('DocumentChangeTracker', () => {
         documentChangeTracker.onDidChangeWatchedFiles(params);
 
         expect(editQueue.queueEdit3).toHaveBeenCalledWith(uri, null, "contents of file");
-    })
+    });
+
+    it('returns early when params has no changes', () => {
+        documentChangeTracker.onDidChangeWatchedFiles({ changes: undefined } as any);
+
+        expect(editQueue.queueEdit3).not.toHaveBeenCalled();
+    });
+
+    it('returns early when params itself is null-ish', () => {
+        documentChangeTracker.onDidChangeWatchedFiles(null as any);
+
+        expect(editQueue.queueEdit3).not.toHaveBeenCalled();
+    });
+
+    it('returns null for a non-file:// uri (tryGetValidSourceFile)', () => {
+        expect(documentChangeTracker.tryGetValidSourceFile('http://example.com/x.ghul')).toBeNull();
+        expect(documentChangeTracker.tryGetValidSourceFile('untitled:foo.ghul')).toBeNull();
+    });
+
+    it('ignores changes for files that fall outside the configured globs', () => {
+        // .js doesn't match **/*.ghul → tryGetValidSourceFile returns null,
+        // the loop continues without queueing:
+        const params = createDidChangeWatchedFilesParams(
+            'file:///path/to/document.js',
+            FileChangeType.Created
+        );
+
+        documentChangeTracker.onDidChangeWatchedFiles(params);
+
+        expect(editQueue.queueEdit3).not.toHaveBeenCalled();
+    });
+
+    describe('project-file changes trigger a debounced re-initialise', () => {
+        // debounced_reinitialize() schedules a real setTimeout(5000) that
+        // would later call ExtensionState.getInstance().connection_event_handler
+        // .initialize() and NPE in test context. Fake-timer-isolate so the
+        // schedule is registered but never fires:
+        beforeAll(() => { jest.useFakeTimers(); });
+        afterAll(() => { jest.useRealTimers(); });
+
+        it.each([
+            ['file:///workspace/test.ghulproj'],
+            ['file:///workspace/Directory.Build.props'],
+            ['file:///workspace/.config/dotnet-tools.json'],
+        ])('returns after seeing a project-relevant change for %s (does not queue)', uri => {
+            const params = createDidChangeWatchedFilesParams(uri, FileChangeType.Changed);
+
+            documentChangeTracker.onDidChangeWatchedFiles(params);
+
+            // The function returns early after scheduling debounced_reinitialize:
+            expect(editQueue.queueEdit3).not.toHaveBeenCalled();
+        });
+    });
 });

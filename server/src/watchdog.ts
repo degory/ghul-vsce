@@ -18,7 +18,7 @@ function createTimer(callback: () => void, delay: number): Timer {
 }
 */
 
-type Timer = NodeJS.Timer;
+type Timer = NodeJS.Timeout;
 
 function createTimer(callback: () => void, delay: number): Timer {
     return setTimeout(callback, delay);

@@ -437,4 +437,79 @@ describe('ConnectionEventHandler', () => {
         expect(sendImplementationSpy).toHaveBeenCalledWith('test-uri', 1, 2);
         expect(result).toEqual([]);
     });
+
+    it('should handle onRenameRequest event', async () => {
+        // The outer-suite requester mock doesn't include sendRenameRequest;
+        // assign and spy explicitly rather than mutating the shared setup:
+        const sendRenameRequest = jest.fn().mockResolvedValue({ changes: { 'test-uri': [] } });
+        (requester as any).sendRenameRequest = sendRenameRequest;
+
+        const result = await connectionEventHandler.onRenameRequest({
+            textDocument: { uri: 'test-uri' },
+            position: { line: 1, character: 2 },
+            newName: 'NewName',
+        } as any);
+
+        expect(sendRenameRequest).toHaveBeenCalledWith('test-uri', 1, 2, 'NewName');
+        expect(result).toEqual({ changes: { 'test-uri': [] } });
+    });
+
+    describe('connection.onX callbacks registered by constructor', () => {
+        // The constructor wires each connection.onX with an inline arrow that
+        // forwards to this.onX(). Capture the registered callback per event
+        // and confirm it routes back to the matching instance method.
+        //
+        // We build a fresh all-jest.fn() connection rather than reuse the
+        // outer suite's hand-rolled one so .mock.calls works uniformly.
+
+        const hooks = [
+            'onInitialize',
+            'onShutdown',
+            'onExit',
+            'onDidChangeConfiguration',
+            'onCompletion',
+            'onHover',
+            'onDefinition',
+            'onDeclaration',
+            'onSignatureHelp',
+            'onDocumentSymbol',
+            'onWorkspaceSymbol',
+            'onReferences',
+            'onImplementation',
+            'onRenameRequest',
+        ] as const;
+
+        function makeMockConnection(): Connection {
+            const conn: any = {};
+            for (const h of hooks) {
+                conn[h] = jest.fn();
+            }
+            return conn as Connection;
+        }
+
+        function captureLastCall(fn: jest.Mock): Function | undefined {
+            return fn.mock.calls[fn.mock.calls.length - 1]?.[0] as Function | undefined;
+        }
+
+        it.each(hooks)('connection.%s callback forwards to the matching instance method', hook => {
+            const conn = makeMockConnection();
+            const ceh = new (require('../src/connection-event-handler').ConnectionEventHandler)(
+                conn, serverManager, configEventEmitter, requester, editQueue
+            );
+
+            const cb = captureLastCall((conn as any)[hook] as jest.Mock);
+            expect(cb).toBeDefined();
+            jest.spyOn(ceh, hook).mockImplementation(() => Promise.resolve(undefined) as any);
+
+            cb!({
+                rootPath: '/foo',
+                textDocument: { uri: 'u' },
+                position: { line: 0, character: 0 },
+                context: { triggerCharacter: '.', triggerKind: 1, includeDeclaration: true },
+                newName: 'N',
+            } as any);
+
+            expect(ceh[hook]).toHaveBeenCalled();
+        });
+    });
 });
