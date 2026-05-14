@@ -164,6 +164,44 @@ describe('ConnectionEventHandler', () => {
         } as GhulConfig);
     });
 
+    it('should generate .assemblies.json before reading it via getGhulConfig', () => {
+        // getGhulConfig builds the -a argument list from .assemblies.json,
+        // which is written by generateAssembliesJson. If the read runs first
+        // on a fresh checkout where the file does not yet exist, .analysis.rsp
+        // ends up empty and the analyser falls back to a tiny default
+        // assembly list — producing spurious "not defined" / "not found"
+        // diagnostics for any reference outside that list.
+        const restoreDotNetToolsSpy = jest.spyOn(restoreDotNetTools, 'restoreDotNetTools').mockImplementation();
+        const generateAssembliesJsonSpy = jest.spyOn(generateAssembliesJson, 'generateAssembliesJson').mockImplementation();
+        const getGhulConfigSpy = jest.spyOn(GetGhulConfig, 'getGhulConfig').mockReturnValue({
+            compiler: ['ghul'],
+            source: ["test.ghul"],
+            arguments: [],
+            want_plaintext_hover: false,
+        } as GhulConfig);
+
+        jest.spyOn(DocumentChangeTrackerModule, 'DocumentChangeTracker').mockImplementation(() => ({
+            onDidOpenTextDocument: jest.fn(),
+            onDidOpen: jest.fn(),
+            onDidCloseTextDocument: jest.fn(),
+            onDidClose: jest.fn(),
+            onDidChangeWatchedFiles: jest.fn(),
+        } as any as DocumentChangeTracker));
+
+        jest.spyOn(configEventEmitter, 'configAvailable').mockImplementation();
+
+        connectionEventHandler.workspace_root = '/path/to/workspace';
+
+        connectionEventHandler.initialize();
+
+        const generateOrder = generateAssembliesJsonSpy.mock.invocationCallOrder[0];
+        const restoreOrder = restoreDotNetToolsSpy.mock.invocationCallOrder[0];
+        const configOrder = getGhulConfigSpy.mock.invocationCallOrder[0];
+
+        expect(restoreOrder).toBeLessThan(generateOrder);
+        expect(generateOrder).toBeLessThan(configOrder);
+    });
+
     it('should handle onInitialize event', () => {
         // Arrange
         const initializeSpy = jest.spyOn(connectionEventHandler, 'initialize').mockImplementation();
