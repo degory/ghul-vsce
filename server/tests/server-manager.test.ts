@@ -7,6 +7,9 @@ import { ServerEventEmitter } from '../src/server-event-emitter';
 import { ConfigEventEmitter } from '../src/config-event-emitter';
 import { EditQueue } from '../src/edit-queue';
 import { ResponseParser } from '../src/response-parser';
+import { ResponseHandler } from '../src/response-handler';
+import { ExtensionState } from '../src/extension-state';
+import { Watchdog } from '../src/watchdog';
 import { GhulConfig } from '../src/ghul-config';
 
 // jest.mock calls are hoisted above the imports so writeFileSync and spawn
@@ -154,6 +157,23 @@ describe('ServerManager (state helpers)', () => {
             (writeFileSync as jest.Mock).mockClear();
             (spawn as jest.Mock).mockClear().mockImplementation(() => makeFakeChild());
             manager.ghul_config = { ...baseConfig };
+
+            // start()'s exit handler calls resolveAllPendingPromises, which
+            // delegates to the ExtensionState singleton's response_handler.
+            // Wire a minimal stub so the handler doesn't throw and obscure
+            // the assertions we actually want to make:
+            const state = ExtensionState.getInstance();
+            state.watchdog = new Watchdog(10000);
+            state.response_handler = {
+                resolveAllPendingPromises: jest.fn(),
+                rejectAllPendingPromises: jest.fn(),
+            } as unknown as ResponseHandler;
+        });
+
+        afterEach(() => {
+            // requester.test.ts hits the same hazard: leaving the watchdog
+            // armed can fire after the test ends and crash the worker.
+            ExtensionState.getInstance().watchdog.clearWatchdog();
         });
 
         it('writes .analysis.rsp with shell-quoted arguments', () => {
