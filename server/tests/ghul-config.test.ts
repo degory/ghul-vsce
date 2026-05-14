@@ -189,6 +189,22 @@ describe('getGhulConfig', () => {
         ]);
     });
 
+    it('produces just ["-A"] when no .assemblies.json is present (bug-trigger for #69)', () => {
+        // On a fresh checkout .assemblies.json does not yet exist; if
+        // getGhulConfig runs before generateAssembliesJson, this is the
+        // state .analysis.rsp gets serialised from. server-manager then
+        // spawns the analyser with no -a flags and it falls back to a
+        // five-assembly default list. Pin the shape so a future change
+        // does not silently start fabricating fake `-a` entries (or
+        // dropping `-A` from the empty case).
+        const workspace = ws();
+        writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['src'] });
+        // No .assemblies.json on disk.
+
+        const cfg = getGhulConfig(workspace);
+        expect(cfg.arguments).toEqual(['-A']);
+    });
+
     it('reads compiler and sources from a .ghulproj when ghul.json is silent', () => {
         const workspace = ws();
         const proj = `<?xml version="1.0"?>
