@@ -112,10 +112,15 @@ export class ConnectionEventHandler {
     }
 
     initialize() {
-        this.config = getGhulConfig(this.workspace_root);
-
+        // generateAssembliesJson writes .assemblies.json; getGhulConfig
+        // reads it to build the -a flags for .analysis.rsp. Must run in
+        // this order — on a fresh checkout the file does not yet exist,
+        // so a reversed order leaves the analyser with no -a flags and
+        // it falls back to a five-assembly default.
         restoreDotNetTools(this.workspace_root)
         generateAssembliesJson(this.workspace_root);
+
+        this.config = getGhulConfig(this.workspace_root);
 
         // FIXME is there a better way to do this?
         const workspace_root_munged = this.workspace_root.replace(/\\/g, '/');
