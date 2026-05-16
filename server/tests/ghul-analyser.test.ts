@@ -1,6 +1,10 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { pathToFileURL } from 'url';
+
+import { TextDocuments } from 'vscode-languageserver';
+import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import { GhulAnalyser } from '../src/ghul-analyser';
 import { ConfigEventEmitter } from '../src/config-event-emitter';
@@ -13,6 +17,13 @@ class RecordingEditQueue {
     start(documents: { uri: string; source: string }[]) {
         this.started.push(documents);
     }
+}
+
+// A stand-in for the LSP TextDocuments store: GhulAnalyser only calls .all().
+function fakeDocuments(open: { uri: string; text: string }[] = []) {
+    return {
+        all: () => open.map(d => ({ uri: d.uri, getText: () => d.text })),
+    } as unknown as TextDocuments<TextDocument>;
 }
 
 describe('GhulAnalyser', () => {
@@ -37,6 +48,7 @@ describe('GhulAnalyser', () => {
             editQueue as unknown as EditQueue,
             configEvents,
             serverEvents,
+            fakeDocuments(),
         );
 
         const config: GhulConfig = {
@@ -65,6 +77,7 @@ describe('GhulAnalyser', () => {
             editQueue as unknown as EditQueue,
             configEvents,
             serverEvents,
+            fakeDocuments(),
         );
 
         configEvents.configAvailable(workspace, {
@@ -86,11 +99,39 @@ describe('GhulAnalyser', () => {
         expect(editQueue.started[0].find(d => d.uri.endsWith('a.ghul'))!.source).toBe('class A is {}');
     });
 
+    it('prefers an open editor buffer over the file on disk', () => {
+        writeFileSync(join(workspace, 'a.ghul'), 'class A is {} // on disk');
+
+        const uri = pathToFileURL(join(workspace, 'a.ghul')).toString();
+
+        new GhulAnalyser(
+            editQueue as unknown as EditQueue,
+            configEvents,
+            serverEvents,
+            fakeDocuments([{ uri, text: 'class A is {} // unsaved buffer' }]),
+        );
+
+        configEvents.configAvailable(workspace, {
+            block: false,
+            compiler: ['c'],
+            source: [`${workspace}/**/*.ghul`],
+            arguments: [],
+            want_plaintext_hover: false,
+        });
+
+        serverEvents.listening();
+
+        expect(editQueue.started).toHaveLength(1);
+        expect(editQueue.started[0]).toHaveLength(1);
+        expect(editQueue.started[0][0].source).toBe('class A is {} // unsaved buffer');
+    });
+
     it('starts edit queue with an empty document list when no source files match', () => {
         new GhulAnalyser(
             editQueue as unknown as EditQueue,
             configEvents,
             serverEvents,
+            fakeDocuments(),
         );
 
         configEvents.configAvailable(workspace, {

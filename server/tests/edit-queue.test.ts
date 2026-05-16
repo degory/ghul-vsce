@@ -34,7 +34,7 @@ describe('EditQueue', () => {
         jest.useFakeTimers();
         // Watchdog gets touched via setWatchdogTimeout/getWatchdogTimeout from
         // edit-queue. Wire a real one so those calls don't NPE.
-        ExtensionState.getInstance().watchdog = new Watchdog(10000);
+        ExtensionState.getInstance().watchdog = new Watchdog(10000, () => {});
 
         recorder = new RecordingRequester();
         queue = new EditQueue(recorder as unknown as Requester);

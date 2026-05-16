@@ -1,25 +1,13 @@
 import { Watchdog } from '../src/watchdog';
-import { ExtensionState } from '../src/extension-state';
-import { ResponseHandler } from '../src/response-handler';
-import { ConfigEventEmitter } from '../src/config-event-emitter';
-import { Connection } from 'vscode-languageserver';
-
-// onWatchdogTimeout() calls rejectAllAndThrow() on the extension-state
-// singleton. Wire a real ResponseHandler so that path doesn't NPE.
-function wireSingletonForRejection() {
-    const state = ExtensionState.getInstance();
-    const connection = {} as Connection;
-    const config = new ConfigEventEmitter();
-    state.response_handler = new ResponseHandler(connection, config);
-}
 
 describe('Watchdog', () => {
     let watchdog: Watchdog;
+    let onTimeout: jest.Mock;
 
     beforeEach(() => {
         jest.useFakeTimers();
-        wireSingletonForRejection();
-        watchdog = new Watchdog(1000);
+        onTimeout = jest.fn();
+        watchdog = new Watchdog(1000, onTimeout);
     });
 
     afterEach(() => {
@@ -32,16 +20,16 @@ describe('Watchdog', () => {
 
         jest.advanceTimersByTime(2000);
 
-        // We can prove no throw by simply running the timer; if a timeout
-        // had fired, rejectAllAndThrow() would have thrown synchronously.
-        // (Hardened: also assert the timer slot is null.)
+        expect(onTimeout).not.toHaveBeenCalled();
         expect(watchdog.watchdog_timer).toBeNull();
     });
 
-    it('fires after the timeout, calling rejectAllAndThrow', () => {
+    it('fires the timeout handler after the timeout', () => {
         watchdog.startWatchdog();
 
-        expect(() => jest.advanceTimersByTime(1500)).toThrow(/watchdog timeout/);
+        jest.advanceTimersByTime(1500);
+
+        expect(onTimeout).toHaveBeenCalledTimes(1);
     });
 
     it('startWatchdogIfNotRunning is idempotent while a timer is set', () => {
@@ -60,10 +48,12 @@ describe('Watchdog', () => {
         jest.advanceTimersByTime(800);
 
         watchdog.resetWatchdog();
-        // 500ms after reset (and 1300 total) – pre-reset would have fired by now
+        // 500ms after reset (1300 total) — pre-reset would have fired by now:
         jest.advanceTimersByTime(500);
+        expect(onTimeout).not.toHaveBeenCalled();
 
-        expect(() => jest.advanceTimersByTime(600)).toThrow(/watchdog timeout/);
+        jest.advanceTimersByTime(600);
+        expect(onTimeout).toHaveBeenCalledTimes(1);
     });
 
     it('setTimeout clamps below 1000ms up to 1000ms', () => {

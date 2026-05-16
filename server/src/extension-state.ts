@@ -81,8 +81,6 @@ export class ExtensionState {
     }
 
     public connect() {
-        this.watchdog = new Watchdog(10000);
-
         this.server_event_emitter = new ServerEventEmitter();
         this.config_event_emitter = new ConfigEventEmitter();
         
@@ -96,15 +94,18 @@ export class ExtensionState {
         this.requester = new Requester(this.server_event_emitter, this.response_handler);
         
         this.edit_queue = new EditQueue(this.requester);
-        
+
+        this.documents = new TextDocuments(TextDocument);
+
         new GhulAnalyser(
             this.edit_queue,
             this.config_event_emitter,
-            this.server_event_emitter
+            this.server_event_emitter,
+            this.documents
         );
-        
+
         this.response_parser = new ResponseParser(this.response_handler);
-        
+
         this.server_manager = new ServerManager(
             this.config_event_emitter,
             this.server_event_emitter,
@@ -112,12 +113,14 @@ export class ExtensionState {
             this.response_parser,
             this.connection
         );
-        
+
+        // Created after the server manager so its timeout can hand off to it:
+        // a wedged compiler is killed and relaunched.
+        this.watchdog = new Watchdog(10000, () => this.server_manager.recoverFromHang());
+
         this.response_handler.setServerManager(this.server_manager);
         this.response_handler.setEditQueue(this.edit_queue);
 
-        this.documents = new TextDocuments(TextDocument);
-        
         this.documents.onDidChangeContent((change) => {
             this.edit_queue.queueEdit(change);
         });
