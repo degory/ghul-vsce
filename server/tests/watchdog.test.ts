@@ -1,4 +1,4 @@
-import { Watchdog } from '../src/watchdog';
+import { Watchdog, COLD_START_TIMEOUT_MILLISECONDS } from '../src/watchdog';
 
 describe('Watchdog', () => {
     let watchdog: Watchdog;
@@ -69,5 +69,25 @@ describe('Watchdog', () => {
     it('clearWatchdog on an unstarted watchdog is a no-op', () => {
         expect(() => watchdog.clearWatchdog()).not.toThrow();
         expect(watchdog.watchdog_timer).toBeUndefined();
+    });
+
+    it('enterColdStart widens the timeout to the cold-start bound', () => {
+        watchdog.setTimeout(3676);
+
+        watchdog.enterColdStart();
+
+        expect(watchdog.timeout_milliseconds).toBe(COLD_START_TIMEOUT_MILLISECONDS);
+    });
+
+    it('enterColdStart drops a timer still running against the outgoing compiler', () => {
+        watchdog.startWatchdog();
+
+        watchdog.enterColdStart();
+
+        expect(watchdog.watchdog_timer).toBeNull();
+
+        // The dropped timer must not fire after the cold start.
+        jest.advanceTimersByTime(2000);
+        expect(onTimeout).not.toHaveBeenCalled();
     });
 });

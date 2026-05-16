@@ -9,7 +9,7 @@ import {
 import { Connection } from 'vscode-languageserver';
 
 import { log } from './log';
-import { rejectAllPendingPromises, resolveAllPendingPromises } from './extension-state';
+import { enterWatchdogColdStart, rejectAllPendingPromises, resolveAllPendingPromises } from './extension-state';
 
 import { GhulConfig } from './ghul-config';
 
@@ -97,6 +97,10 @@ export class ServerManager {
 			log("killing running compiler PID " + this.child.pid);
 			this.expecting_exit = true;
 
+			// Stop routing the outgoing compiler's stdout into the shared
+			// parser — its dying output must not bleed into the replacement's
+			// frames.
+			this.child.stdout?.removeAllListeners('data');
 			this.child.kill();
 		}
 
@@ -160,6 +164,14 @@ export class ServerManager {
 		this.child.stderr.on('data', (chunk: Buffer) => {
 			process.stderr.write(chunk);
 		});
+
+		// A killed compiler can leave a half-received frame in the shared
+		// parser and a watchdog timer still ticking. Clear both before the
+		// replacement's output starts: a stale frame would corrupt its LISTEN
+		// and leave the project unanalysed, and the calibrated timeout would
+		// kill it part-way through its cold first compile.
+		this.response_parser.reset();
+		enterWatchdogColdStart();
 
 		this.child.stdout.on('data', (chunk: Buffer) => {
 			this.response_parser.handleChunk(chunk.toString());

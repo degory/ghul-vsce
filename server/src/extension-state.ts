@@ -159,6 +159,10 @@ export function startWatchdogIfNotRunning() {
     ExtensionState.getInstance().watchdog.startWatchdogIfNotRunning();
 }
 
+export function enterWatchdogColdStart() {
+    ExtensionState.getInstance().watchdog.enterColdStart();
+}
+
 export function startWatchdog() {
     ExtensionState.getInstance().watchdog.startWatchdog();
 }
