@@ -233,6 +233,25 @@ export class Requester {
         }
     }
 
+    sendDocumentRangeFormatting(uri: string, source: string, range: Range): Promise<TextEdit[]> {
+        if (this.analysed) {
+            startWatchdogIfNotRunning();
+
+            this.write('#FORMATRANGE#\n');
+            this.write(normalizeFileUri(uri) + '\n');
+            this.write((range.start.line + 1) + '\n');
+            this.write((range.start.character + 1) + '\n');
+            this.write((range.end.line + 1) + '\n');
+            this.write((range.end.character + 1) + '\n');
+            this.write(source);
+            this.write('\f');
+
+            return this.response_handler.expectDocumentRangeFormatting();
+        } else {
+            return null;
+        }
+    }
+
     sendFullCompileRequest() {
         startWatchdogIfNotRunning();
 
