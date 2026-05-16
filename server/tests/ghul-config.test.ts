@@ -237,4 +237,66 @@ describe('getGhulConfig', () => {
         // Compiler must come from ghul.json (or fallback), not the proj files:
         expect(cfg.compiler).toEqual(['from-json']);
     });
+
+    describe('problem reporting', () => {
+        // getGhulConfig must never throw on bad input: a malformed file or a
+        // missing compiler becomes a recorded problem so the caller can back
+        // off and surface a diagnostic, rather than crashing the server.
+
+        it('records no problems for a cleanly-configured workspace', () => {
+            const workspace = ws();
+            writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['src'] });
+
+            const cfg = getGhulConfig(workspace);
+            expect(cfg.problems).toEqual([]);
+        });
+
+        it('records a problem for malformed ghul.json instead of throwing', () => {
+            const workspace = ws();
+            writeFileSync(join(workspace, 'ghul.json'), '{ this is not json');
+
+            let cfg!: ReturnType<typeof getGhulConfig>;
+            expect(() => { cfg = getGhulConfig(workspace); }).not.toThrow();
+            expect(cfg.problems.some(p => p.includes('ghul.json'))).toBe(true);
+        });
+
+        it('records a problem for an unparseable .ghulproj instead of throwing', () => {
+            const workspace = ws();
+            writeFileSync(join(workspace, 'test.ghulproj'), '<Project><not-closed>');
+
+            let cfg!: ReturnType<typeof getGhulConfig>;
+            expect(() => { cfg = getGhulConfig(workspace); }).not.toThrow();
+            expect(cfg.problems.some(p => p.includes('test.ghulproj'))).toBe(true);
+        });
+
+        it('records a problem for malformed .assemblies.json instead of throwing', () => {
+            const workspace = ws();
+            writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['src'] });
+            writeFileSync(join(workspace, '.assemblies.json'), 'not json at all');
+
+            let cfg!: ReturnType<typeof getGhulConfig>;
+            expect(() => { cfg = getGhulConfig(workspace); }).not.toThrow();
+            expect(cfg.problems.some(p => p.includes('.assemblies.json'))).toBe(true);
+        });
+
+        it('records a problem for malformed .config/dotnet-tools.json instead of throwing', () => {
+            const workspace = ws();
+            mkdirSync(join(workspace, '.config'));
+            writeFileSync(join(workspace, '.config/dotnet-tools.json'), '{ broken');
+
+            let cfg!: ReturnType<typeof getGhulConfig>;
+            expect(() => { cfg = getGhulConfig(workspace); }).not.toThrow();
+            expect(cfg.problems.some(p => p.includes('dotnet-tools.json'))).toBe(true);
+        });
+
+        it('records a problem when no compiler can be resolved', () => {
+            // An empty workspace has no ghul.json compiler, no tool manifest
+            // and (in the test environment) no installed ghul-compiler.
+            const workspace = ws();
+
+            const cfg = getGhulConfig(workspace);
+            expect(cfg.compiler).toBeUndefined();
+            expect(cfg.problems.some(p => p.includes('compiler'))).toBe(true);
+        });
+    });
 });
