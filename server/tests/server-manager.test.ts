@@ -197,7 +197,7 @@ describe('ServerManager (state helpers)', () => {
             // Wire a minimal stub so the handler doesn't throw and obscure
             // the assertions we actually want to make:
             const state = ExtensionState.getInstance();
-            state.watchdog = new Watchdog(10000);
+            state.watchdog = new Watchdog(10000, () => {});
             state.response_handler = {
                 resolveAllPendingPromises: jest.fn(),
                 rejectAllPendingPromises: jest.fn(),
@@ -362,6 +362,36 @@ describe('ServerManager (state helpers)', () => {
             expect(spawn).toHaveBeenCalledTimes(1);
             jest.advanceTimersByTime(0);
             expect(spawn).toHaveBeenCalledTimes(2);
+        });
+
+        it('on a recycle exit, relaunches at once without spending the back-off budget', () => {
+            const resetSpy = jest.fn();
+            manager.edit_queue = { reset: resetSpy } as unknown as EditQueue;
+
+            manager.start();
+
+            // The compiler announced a planned recycle (RESTART frame) and
+            // then exited deliberately.
+            manager.noteRecycle();
+            manager.expecting_exit = false;
+            manager.child!.emit('exit', 1, null);
+
+            expect(resetSpy).toHaveBeenCalled();
+            // Relaunched immediately — no scheduled-restart timer to advance:
+            expect(spawn).toHaveBeenCalledTimes(2);
+            // A recycle is healthy, so it does not count as a failed start:
+            expect(manager.restart_attempts).toBe(0);
+        });
+
+        it('recoverFromHang kills the unresponsive compiler', () => {
+            manager.edit_queue = { reset: jest.fn() } as unknown as EditQueue;
+
+            manager.start();
+            const child = manager.child!;
+
+            manager.recoverFromHang();
+
+            expect(child.kill).toHaveBeenCalled();
         });
 
         it('on expected exit, does not respawn', () => {

@@ -19,7 +19,6 @@ class RecordingHandler {
     handleCompletion(lines: string[]) { this.calls.push({ method: 'handleCompletion', lines }); }
     handleSignature(lines: string[]) { this.calls.push({ method: 'handleSignature', lines }); }
     handleSymbols(lines: string[]) { this.calls.push({ method: 'handleSymbols', lines }); }
-    handleExcept(lines: string[]) { this.calls.push({ method: 'handleExcept', lines }); }
     handleReferences(lines: string[]) { this.calls.push({ method: 'handleReferences', lines }); }
     handleImplementation(lines: string[]) { this.calls.push({ method: 'handleImplementation', lines }); }
     handleRenameRequest(lines: string[]) { this.calls.push({ method: 'handleRenameRequest', lines }); }
@@ -31,7 +30,7 @@ class RecordingHandler {
 // extension-state singleton, so wire a real Watchdog + ResponseHandler in.
 function wireSingleton(): { handler: ResponseHandler } {
     const state = ExtensionState.getInstance();
-    state.watchdog = new Watchdog(1000);
+    state.watchdog = new Watchdog(1000, () => {});
 
     const connection = {} as Connection;
     const config = new ConfigEventEmitter();
@@ -84,7 +83,6 @@ describe('ResponseParser', () => {
         ['COMPLETION', 'handleCompletion'],
         ['SIGNATURE', 'handleSignature'],
         ['SYMBOLS', 'handleSymbols'],
-        ['EXCEPT', 'handleExcept'],
         ['REFERENCES', 'handleReferences'],
         ['IMPLEMENTATION', 'handleImplementation'],
         ['RENAMEREQUEST', 'handleRenameRequest'],

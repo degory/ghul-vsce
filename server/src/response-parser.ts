@@ -113,12 +113,6 @@ export class ResponseParser {
             clearWatchdog();
 
             this.response_handler.handleSymbols(lines);
-            break;            
-            
-        case "EXCEPT":
-            clearWatchdog();
-
-            this.response_handler.handleExcept(lines);
             break;
 
         case "REFERENCES":
