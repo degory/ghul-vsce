@@ -27,7 +27,7 @@ describe('extension-state module-level helpers', () => {
     beforeEach(() => {
         jest.useFakeTimers();
         const state = ExtensionState.getInstance();
-        watchdog = new Watchdog(2500);
+        watchdog = new Watchdog(2500, () => {});
         state.watchdog = watchdog;
         responseHandler = new ResponseHandler({} as Connection, new ConfigEventEmitter());
         state.response_handler = responseHandler;

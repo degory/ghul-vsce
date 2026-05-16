@@ -43,7 +43,7 @@ describe('Requester', () => {
     let requester: Requester;
 
     beforeEach(() => {
-        ExtensionState.getInstance().watchdog = new Watchdog(10000);
+        ExtensionState.getInstance().watchdog = new Watchdog(10000, () => {});
 
         events = new ServerEventEmitter();
         response = new RecordingResponseHandler();

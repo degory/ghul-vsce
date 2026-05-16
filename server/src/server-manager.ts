@@ -9,7 +9,7 @@ import {
 import { Connection } from 'vscode-languageserver';
 
 import { log } from './log';
-import { resolveAllPendingPromises } from './extension-state';
+import { rejectAllPendingPromises, resolveAllPendingPromises } from './extension-state';
 
 import { GhulConfig } from './ghul-config';
 
@@ -41,6 +41,7 @@ export const MAX_RESTART_ATTEMPTS = 5;
 export class ServerManager {
 	child: ChildProcess;
 	expecting_exit: boolean;
+	expecting_recycle: boolean;
 
 	event_emitter: ServerEventEmitter;
 	connection: Connection;
@@ -170,13 +171,25 @@ export class ServerManager {
 
 		this.child.on('exit',
 			(_code: number, _signal: string) => {
-				const was_expecting_exit = this.expecting_exit;
-
-				if (was_expecting_exit) {
+				if (this.expecting_exit) {
 					log(`compiler PID ${pid}: exited`);
 					this.child = null;
 					resolveAllPendingPromises();
 					this.expecting_exit = false;
+					return;
+				}
+
+				// A recycle is a planned exit — the compiler asked to be
+				// restarted (RESTART frame) to shed accumulated memory. It is
+				// healthy, so relaunch at once without spending the crash
+				// back-off budget.
+				if (this.expecting_recycle) {
+					this.expecting_recycle = false;
+					log(`compiler PID ${pid}: recycled — relaunching`);
+					this.child = null;
+					resolveAllPendingPromises();
+					this.edit_queue.reset();
+					this.launch();
 					return;
 				}
 
@@ -276,6 +289,28 @@ export class ServerManager {
 		} catch (e) {
 			log("killing compiler caught: " + e);
 			this.abort();
+		}
+	}
+
+	// The compiler announced a planned recycle with a RESTART frame and is
+	// about to exit. Mark the coming exit deliberate so it relaunches cleanly
+	// rather than being treated as a crash.
+	noteRecycle() {
+		this.expecting_recycle = true;
+	}
+
+	// The watchdog fired: the compiler has stopped answering but has not
+	// exited. Kill it so the 'exit' handler routes through normal crash
+	// recovery (back-off included — a wedged compiler may wedge again).
+	recoverFromHang() {
+		rejectAllPendingPromises("ghūl language extension: compiler watchdog timeout");
+
+		if (this.child) {
+			log(`compiler PID ${this.child.pid}: unresponsive — killing`);
+			this.child.kill();
+		} else {
+			log("compiler watchdog timeout with no running compiler — scheduling restart");
+			this.scheduleRestart();
 		}
 	}
 

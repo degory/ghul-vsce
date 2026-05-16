@@ -167,27 +167,6 @@ jest.mock('../src/config-event-emitter');
         expect(startListeningSpy).toHaveBeenCalled();
     });
 
-    it('should abort server manager and show error message on handleExcept', () => {
-        responseHandler.server_manager = {
-            abort: () => {}
-        } as ServerManager;
-
-        responseHandler.connection = {
-            window: {
-                showErrorMessage: () => {}
-            }
-        } as any;
-
-        const abortSpy = jest.spyOn(responseHandler.server_manager, 'abort');
-        const showErrorMessageSpy = jest.spyOn(responseHandler.connection.window, 'showErrorMessage');
-
-        const errorLines = ['Error 1', 'Error 2'];
-        responseHandler.handleExcept(errorLines);
-
-        expect(abortSpy).toHaveBeenCalled();
-        expect(showErrorMessageSpy).toHaveBeenCalledWith('Error 1Error 2');
-    });
-
     it('should send diagnostics on handleDiagnostics', () => {
         responseHandler.connection = {
             sendDiagnostics: () => {}
@@ -668,12 +647,15 @@ jest.mock('../src/config-event-emitter');
         expect(result.signatures).toEqual([]);
     });
 
-    it('handleRestart calls edit_queue.reset', () => {
+    it('handleRestart notes the recycle and resets the edit queue', () => {
         const reset = jest.fn();
+        const noteRecycle = jest.fn();
         responseHandler.edit_queue = { reset } as any;
+        responseHandler.server_manager = { noteRecycle } as any;
 
         responseHandler.handleRestart();
 
+        expect(noteRecycle).toHaveBeenCalledTimes(1);
         expect(reset).toHaveBeenCalledTimes(1);
     });
 

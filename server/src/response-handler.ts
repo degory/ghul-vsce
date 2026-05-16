@@ -182,19 +182,6 @@ export class ResponseHandler {
         this.server_manager.startListening();
     }
 
-    handleExcept(lines: string[]) {
-        var error = '';
-
-        for (let l of lines) {
-            error += l;
-            log(l);
-        }
-
-        this.server_manager.abort();
-
-        this.connection.window.showErrorMessage(error);
-    }
-
     handleDiagnostics(lines: string[]) {
         for (let diagnostic of this.parseDiagnostics(lines)) {
             this.connection.sendDiagnostics( {uri: diagnostic[0], diagnostics: diagnostic[1]})
@@ -560,6 +547,7 @@ export class ResponseHandler {
 
     handleRestart() {
         log("compiler requested restart");
+        this.server_manager.noteRecycle();
         this.edit_queue.reset();
     }
     
