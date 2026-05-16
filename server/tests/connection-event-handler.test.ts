@@ -1,10 +1,10 @@
 import { ConnectionEventHandler } from '../src/connection-event-handler';
-import { CompletionParams, Connection, DocumentSymbolParams, InitializeResult, InitializedParams, ReferenceParams, TextDocumentPositionParams, 
-    // TextDocuments 
+import { CompletionParams, Connection, DocumentSymbolParams, InitializeResult, InitializedParams, ReferenceParams, TextDocumentPositionParams,
+    TextDocuments
 } from 'vscode-languageserver';
-// import {
-//     TextDocument
-// } from 'vscode-languageserver-textdocument';
+import {
+    TextDocument
+} from 'vscode-languageserver-textdocument';
 
 
 import { ServerManager } from '../src/server-manager';
@@ -33,6 +33,7 @@ describe('ConnectionEventHandler', () => {
     let configEventEmitter: ConfigEventEmitter;
     let requester: Requester;
     let editQueue: EditQueue;
+    let documents: TextDocuments<TextDocument>;
     let connectionEventHandler: ConnectionEventHandler;
 
     beforeEach(() => {
@@ -84,17 +85,16 @@ describe('ConnectionEventHandler', () => {
                 showErrorMessage: jest.fn(),
                 showWarningMessage: jest.fn(),
             },
+            onDocumentFormatting: jest.fn(),
         } as any as Connection;
 
         serverManager = {
             kill: jest.fn(),
         } as any as ServerManager;
 
-        // documents = {
-        //     onDidOpen: jest.fn(),
-        //     onDidClose: jest.fn(),
-        //     onDidChangeContent: jest.fn(),
-        // } as any as TextDocuments<TextDocument>;
+        documents = {
+            get: jest.fn(),
+        } as any as TextDocuments<TextDocument>;
 
         configEventEmitter = {
             onConfigAvailable: jest.fn(),
@@ -117,7 +117,7 @@ describe('ConnectionEventHandler', () => {
             sendQueued: jest.fn(),
         } as any as EditQueue;
 
-        connectionEventHandler = new ConnectionEventHandler(connection, serverManager, configEventEmitter, requester, editQueue);
+        connectionEventHandler = new ConnectionEventHandler(connection, serverManager, configEventEmitter, requester, editQueue, documents);
     });
 
     afterEach(() => {
@@ -285,7 +285,8 @@ describe('ConnectionEventHandler', () => {
                     triggerCharacters: ['(', '[']
                 },
                 implementationProvider: true,
-                renameProvider: true
+                renameProvider: true,
+                documentFormattingProvider: true
             }
         });
     });
@@ -545,6 +546,35 @@ describe('ConnectionEventHandler', () => {
         expect(result).toEqual({ changes: { 'test-uri': [] } });
     });
 
+    it('should handle onDocumentFormatting event', async () => {
+        const edit = { range: { start: { line: 0, character: 0 }, end: { line: 4, character: 0 } }, newText: 'formatted\n' };
+        const sendDocumentFormatting = jest.fn().mockResolvedValue([edit]);
+        (requester as any).sendDocumentFormatting = sendDocumentFormatting;
+        (documents.get as jest.Mock).mockReturnValue({ getText: () => 'source', lineCount: 3 });
+
+        const result = await connectionEventHandler.onDocumentFormatting({
+            textDocument: { uri: 'test-uri' },
+        } as any);
+
+        expect(sendDocumentFormatting).toHaveBeenCalledWith('test-uri', 'source', expect.objectContaining({
+            start: { line: 0, character: 0 },
+        }));
+        expect(result).toEqual([edit]);
+    });
+
+    it('onDocumentFormatting returns no edits for an untracked document', async () => {
+        const sendDocumentFormatting = jest.fn();
+        (requester as any).sendDocumentFormatting = sendDocumentFormatting;
+        (documents.get as jest.Mock).mockReturnValue(undefined);
+
+        const result = await connectionEventHandler.onDocumentFormatting({
+            textDocument: { uri: 'missing-uri' },
+        } as any);
+
+        expect(sendDocumentFormatting).not.toHaveBeenCalled();
+        expect(result).toEqual([]);
+    });
+
     describe('connection.onX callbacks registered by constructor', () => {
         // The constructor wires each connection.onX with an inline arrow that
         // forwards to this.onX(). Capture the registered callback per event
@@ -568,6 +598,7 @@ describe('ConnectionEventHandler', () => {
             'onReferences',
             'onImplementation',
             'onRenameRequest',
+            'onDocumentFormatting',
         ] as const;
 
         function makeMockConnection(): Connection {
@@ -585,7 +616,7 @@ describe('ConnectionEventHandler', () => {
         it.each(hooks)('connection.%s callback forwards to the matching instance method', hook => {
             const conn = makeMockConnection();
             const ceh = new (require('../src/connection-event-handler').ConnectionEventHandler)(
-                conn, serverManager, configEventEmitter, requester, editQueue
+                conn, serverManager, configEventEmitter, requester, editQueue, documents
             );
 
             const cb = captureLastCall((conn as any)[hook] as jest.Mock);

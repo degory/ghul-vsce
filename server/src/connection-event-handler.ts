@@ -18,7 +18,12 @@ import {
     RenameParams,
     WorkspaceEdit,
     TextDocumentSyncKind,
+    DocumentFormattingParams,
+    TextEdit,
+    TextDocuments,
 } from 'vscode-languageserver';
+
+import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import { log } from './log';
 
@@ -44,19 +49,22 @@ export class ConnectionEventHandler {
     config: GhulConfig;
     workspace_root: string;
     document_change_tracker: DocumentChangeTracker;
+    documents: TextDocuments<TextDocument>;
 
     constructor(
         connection: Connection,
         server_manager: ServerManager,
-        config_event_emitter: ConfigEventEmitter,        
+        config_event_emitter: ConfigEventEmitter,
         requester: Requester,
-        edit_queue: EditQueue
+        edit_queue: EditQueue,
+        documents: TextDocuments<TextDocument>
     ) {
         this.connection = connection;
         this.server_manager = server_manager;
         this.config_event_emitter = config_event_emitter;
         this.requester = requester;
         this.edit_queue = edit_queue;
+        this.documents = documents;
 
         connection.onInitialize((params: InitializedParams): InitializeResult => 
             this.onInitialize(params));
@@ -109,6 +117,10 @@ export class ConnectionEventHandler {
         connection.onRenameRequest(
              (params: RenameParams): Promise<WorkspaceEdit> =>
                 this.onRenameRequest(params));
+
+        connection.onDocumentFormatting(
+            (params: DocumentFormattingParams): Promise<TextEdit[]> =>
+                this.onDocumentFormatting(params));
     }
 
     initialize() {
@@ -181,7 +193,8 @@ export class ConnectionEventHandler {
                     triggerCharacters: ["(", "["]
                 },
                 implementationProvider: true,
-                renameProvider: true
+                renameProvider: true,
+                documentFormattingProvider: true
             }
         }
     }
@@ -245,5 +258,26 @@ export class ConnectionEventHandler {
 
     onRenameRequest(params: RenameParams): Promise<WorkspaceEdit> {
         return this.requester.sendRenameRequest(params.textDocument.uri, params.position.line, params.position.character, params.newName);
+    }
+
+    onDocumentFormatting(params: DocumentFormattingParams): Promise<TextEdit[]> {
+        let document = this.documents.get(params.textDocument.uri);
+
+        if (!document) {
+            return Promise.resolve([]);
+        }
+
+        // The whole document is replaced; the analyser reparses the buffer we
+        // send, so flushing pending edits first is not required for correctness.
+        let whole_document = {
+            start: { line: 0, character: 0 },
+            end: { line: document.lineCount + 1, character: 0 }
+        };
+
+        return this.requester.sendDocumentFormatting(
+            params.textDocument.uri,
+            document.getText(),
+            whole_document
+        );
     }
 }

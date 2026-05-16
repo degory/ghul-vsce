@@ -139,6 +139,12 @@ export class ResponseParser {
             this.response_handler.handleRestart();
             break;
 
+        case "FORMAT":
+            clearWatchdog();
+
+            this.response_handler.handleDocumentFormatting(lines);
+            break;
+
         default:
             // not a known command, but compiler presumably still alive
             clearWatchdog();
