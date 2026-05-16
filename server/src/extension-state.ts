@@ -109,7 +109,8 @@ export class ExtensionState {
             this.config_event_emitter,
             this.server_event_emitter,
             this.edit_queue,
-            this.response_parser	
+            this.response_parser,
+            this.connection
         );
         
         this.response_handler.setServerManager(this.server_manager);
