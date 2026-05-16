@@ -9,7 +9,7 @@ import { EditQueue } from '../src/edit-queue';
 import { ResponseParser } from '../src/response-parser';
 import { ResponseHandler } from '../src/response-handler';
 import { ExtensionState } from '../src/extension-state';
-import { Watchdog } from '../src/watchdog';
+import { Watchdog, COLD_START_TIMEOUT_MILLISECONDS } from '../src/watchdog';
 import { GhulConfig } from '../src/ghul-config';
 
 // jest.mock calls are hoisted above the imports so writeFileSync and spawn
@@ -202,6 +202,13 @@ describe('ServerManager (state helpers)', () => {
                 resolveAllPendingPromises: jest.fn(),
                 rejectAllPendingPromises: jest.fn(),
             } as unknown as ResponseHandler;
+
+            // launch() resets the parser before wiring the replacement's
+            // stdout; give it a stub so that call doesn't throw.
+            manager.response_parser = {
+                reset: jest.fn(),
+                handleChunk: jest.fn(),
+            } as unknown as ResponseParser;
         });
 
         afterEach(() => {
@@ -316,7 +323,10 @@ describe('ServerManager (state helpers)', () => {
 
         it('child stdout chunks are forwarded to the response parser', () => {
             const handleChunkSpy = jest.fn();
-            manager.response_parser = { handleChunk: handleChunkSpy } as unknown as ResponseParser;
+            manager.response_parser = {
+                reset: jest.fn(),
+                handleChunk: handleChunkSpy,
+            } as unknown as ResponseParser;
 
             const child = makeFakeChild();
             (spawn as jest.Mock).mockImplementationOnce(() => child);
@@ -326,6 +336,51 @@ describe('ServerManager (state helpers)', () => {
             child.stdout.emit('data', Buffer.from('LISTEN\n\f'));
 
             expect(handleChunkSpy).toHaveBeenCalledWith('LISTEN\n\f');
+        });
+
+        it('resets the response parser on launch so a killed compiler\'s '
+            + 'partial frame cannot corrupt the replacement', () => {
+            const resetSpy = jest.fn();
+            manager.response_parser = {
+                reset: resetSpy,
+                handleChunk: jest.fn(),
+            } as unknown as ResponseParser;
+
+            manager.start();
+
+            expect(resetSpy).toHaveBeenCalledTimes(1);
+        });
+
+        it('stops routing the outgoing child\'s stdout into the parser before '
+            + 'killing it', () => {
+            const handleChunkSpy = jest.fn();
+            manager.response_parser = {
+                reset: jest.fn(),
+                handleChunk: handleChunkSpy,
+            } as unknown as ResponseParser;
+
+            const oldChild = makeFakeChild(1111);
+            manager.child = oldChild;
+
+            manager.start();
+
+            // The outgoing child's dying output must not reach the parser and
+            // bleed into the replacement's frames.
+            oldChild.stdout.emit('data', Buffer.from('half a fra'));
+
+            expect(handleChunkSpy).not.toHaveBeenCalled();
+        });
+
+        it('enters watchdog cold start on launch so the replacement\'s cold '
+            + 'first compile is not killed', () => {
+            const state = ExtensionState.getInstance();
+            // A calibrated steady-state timeout, as the edit queue would leave it.
+            state.watchdog.setTimeout(3676);
+
+            manager.start();
+
+            expect(state.watchdog.timeout_milliseconds)
+                .toBe(COLD_START_TIMEOUT_MILLISECONDS);
         });
 
         it('refuses to spawn and reports a diagnostic when no compiler is resolved', () => {

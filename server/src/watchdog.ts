@@ -1,5 +1,13 @@
 import { log } from './log';
 
+// A freshly launched compiler's first full compile is cold: the JIT and the
+// compiler's symbol and reflection-metadata caches are unwarmed, so it can
+// legitimately take far longer than a calibrated steady-state compile. Until
+// that first compile lands and the edit queue narrows the timeout from a real
+// measurement, the watchdog runs with this wide bound so it cannot mistake a
+// healthy cold compiler for a wedged one.
+export const COLD_START_TIMEOUT_MILLISECONDS = 60000;
+
 // Bounds how long the extension waits for the compiler to answer a request.
 // The timer is (re)started when a request is sent and cleared when any frame
 // comes back; if it fires, the compiler is wedged — it has neither answered
@@ -38,6 +46,15 @@ export class Watchdog {
             clearTimeout(this.watchdog_timer);
             this.watchdog_timer = null;
         }
+    }
+
+    // Called on every (re)launch. Drops any timer still running against the
+    // outgoing compiler and widens the timeout for the incoming one's cold
+    // first compile. The edit queue narrows it again from the first measured
+    // compile.
+    enterColdStart() {
+        this.clearWatchdog();
+        this.timeout_milliseconds = COLD_START_TIMEOUT_MILLISECONDS;
     }
 
     // The compiler has not answered within the timeout. A crash would have
