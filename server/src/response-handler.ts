@@ -114,6 +114,7 @@ export class ResponseHandler {
     _implementation_promise_queue: PromiseQueue<Location[]>;
     _rename_promise_queue: PromiseQueue<WorkspaceEdit>;
     _formatting_promise_queue: PromiseQueue<TextEdit[]>;
+    _range_formatting_promise_queue: PromiseQueue<TextEdit[]>;
 
     // The full-document range to replace, one per pending format request,
     // paired FIFO with _formatting_promise_queue.
@@ -139,6 +140,7 @@ export class ResponseHandler {
         this._implementation_promise_queue = new PromiseQueue<Location[]>("IMPLEMENTATION");
         this._rename_promise_queue = new PromiseQueue<WorkspaceEdit>("RENAMEREQUEST");
         this._formatting_promise_queue = new PromiseQueue<TextEdit[]>("FORMAT");
+        this._range_formatting_promise_queue = new PromiseQueue<TextEdit[]>("FORMATRANGE");
     }
 
     onConfigAvailable(_workspace: string, config: GhulConfig) {
@@ -156,6 +158,7 @@ export class ResponseHandler {
         this._implementation_promise_queue.resolveAll([]);
         this._rename_promise_queue.resolveAll(null);
         this._formatting_promise_queue.resolveAll([]);
+        this._range_formatting_promise_queue.resolveAll([]);
         this._formatting_ranges = [];
     }
 
@@ -170,6 +173,7 @@ export class ResponseHandler {
         this._implementation_promise_queue.rejectAll(message);
         this._rename_promise_queue.reject(message);
         this._formatting_promise_queue.rejectAll(message);
+        this._range_formatting_promise_queue.rejectAll(message);
         this._formatting_ranges = [];
     }
 
@@ -576,6 +580,42 @@ export class ResponseHandler {
             resolve([{ range, newText }]);
         } catch(e) {
             log("document formatting: caught:" + e);
+            resolve([]);
+        }
+    }
+
+    expectDocumentRangeFormatting(): Promise<TextEdit[]> {
+        return this._range_formatting_promise_queue.enqueue();
+    }
+
+    handleDocumentRangeFormatting(lines: string[]) {
+        let {resolve} = this._range_formatting_promise_queue.dequeueAlways();
+
+        try {
+            // First line is the tab-separated 1-based span the compiler chose
+            // to format (start line, start column, end line, end column); the
+            // rest is the replacement text. A zero start line means nothing
+            // was formatted.
+            let fields = (lines[0] ?? "").split('\t');
+
+            let startLine = parseInt(fields[0]);
+
+            if (!startLine) {
+                resolve([]);
+                return;
+            }
+
+            let edit = {
+                range: {
+                    start: { line: startLine - 1, character: parseInt(fields[1]) - 1 },
+                    end: { line: parseInt(fields[2]) - 1, character: parseInt(fields[3]) - 1 }
+                },
+                newText: lines.slice(1).join('\n')
+            };
+
+            resolve([edit]);
+        } catch(e) {
+            log("document range formatting: caught:" + e);
             resolve([]);
         }
     }

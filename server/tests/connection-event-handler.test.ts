@@ -86,6 +86,7 @@ describe('ConnectionEventHandler', () => {
                 showWarningMessage: jest.fn(),
             },
             onDocumentFormatting: jest.fn(),
+            onDocumentRangeFormatting: jest.fn(),
         } as any as Connection;
 
         serverManager = {
@@ -286,7 +287,8 @@ describe('ConnectionEventHandler', () => {
                 },
                 implementationProvider: true,
                 renameProvider: true,
-                documentFormattingProvider: true
+                documentFormattingProvider: true,
+                documentRangeFormattingProvider: true
             }
         });
     });
@@ -575,6 +577,36 @@ describe('ConnectionEventHandler', () => {
         expect(result).toEqual([]);
     });
 
+    it('should handle onDocumentRangeFormatting event', async () => {
+        const edit = { range: { start: { line: 3, character: 0 }, end: { line: 5, character: 0 } }, newText: 'formatted' };
+        const sendDocumentRangeFormatting = jest.fn().mockResolvedValue([edit]);
+        (requester as any).sendDocumentRangeFormatting = sendDocumentRangeFormatting;
+        (documents.get as jest.Mock).mockReturnValue({ getText: () => 'source', lineCount: 9 });
+
+        const range = { start: { line: 3, character: 4 }, end: { line: 5, character: 0 } };
+        const result = await connectionEventHandler.onDocumentRangeFormatting({
+            textDocument: { uri: 'test-uri' },
+            range,
+        } as any);
+
+        expect(sendDocumentRangeFormatting).toHaveBeenCalledWith('test-uri', 'source', range);
+        expect(result).toEqual([edit]);
+    });
+
+    it('onDocumentRangeFormatting returns no edits for an untracked document', async () => {
+        const sendDocumentRangeFormatting = jest.fn();
+        (requester as any).sendDocumentRangeFormatting = sendDocumentRangeFormatting;
+        (documents.get as jest.Mock).mockReturnValue(undefined);
+
+        const result = await connectionEventHandler.onDocumentRangeFormatting({
+            textDocument: { uri: 'missing-uri' },
+            range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+        } as any);
+
+        expect(sendDocumentRangeFormatting).not.toHaveBeenCalled();
+        expect(result).toEqual([]);
+    });
+
     describe('connection.onX callbacks registered by constructor', () => {
         // The constructor wires each connection.onX with an inline arrow that
         // forwards to this.onX(). Capture the registered callback per event
@@ -599,6 +631,7 @@ describe('ConnectionEventHandler', () => {
             'onImplementation',
             'onRenameRequest',
             'onDocumentFormatting',
+            'onDocumentRangeFormatting',
         ] as const;
 
         function makeMockConnection(): Connection {
