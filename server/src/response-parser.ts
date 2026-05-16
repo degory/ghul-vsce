@@ -145,6 +145,12 @@ export class ResponseParser {
             this.response_handler.handleDocumentFormatting(lines);
             break;
 
+        case "FORMATRANGE":
+            clearWatchdog();
+
+            this.response_handler.handleDocumentRangeFormatting(lines);
+            break;
+
         default:
             // not a known command, but compiler presumably still alive
             clearWatchdog();

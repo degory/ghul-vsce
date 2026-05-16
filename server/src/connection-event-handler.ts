@@ -19,6 +19,7 @@ import {
     WorkspaceEdit,
     TextDocumentSyncKind,
     DocumentFormattingParams,
+    DocumentRangeFormattingParams,
     TextEdit,
     TextDocuments,
 } from 'vscode-languageserver';
@@ -121,6 +122,10 @@ export class ConnectionEventHandler {
         connection.onDocumentFormatting(
             (params: DocumentFormattingParams): Promise<TextEdit[]> =>
                 this.onDocumentFormatting(params));
+
+        connection.onDocumentRangeFormatting(
+            (params: DocumentRangeFormattingParams): Promise<TextEdit[]> =>
+                this.onDocumentRangeFormatting(params));
     }
 
     initialize() {
@@ -194,7 +199,8 @@ export class ConnectionEventHandler {
                 },
                 implementationProvider: true,
                 renameProvider: true,
-                documentFormattingProvider: true
+                documentFormattingProvider: true,
+                documentRangeFormattingProvider: true
             }
         }
     }
@@ -278,6 +284,22 @@ export class ConnectionEventHandler {
             params.textDocument.uri,
             document.getText(),
             whole_document
+        );
+    }
+
+    onDocumentRangeFormatting(params: DocumentRangeFormattingParams): Promise<TextEdit[]> {
+        let document = this.documents.get(params.textDocument.uri);
+
+        if (!document) {
+            return Promise.resolve([]);
+        }
+
+        // The analyser snaps the requested range out to whole enclosing
+        // definitions/statements and replies with the exact span it formatted.
+        return this.requester.sendDocumentRangeFormatting(
+            params.textDocument.uri,
+            document.getText(),
+            params.range
         );
     }
 }
