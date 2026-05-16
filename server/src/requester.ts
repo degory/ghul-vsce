@@ -5,7 +5,9 @@ import {
     SignatureHelp,
     SymbolInformation,
     Location,
-    WorkspaceEdit
+    WorkspaceEdit,
+    TextEdit,
+    Range
 } from 'vscode-languageserver';
 
 import { log } from './log';
@@ -211,6 +213,21 @@ export class Requester {
             this.write(newName + '\n');
 
             return this.response_handler.expectRenameRequest();
+        } else {
+            return null;
+        }
+    }
+
+    sendDocumentFormatting(uri: string, source: string, range: Range): Promise<TextEdit[]> {
+        if (this.analysed) {
+            startWatchdogIfNotRunning();
+
+            this.write('#FORMAT#\n');
+            this.write(normalizeFileUri(uri) + '\n');
+            this.write(source);
+            this.write('\f');
+
+            return this.response_handler.expectDocumentFormatting(range);
         } else {
             return null;
         }

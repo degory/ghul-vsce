@@ -127,7 +127,8 @@ export class ExtensionState {
             this.server_manager,
             this.config_event_emitter,
             this.requester,
-            this.edit_queue
+            this.edit_queue,
+            this.documents
         );
 
         this.documents.listen(this.connection);

@@ -10,8 +10,9 @@ import {
     ParameterInformation, 
     SymbolInformation, 
     Location, 
-    WorkspaceEdit, 
-    TextEdit, 
+    WorkspaceEdit,
+    TextEdit,
+    Range,
     Diagnostic,
 } from 'vscode-languageserver';
 
@@ -112,6 +113,11 @@ export class ResponseHandler {
     _references_promise_queue: PromiseQueue<Location[]>;
     _implementation_promise_queue: PromiseQueue<Location[]>;
     _rename_promise_queue: PromiseQueue<WorkspaceEdit>;
+    _formatting_promise_queue: PromiseQueue<TextEdit[]>;
+
+    // The full-document range to replace, one per pending format request,
+    // paired FIFO with _formatting_promise_queue.
+    _formatting_ranges: Range[] = [];
 
     constructor(
         connection: Connection,
@@ -132,6 +138,7 @@ export class ResponseHandler {
         this._references_promise_queue = new PromiseQueue<Location[]>("REFERENCES");
         this._implementation_promise_queue = new PromiseQueue<Location[]>("IMPLEMENTATION");
         this._rename_promise_queue = new PromiseQueue<WorkspaceEdit>("RENAMEREQUEST");
+        this._formatting_promise_queue = new PromiseQueue<TextEdit[]>("FORMAT");
     }
 
     onConfigAvailable(_workspace: string, config: GhulConfig) {
@@ -148,6 +155,8 @@ export class ResponseHandler {
         this._references_promise_queue.resolveAll([]);
         this._implementation_promise_queue.resolveAll([]);
         this._rename_promise_queue.resolveAll(null);
+        this._formatting_promise_queue.resolveAll([]);
+        this._formatting_ranges = [];
     }
 
     rejectAllPendingPromises(message: string) {
@@ -160,6 +169,8 @@ export class ResponseHandler {
         this._references_promise_queue.rejectAll(message);
         this._implementation_promise_queue.rejectAll(message);
         this._rename_promise_queue.reject(message);
+        this._formatting_promise_queue.rejectAll(message);
+        this._formatting_ranges = [];
     }
 
     setServerManager(server_manager: ServerManager) {
@@ -557,6 +568,30 @@ export class ResponseHandler {
             resolve({});
         }
     }    
+
+    expectDocumentFormatting(range: Range): Promise<TextEdit[]> {
+        this._formatting_ranges.push(range);
+        return this._formatting_promise_queue.enqueue();
+    }
+
+    handleDocumentFormatting(lines: string[]) {
+        let {resolve} = this._formatting_promise_queue.dequeueAlways();
+        let range = this._formatting_ranges.shift();
+
+        try {
+            // The compiler returns the whole reformatted document; the parser
+            // has already stripped the FORMAT header and trailing terminator.
+            // Replace the whole document in one edit. If the compiler could
+            // not format (it echoes the buffer back unchanged), the edit is a
+            // harmless no-op.
+            let newText = lines.join('\n') + '\n';
+
+            resolve([{ range, newText }]);
+        } catch(e) {
+            log("document formatting: caught:" + e);
+            resolve([]);
+        }
+    }
 
     handleRestart() {
         log("compiler requested restart");
