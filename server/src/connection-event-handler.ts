@@ -117,10 +117,29 @@ export class ConnectionEventHandler {
         // this order — on a fresh checkout the file does not yet exist,
         // so a reversed order leaves the analyser with no -a flags and
         // it falls back to a five-assembly default.
-        restoreDotNetTools(this.workspace_root)
-        generateAssembliesJson(this.workspace_root);
+        let problems: string[] = [];
+
+        let tools_problem = restoreDotNetTools(this.workspace_root);
+        if (tools_problem) {
+            problems.push(tools_problem);
+        }
+
+        let assemblies_problem = generateAssembliesJson(this.workspace_root);
+        if (assemblies_problem) {
+            problems.push(assemblies_problem);
+        }
 
         this.config = getGhulConfig(this.workspace_root);
+        problems.push(...(this.config.problems ?? []));
+
+        // A degraded-but-runnable load: warn so the user knows analysis may be
+        // incomplete. A load with no usable compiler is fatal and reported as
+        // an error by the server manager when it declines to spawn.
+        if (problems.length && this.config.compiler?.length) {
+            this.connection.window?.showWarningMessage(
+                "ghūl language extension: " + problems.join("; ")
+            );
+        }
 
         // FIXME is there a better way to do this?
         const workspace_root_munged = this.workspace_root.replace(/\\/g, '/');

@@ -6,6 +6,8 @@ import {
 	ChildProcess
 } from 'child_process';
 
+import { Connection } from 'vscode-languageserver';
+
 import { log } from './log';
 import { resolveAllPendingPromises } from './extension-state';
 
@@ -23,14 +25,25 @@ export enum ServerState {
 	StartingUp,
 	Listening,
 	Aborted,
-	Blocked
+	Blocked,
+	// The compiler could not be started — either it was never resolved, or it
+	// kept failing and we have given up retrying. We stay here, doing nothing,
+	// until a fresh configuration arrives (the user edits a project file).
+	Failed
 }
+
+// How many consecutive failed starts to tolerate before giving up. A healthy
+// run (the compiler reaching the Listening state) resets the count, so this
+// only trips when the compiler cannot start at all — a missing or broken
+// .ghulproj, an unresolved compiler tool, an immediate crash.
+export const MAX_RESTART_ATTEMPTS = 5;
 
 export class ServerManager {
 	child: ChildProcess;
 	expecting_exit: boolean;
 
 	event_emitter: ServerEventEmitter;
+	connection: Connection;
 
 	server_state: ServerState;
 	ghul_config: GhulConfig;
@@ -38,15 +51,22 @@ export class ServerManager {
 	edit_queue: EditQueue;
 	response_parser: ResponseParser;
 
+	restart_attempts: number;
+	restart_timer: NodeJS.Timeout;
+
 	constructor(
 		config_event_source: ConfigEventEmitter,
 		event_emitter: ServerEventEmitter,
 		edit_queue: EditQueue,
-		response_parser: ResponseParser
+		response_parser: ResponseParser,
+		connection?: Connection
 	) {
 		this.event_emitter = event_emitter;
 		this.edit_queue = edit_queue;
 		this.response_parser = response_parser;
+		this.connection = connection;
+
+		this.restart_attempts = 0;
 
 		config_event_source.onConfigAvailable((workspace: string, config: GhulConfig) => {
 			this.workspace_root = workspace;
@@ -55,11 +75,21 @@ export class ServerManager {
 		});
 	}
 
+	// Entry point for a fresh configuration. A new config means the user (or
+	// the tooling) has changed something, so any earlier give-up is forgiven:
+	// reset the back-off budget and try again from scratch.
 	start() {
+		this.clearRestartTimer();
+		this.restart_attempts = 0;
+
+		this.launch();
+	}
+
+	private launch() {
 		this.event_emitter.starting();
 
 		this.server_state = ServerState.StartingUp;
-	
+
 		let ghul_compiler = this.ghul_config.compiler;
 
 		if (this.child) {
@@ -75,14 +105,53 @@ export class ServerManager {
 			return;
 		}
 
+		// A retry storm cannot recover from a compiler that was never
+		// resolved — spawning undefined would just throw. Surface the reason
+		// and wait for a corrected configuration.
+		if (!ghul_compiler || ghul_compiler.length == 0) {
+			this.fail(
+				"ghūl language extension: no ghūl compiler could be found. " +
+				(this.ghul_config.problems?.length
+					? this.ghul_config.problems.join("; ")
+					: "Install the ghul.compiler tool or set 'compiler' in ghul.json.")
+			);
+			return;
+		}
+
 		writeFileSync(".analysis.rsp", quote(this.ghul_config.arguments));
 
 		log(`compiler is "${quote(ghul_compiler)}"`);
 
 		this.child = spawn(ghul_compiler[0], [...ghul_compiler.slice(1), "@.analysis.rsp"]);
 
+		// 'error' (e.g. the compiler binary is missing) and 'exit' (the
+		// compiler started then died) are both failure routes for this
+		// launch. Guard so a single launch is only counted once.
+		let failure_handled = false;
+
+		const onChildFailure = (description: string) => {
+			if (failure_handled) {
+				return;
+			}
+			failure_handled = true;
+
+			this.child = null;
+
+			resolveAllPendingPromises();
+			this.edit_queue.reset();
+
+			log(description);
+
+			this.scheduleRestart();
+		};
+
 		this.child.on("error", err => {
-			log(`compiler: failed to start: ${err.message}`);			
+			if (this.expecting_exit) {
+				log(`compiler: error after expected exit: ${err.message}`);
+				return;
+			}
+
+			onChildFailure(`compiler: failed to start: ${err.message}`);
 		});
 
 		log(`spawned compiler process PID ${this.child.pid}`);
@@ -98,32 +167,72 @@ export class ServerManager {
 		this.event_emitter.running(this.child);
 
 		const pid = this.child?.pid;
-	
+
 		this.child.on('exit',
 			(_code: number, _signal: string) => {
 				const was_expecting_exit = this.expecting_exit;
 
-				if (!was_expecting_exit) {
-					log(`compiler PID ${pid}: unexpected exit`);
-				} else {
+				if (was_expecting_exit) {
 					log(`compiler PID ${pid}: exited`);
-				}
-
-				this.child = null;
-
-				resolveAllPendingPromises();
-
-				if (!was_expecting_exit) {
-					this.edit_queue.reset();
-					log(`compiler PID ${pid}: will restart after unexpected exit`);
-		
-					this.start();
-				} else {
+					this.child = null;
+					resolveAllPendingPromises();
 					this.expecting_exit = false;
+					return;
 				}
+
+				onChildFailure(`compiler PID ${pid}: unexpected exit`);
 			});
-	}	
-	
+	}
+
+	// Decide whether to try the compiler again after a failed launch, applying
+	// an exponential back-off so a persistently-broken project does not turn
+	// into a spawn loop (which VS Code eventually responds to by killing the
+	// extension host). After MAX_RESTART_ATTEMPTS we stop and wait for a
+	// configuration change.
+	private scheduleRestart() {
+		this.clearRestartTimer();
+
+		this.restart_attempts++;
+
+		if (this.restart_attempts > MAX_RESTART_ATTEMPTS) {
+			this.fail(
+				"ghūl language extension: the ghūl compiler failed to start repeatedly and will not be retried automatically. " +
+				"Check the ghūl project file and compiler configuration — saving a project file will retry."
+			);
+			return;
+		}
+
+		const delay = this.restart_attempts == 1
+			? 0
+			: Math.min(2000 * 2 ** (this.restart_attempts - 2), 16000);
+
+		log(`compiler: will restart (attempt ${this.restart_attempts} of ${MAX_RESTART_ATTEMPTS}) in ${delay}ms`);
+
+		this.restart_timer = setTimeout(() => {
+			this.restart_timer = null;
+			this.launch();
+		}, delay);
+	}
+
+	private clearRestartTimer() {
+		if (this.restart_timer) {
+			clearTimeout(this.restart_timer);
+			this.restart_timer = null;
+		}
+	}
+
+	// Stop trying and tell the user. We stay in the Failed state until a fresh
+	// configuration arrives via onConfigAvailable, which resets everything.
+	private fail(message: string) {
+		this.clearRestartTimer();
+
+		this.server_state = ServerState.Failed;
+
+		log(message);
+
+		this.connection?.window?.showErrorMessage(message);
+	}
+
 	state() {
 		return this.server_state;
 	}
@@ -132,6 +241,10 @@ export class ServerManager {
 		if (this.server_state == ServerState.Blocked) {
 			return;
 		}
+
+		// The compiler came up cleanly: a later crash gets a fresh retry
+		// budget rather than counting against this successful run.
+		this.restart_attempts = 0;
 
 		this.server_state = ServerState.Listening;
 
@@ -153,13 +266,15 @@ export class ServerManager {
 
 		log("killing any running compiler...");
 
+		this.clearRestartTimer();
+
 		try {
 			this.expecting_exit = true;
 			this.child.kill();
 			this.event_emitter.killed();
 			log("finished killing compiler");
 		} catch (e) {
-			log("killing compiler caught: " + e);			
+			log("killing compiler caught: " + e);
 			this.abort();
 		}
 	}

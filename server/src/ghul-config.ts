@@ -13,6 +13,12 @@ export interface GhulConfig {
 	source: string[],
 	arguments: string[],
 	want_plaintext_hover: boolean,
+	// Human-readable descriptions of anything that went wrong while loading
+	// the configuration — an unreadable project file, malformed JSON, no
+	// compiler found. Empty when the workspace loaded cleanly. Consumers use
+	// this to surface a diagnostic and to decide whether to back off rather
+	// than spawn-and-fail in a loop.
+	problems: string[],
 }
 
 interface GhulConfigJson {
@@ -46,7 +52,7 @@ interface GhulProjectXml {
 			}
 		],
 		ItemGroup: [
-			{ 
+			{
 				GhulSources: {
 					"$": {
 						"Include": string
@@ -57,14 +63,24 @@ interface GhulProjectXml {
 	}
 }
 
+function describeError(e: unknown): string {
+	return e instanceof Error ? e.message : String(e);
+}
+
 export function getGhulConfig(workspace: string): GhulConfig {
-	let config: GhulConfigJson;
+	let problems: string[] = [];
+
+	let config: GhulConfigJson = {};
 
 	if (existsSync(workspace + "/ghul.json")) {
-		let buffer = '' + readFileSync(workspace + "/ghul.json", "utf-8").replace(/^\uFEFF/, '');
-		config = <GhulConfigJson>JSON.parse(buffer);
-	} else {
-		config = {}
+		try {
+			let buffer = '' + readFileSync(workspace + "/ghul.json", "utf-8").replace(/^\uFEFF/, '');
+			config = <GhulConfigJson>JSON.parse(buffer);
+		} catch (e) {
+			let problem = `could not load ghul.json: ${describeError(e)}`;
+			log(problem);
+			problems.push(problem);
+		}
 	}
 
 	let compiler: string[];
@@ -94,78 +110,93 @@ export function getGhulConfig(workspace: string): GhulConfig {
 	if (projects.length == 1) {
 		let ghulProjFileName = projects[0];
 
-		let buffer = '' + readFileSync(ghulProjFileName, "utf-8").replace(/^\uFEFF/, '');
+		try {
+			let buffer = '' + readFileSync(ghulProjFileName, "utf-8").replace(/^\uFEFF/, '');
 
-		parseXmlString(buffer, (error, projectXml: GhulProjectXml) => {
-			if (!error && projectXml.Project) {
-				if (!config.update_compiler_tool && projectXml.Project.PropertyGroup) {
-					let updateCompilerTool =
-						projectXml.Project.PropertyGroup
-						.filter(pg => pg.UpdateCompilerTool)
-						.map(pg => pg.UpdateCompilerTool)[0]
+			parseXmlString(buffer, (error, projectXml: GhulProjectXml) => {
+				if (!error && projectXml && projectXml.Project) {
+					if (!config.update_compiler_tool && projectXml.Project.PropertyGroup) {
+						let updateCompilerTool =
+							projectXml.Project.PropertyGroup
+							.filter(pg => pg.UpdateCompilerTool)
+							.map(pg => pg.UpdateCompilerTool)[0]
 
-					if (updateCompilerTool) {
-						log('will update any locally installed compiler tool to latest version');
-						config.update_compiler_tool = true;
+						if (updateCompilerTool) {
+							log('will update any locally installed compiler tool to latest version');
+							config.update_compiler_tool = true;
+						}
 					}
-				}
 
-				if (!compiler && projectXml.Project.PropertyGroup) {
-					let compilerCommandLine =
-						projectXml.Project.PropertyGroup
-							.filter(pg => pg.GhulCompiler)
-							.map(pg => pg.GhulCompiler)
-								[0]?.[0];
+					if (!compiler && projectXml.Project.PropertyGroup) {
+						let compilerCommandLine =
+							projectXml.Project.PropertyGroup
+								.filter(pg => pg.GhulCompiler)
+								.map(pg => pg.GhulCompiler)
+									[0]?.[0];
 
-					if ((compilerCommandLine ?? "") != "") {
-						compiler = parse(compilerCommandLine).map(e => e.toString());
+						if ((compilerCommandLine ?? "") != "") {
+							compiler = parse(compilerCommandLine).map(e => e.toString());
 
-						log(`will use compiler '${quote([...compiler, ...args])}' specified in ${ghulProjFileName}`);						
+							log(`will use compiler '${quote([...compiler, ...args])}' specified in ${ghulProjFileName}`);
+						}
 					}
+
+					if (!config.source?.length && projectXml.Project.ItemGroup) {
+						config.source = [];
+
+						projectXml.Project.ItemGroup
+							.filter(ig => ig.GhulSources)
+							.map(ig => ig.GhulSources)
+
+							.forEach(item => {
+								item
+									.filter(pattern => pattern["$"]?.Include)
+									.map(pattern => pattern["$"]?.Include)
+
+									.forEach(pattern => {
+										config.source.push(pattern)
+									})
+								}
+							);
+					} else if(config.source) {
+						config.source = config.source.map(directory => directory + "/**/*.ghul");
+					}
+				} else {
+					let problem = `could not parse ghūl project file ${ghulProjFileName}` +
+						(error ? `: ${describeError(error)}` : "");
+					log(problem);
+					problems.push(problem);
 				}
-
-				if (!config.source?.length && projectXml.Project.ItemGroup) {
-					config.source = [];
-
-					projectXml.Project.ItemGroup
-						.filter(ig => ig.GhulSources)
-						.map(ig => ig.GhulSources)
-
-						.forEach(item => {
-							item
-								.filter(pattern => pattern["$"]?.Include)
-								.map(pattern => pattern["$"]?.Include)
-						
-								.forEach(pattern => {
-									config.source.push(pattern)
-								})
-							}
-						);
-				} else if(config.source) {
-					config.source = config.source.map(directory => directory + "/**/*.ghul");
-				}
-			} else {
-				log("failed to parse ghul project file " + ghulProjFileName);
-			}
-		})
+			})
+		} catch (e) {
+			let problem = `could not read ghūl project file ${ghulProjFileName}: ${describeError(e)}`;
+			log(problem);
+			problems.push(problem);
+		}
 	} else if(projects.length > 0) {
 		log("ignoring multiple .ghulproj files:" + projects.join(','));
 	}
 
 	if (!compiler) {
 		if (existsSync(workspace + "/.config/dotnet-tools.json")) {
-			let buffer = ('' + readFileSync(workspace + "/.config/dotnet-tools.json", "utf-8")).replace(/^\uFEFF/, '');
+			try {
+				let buffer = ('' + readFileSync(workspace + "/.config/dotnet-tools.json", "utf-8")).replace(/^\uFEFF/, '');
 
-			let toolConfig = JSON.parse(buffer) as DotNetToolsJson;
+				let toolConfig = JSON.parse(buffer) as DotNetToolsJson;
 
-			let { tools } = toolConfig;
+				let { tools } = toolConfig;
 
-			let ghulCompilerTool = tools["ghul.compiler"]; 
+				let ghulCompilerTool = tools["ghul.compiler"];
 
-			if (ghulCompilerTool && ghulCompilerTool.commands.length == 1) {
-				compiler = ["dotnet", "tool", "run", ghulCompilerTool.commands[0]]
+				if (ghulCompilerTool && ghulCompilerTool.commands.length == 1) {
+					compiler = ["dotnet", "tool", "run", ghulCompilerTool.commands[0]]
 
-				log(`will use compiler '${quote([...compiler, ...args])}' version ${ghulCompilerTool.version} from local tool manifest`);
+					log(`will use compiler '${quote([...compiler, ...args])}' version ${ghulCompilerTool.version} from local tool manifest`);
+				}
+			} catch (e) {
+				let problem = `could not load .config/dotnet-tools.json: ${describeError(e)}`;
+				log(problem);
+				problems.push(problem);
 			}
 		}
 
@@ -191,7 +222,9 @@ export function getGhulConfig(workspace: string): GhulConfig {
 	}
 
 	if (!compiler) {
-		log("no usable ghūl compiler found")
+		let problem = "no usable ghūl compiler found: install the ghul.compiler tool or set 'compiler' in ghul.json";
+		log(problem);
+		problems.push(problem);
 	}
 
 	if (config.update_compiler_tool) {
@@ -203,18 +236,24 @@ export function getGhulConfig(workspace: string): GhulConfig {
 			log('compiler tool update successful');
 		} else {
 			log(result.stderr);
-			log('compiler tool update failed');			
+			log('compiler tool update failed');
 		}
 	}
 
-	if (existsSync(workspace + "/.assemblies.json")) {		
-		let buffer = ('' + readFileSync(workspace + "/.assemblies.json", "utf-8")).replace(/^\uFEFF/, '');
+	if (existsSync(workspace + "/.assemblies.json")) {
+		try {
+			let buffer = ('' + readFileSync(workspace + "/.assemblies.json", "utf-8")).replace(/^\uFEFF/, '');
 
-		let { assemblies } = JSON.parse(buffer) as { assemblies: string[] };
-		
-		for (let assembly of assemblies) {
-			args.push("-a");
-			args.push(assembly);
+			let { assemblies } = JSON.parse(buffer) as { assemblies: string[] };
+
+			for (let assembly of assemblies) {
+				args.push("-a");
+				args.push(assembly);
+			}
+		} catch (e) {
+			let problem = `could not load .assemblies.json: ${describeError(e)}`;
+			log(problem);
+			problems.push(problem);
 		}
 	}
 
@@ -227,6 +266,7 @@ export function getGhulConfig(workspace: string): GhulConfig {
 		compiler,
 		source,
 		arguments: args,
-		want_plaintext_hover: config.want_plaintext_hover ?? false
+		want_plaintext_hover: config.want_plaintext_hover ?? false,
+		problems
 	};
 }

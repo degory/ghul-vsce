@@ -80,6 +80,10 @@ describe('ConnectionEventHandler', () => {
             onReferences: jest.fn(),
             onImplementation: jest.fn(),
             onRenameRequest: jest.fn(),
+            window: {
+                showErrorMessage: jest.fn(),
+                showWarningMessage: jest.fn(),
+            },
         } as any as Connection;
 
         serverManager = {
@@ -200,6 +204,55 @@ describe('ConnectionEventHandler', () => {
 
         expect(restoreOrder).toBeLessThan(generateOrder);
         expect(generateOrder).toBeLessThan(configOrder);
+    });
+
+    it('surfaces a warning when the config loaded with problems but is still runnable', () => {
+        // A degraded load — e.g. a malformed .assemblies.json — still has a
+        // usable compiler, so analysis proceeds but the user is told why it
+        // may be incomplete.
+        jest.spyOn(restoreDotNetTools, 'restoreDotNetTools').mockReturnValue(null);
+        jest.spyOn(generateAssembliesJson, 'generateAssembliesJson').mockReturnValue(null);
+        jest.spyOn(GetGhulConfig, 'getGhulConfig').mockReturnValue({
+            compiler: ['ghul'],
+            source: ['test.ghul'],
+            arguments: [],
+            want_plaintext_hover: false,
+            problems: ['could not load .assemblies.json: unexpected token'],
+        } as GhulConfig);
+
+        jest.spyOn(DocumentChangeTrackerModule, 'DocumentChangeTracker').mockImplementation(() => ({
+            onDidChangeWatchedFiles: jest.fn(),
+        } as any as DocumentChangeTracker));
+        jest.spyOn(configEventEmitter, 'configAvailable').mockImplementation();
+
+        connectionEventHandler.workspace_root = '/path/to/workspace';
+        connectionEventHandler.initialize();
+
+        expect(connection.window.showWarningMessage).toHaveBeenCalledTimes(1);
+        const [message] = (connection.window.showWarningMessage as jest.Mock).mock.calls[0];
+        expect(message).toContain('.assemblies.json');
+    });
+
+    it('does not warn when the config loaded cleanly', () => {
+        jest.spyOn(restoreDotNetTools, 'restoreDotNetTools').mockReturnValue(null);
+        jest.spyOn(generateAssembliesJson, 'generateAssembliesJson').mockReturnValue(null);
+        jest.spyOn(GetGhulConfig, 'getGhulConfig').mockReturnValue({
+            compiler: ['ghul'],
+            source: ['test.ghul'],
+            arguments: [],
+            want_plaintext_hover: false,
+            problems: [],
+        } as GhulConfig);
+
+        jest.spyOn(DocumentChangeTrackerModule, 'DocumentChangeTracker').mockImplementation(() => ({
+            onDidChangeWatchedFiles: jest.fn(),
+        } as any as DocumentChangeTracker));
+        jest.spyOn(configEventEmitter, 'configAvailable').mockImplementation();
+
+        connectionEventHandler.workspace_root = '/path/to/workspace';
+        connectionEventHandler.initialize();
+
+        expect(connection.window.showWarningMessage).not.toHaveBeenCalled();
     });
 
     it('should handle onInitialize event', () => {
