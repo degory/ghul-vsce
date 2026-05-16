@@ -14,6 +14,14 @@ export class ResponseParser {
         this.response_handler = response_handler;
     }
 
+    // Drop any half-received frame. Called on every (re)launch: a compiler
+    // killed mid-frame leaves a partial section behind, and without this the
+    // replacement compiler's first frame — its LISTEN — is concatenated onto
+    // that fragment, fails to parse, and the project is never analysed.
+    reset() {
+        this.buffer = '';
+    }
+
     handleChunk(chunk: string) {
         chunk = chunk.replace(/\r/g, '');
 
