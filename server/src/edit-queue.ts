@@ -6,7 +6,6 @@ import { getWatchdogTimeout, isWatchdogRunning, rejectAllAndThrow, setWatchdogTi
 
 import { Requester } from './requester'
 
-import { clearTimeout } from 'timers';
 import { normalizeFileUri } from './normalize-file-uri';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
@@ -77,6 +76,7 @@ export class EditQueue {
 
     reset() {
         this.pending_changes.clear();
+        this.clearEditTimer();
         this.clearIdleTimer();
 
         this.state = QueueState.IDLE;
@@ -111,13 +111,13 @@ export class EditQueue {
 
             this.startEditTimer(this.edit_timeout);
         } else if (this.state == QueueState.WAITING_FOR_MORE_EDITS) {
-            this.resetEditTimer(this.edit_timeout);
+            this.startEditTimer(this.edit_timeout);
         } else if (this.state == QueueState.DOING_PARTIAL_COMPILE) {
             // do nothing, wait for partial compiler to complete
         } else if (this.state == QueueState.WAITING_FOR_MORE_EDITS_AFTER_PARTIAL_COMPILE) {
             this.state = QueueState.WAITING_FOR_MORE_EDITS;
-            
-            this.resetEditTimer(this.edit_timeout);
+
+            this.startEditTimer(this.edit_timeout);
         } else if (this.state == QueueState.DOING_FULL_COMPILE) {
             // do nothing, wait for full compiler to complete
         } else if (this.state == QueueState.DOING_HEAP_CHECK) {
@@ -128,6 +128,10 @@ export class EditQueue {
     }
 
     onEditTimeout() {
+        // The timer has fired; its handle is spent. Drop the reference so a
+        // later clearEditTimer cannot act on a stale handle.
+        this.edit_timer = null;
+
         if (this.state == QueueState.WAITING_FOR_MORE_EDITS) {
             this.sendQueued("edit timeout when waiting for more edits");
         } else if(this.state == QueueState.WAITING_FOR_MORE_EDITS_AFTER_PARTIAL_COMPILE) {
@@ -165,6 +169,14 @@ export class EditQueue {
     }
 
     onPartialCompileDone(milliseconds: number) {
+        if (this.state != QueueState.DOING_PARTIAL_COMPILE) {
+            // A stray PARTIAL DONE — e.g. left over from a compiler recycle.
+            // Drop it rather than driving a transition (and arming an edit
+            // timer) from a state that never requested a partial compile.
+            log("edit queue: on partial compile done: unexpected queue state (C): " + QueueState[this.state] + " (" + this.state + ")");
+            return;
+        }
+
         if (milliseconds) {
             this.edit_timeout = milliseconds * 1.5;
 
@@ -181,20 +193,23 @@ export class EditQueue {
             this.edit_count++;
         }
 
-        if (this.state != QueueState.DOING_PARTIAL_COMPILE) {
-            log("edit queue: on partial compile done: unexpected queue state (C): " + QueueState[this.state] + " (" + this.state + ")");
-        } 
-
         if (this.pending_changes.size > 0) {
             this.state = QueueState.WAITING_FOR_MORE_EDITS;
-            this.startEditTimer(this.edit_timeout);    
+            this.startEditTimer(this.edit_timeout);
         } else {
             this.state = QueueState.WAITING_FOR_MORE_EDITS_AFTER_PARTIAL_COMPILE;
-            this.startEditTimer(this.full_build_timeout);    
+            this.startEditTimer(this.full_build_timeout);
         }
     }
 
     onFullCompileDone(milliseconds: number) {
+        if (this.state != QueueState.DOING_FULL_COMPILE) {
+            // A stray FULL DONE — drop it rather than transitioning from a
+            // state that never requested a full compile.
+            log("edit queue: on full compile done: unexpected queue state: " + QueueState[this.state]);
+            return;
+        }
+
         if (milliseconds) {
             this.full_build_timeout = milliseconds * 1.5;
 
@@ -211,10 +226,6 @@ export class EditQueue {
             this.build_count++;
         }
 
-        if (this.state != QueueState.DOING_FULL_COMPILE) {
-            log("edit queue: on full compile done: unexpected queue state: " + QueueState[this.state]);
-        }
-
         if (this.pending_changes.size > 0) {
             this.state = QueueState.WAITING_FOR_MORE_EDITS;
             this.startEditTimer(this.edit_timeout);
@@ -226,7 +237,10 @@ export class EditQueue {
 
     onHeapCheckDone() {
         if (this.state != QueueState.DOING_HEAP_CHECK) {
+            // A stray heap-check completion — drop it rather than transitioning
+            // from a state that never requested a heap check.
             log("edit queue: on heap check done: unexpected queue state: " + QueueState[this.state]);
+            return;
         }
 
         if (this.pending_changes.size > 0) {
@@ -252,13 +266,23 @@ export class EditQueue {
         this.state = QueueState.DOING_FULL_COMPILE;
     }
 
-    resetEditTimer(timeout: number) {
-        clearTimeout(this.edit_timer);
-        this.startEditTimer(timeout);
+    // Self-clearing, so callers never leak a second edit timer: the queue has
+    // exactly one edit/compile timer and it belongs to whichever WAITING state
+    // armed it. A stale timer that outlived its state would fire onEditTimeout
+    // in an unrelated state — the desync the queue's "unexpected state" logs
+    // were reporting.
+    startEditTimer(timeout: number) {
+        this.clearEditTimer();
+
+        this.edit_timer = setTimeout(() => { this.onEditTimeout() }, timeout);
     }
 
-    startEditTimer(timeout: number) {
-        this.edit_timer = setTimeout(() => { this.onEditTimeout() }, timeout);
+    clearEditTimer() {
+        // Unconditional: clearTimeout is a safe no-op on an absent or already-
+        // fired handle, and a truthiness guard would skip a live timer whose
+        // handle is the falsy 0.
+        clearTimeout(this.edit_timer);
+        this.edit_timer = null;
     }
 
     // Self-clearing, so it is safe to call from every IDLE entry point
@@ -278,17 +302,30 @@ export class EditQueue {
     }
 
     start(documents: { uri: string, source: string }[]) {
-        this.state = QueueState.DOING_PARTIAL_COMPILE;        
+        this.clearEditTimer();
+        this.clearIdleTimer();
+
+        this.state = QueueState.DOING_PARTIAL_COMPILE;
         this.sendMultiEdits(documents);
     }
 
+    // Flush queued edits ahead of a query (completion / signature help) so the
+    // analyser sees the current text before answering. Only meaningful while
+    // WAITING with edits not yet sent: if a compile or heap check is already in
+    // flight the pending edits ride out on its completion, and barging a second
+    // #EDIT# in would leave the queue tracking two in-flight requests as one.
     sendQueued(_why: string = "send queued") {
-        if (this.state == QueueState.WAITING_FOR_MORE_EDITS || this.state == QueueState.WAITING_FOR_MORE_EDITS_AFTER_PARTIAL_COMPILE) {
-            clearTimeout(this.edit_timer);
+        if (
+            this.state != QueueState.WAITING_FOR_MORE_EDITS &&
+            this.state != QueueState.WAITING_FOR_MORE_EDITS_AFTER_PARTIAL_COMPILE
+        ) {
+            return;
         }
 
+        this.clearEditTimer();
+
         this.send_start_time = Date.now();
-        
+
         let documents = <{ uri: string, source: string}[]>[];
 
         for (let change of this.pending_changes.values()) {            

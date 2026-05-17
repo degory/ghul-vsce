@@ -291,4 +291,93 @@ describe('EditQueue', () => {
             expect(recorder.sendDocumentsCalls).toHaveLength(1);
         });
     });
+
+    // Regression cover for the edit-queue desync: an edit timer that outlived
+    // the state that armed it would fire onEditTimeout in an unrelated state,
+    // and the "unexpected queue state" branches would fall through and arm yet
+    // another timer — a self-sustaining cascade of spurious compiles.
+    describe('timer discipline', () => {
+        it('reset() cancels the pending edit timer (compiler recycle)', () => {
+            // An edit arms the edit timer...
+            queue.reset();
+            queue.queueEdit3('file:///a.ghul', 1, 'text');
+
+            // ...then the compiler recycles: reset() returns the queue to IDLE.
+            queue.reset();
+
+            // A fresh analysis runs and reaches WAITING_..._AFTER_PARTIAL_COMPILE,
+            // which arms its own (much longer) full-build timer.
+            queue.start([{ uri: 'file:///a.ghul', source: 'text' }]);
+            queue.onPartialCompileDone(0);
+
+            // Had reset() left the first timer alive it would fire here and
+            // escalate to a full compile ~900ms early.
+            jest.advanceTimersByTime(EditQueue.PARTIAL_BUILD_EDIT_TIMEOUT);
+
+            expect(recorder.sendFullCompileRequestCalls).toBe(0);
+        });
+
+        it('start() cancels the pending edit timer', () => {
+            queue.reset();
+            queue.queueEdit3('file:///a.ghul', 1, 'text');
+
+            // start() drives straight into DOING_PARTIAL_COMPILE without going
+            // through reset() first — it must still cancel the edit timer.
+            queue.start([{ uri: 'file:///a.ghul', source: 'text' }]);
+            queue.onPartialCompileDone(0);
+
+            jest.advanceTimersByTime(EditQueue.PARTIAL_BUILD_EDIT_TIMEOUT);
+
+            expect(recorder.sendFullCompileRequestCalls).toBe(0);
+        });
+
+        it('drops a stray PARTIAL DONE without arming a timer', () => {
+            queue.reset();
+            queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+            queue.onPartialCompileDone(0);
+            jest.advanceTimersByTime(EditQueue.FULL_BUILD_EDIT_TIMEOUT);
+            expect(recorder.sendFullCompileRequestCalls).toBe(1);
+
+            // A stray PARTIAL DONE arrives while the #COMPILE# is still in
+            // flight — it must not arm an edit timer that escalates again.
+            queue.onPartialCompileDone(0);
+            jest.advanceTimersByTime(EditQueue.FULL_BUILD_EDIT_TIMEOUT);
+
+            expect(recorder.sendFullCompileRequestCalls).toBe(1);
+        });
+
+        it('drops a stray FULL DONE without leaving its waiting state', () => {
+            queue.reset();
+            queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+            queue.onPartialCompileDone(0);
+
+            // No #COMPILE# has been sent, so this FULL DONE is stray.
+            queue.onFullCompileDone(0);
+
+            // The queue must still be waiting to escalate to a full compile.
+            jest.advanceTimersByTime(EditQueue.FULL_BUILD_EDIT_TIMEOUT);
+
+            expect(recorder.sendFullCompileRequestCalls).toBe(1);
+        });
+
+        it('sendQueued does nothing while a compile is already in flight', () => {
+            queue.reset();
+            queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+            const sendsAfterStart = recorder.sendDocumentsCalls.length;
+
+            // An edit lands during DOING_PARTIAL_COMPILE, then a completion
+            // trigger flushes the queue. The flush must not barge a second
+            // #EDIT# in alongside the one already in flight.
+            queue.queueEdit3('file:///b.ghul', 1, 'b');
+            queue.sendQueued('completion trigger');
+
+            expect(recorder.sendDocumentsCalls).toHaveLength(sendsAfterStart);
+            expect(queue.pending_changes.size).toBe(1);
+
+            // The queued edit rides out on the in-flight compile completing.
+            queue.onPartialCompileDone(0);
+            jest.advanceTimersByTime(EditQueue.PARTIAL_BUILD_EDIT_TIMEOUT);
+            expect(recorder.sendDocumentsCalls).toHaveLength(sendsAfterStart + 1);
+        });
+    });
 });
