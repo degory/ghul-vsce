@@ -147,6 +147,12 @@ export class ResponseParser {
             this.response_handler.handleRestart();
             break;
 
+        case "HEAPCHECK":
+            clearWatchdog();
+
+            this.response_handler.handleHeapCheckDone();
+            break;
+
         case "FORMAT":
             clearWatchdog();
 

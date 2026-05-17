@@ -11,12 +11,16 @@ import { ExtensionState } from '../src/extension-state';
 class RecordingRequester {
     sendDocumentsCalls: Array<{ uri: string; source: string }[]> = [];
     sendFullCompileRequestCalls = 0;
+    sendHeapCheckRequestCalls = 0;
 
     sendDocuments(documents: { uri: string; source: string }[]) {
         this.sendDocumentsCalls.push(documents);
     }
     sendFullCompileRequest() {
         this.sendFullCompileRequestCalls += 1;
+    }
+    sendHeapCheckRequest() {
+        this.sendHeapCheckRequestCalls += 1;
     }
 }
 
@@ -217,6 +221,73 @@ describe('EditQueue', () => {
             queue.queueEdit3('file:///a.ghul', 1, 't');
             jest.advanceTimersByTime(EditQueue.PARTIAL_BUILD_EDIT_TIMEOUT);
 
+            expect(recorder.sendDocumentsCalls).toHaveLength(1);
+        });
+    });
+
+    describe('heap check', () => {
+        // Drive the queue to IDLE the way a real session does — through a
+        // full compile — so the idle timer is armed.
+        function reachIdleAfterFullCompile() {
+            queue.reset();
+            queue.forceScheduleFullCompile();
+            jest.advanceTimersByTime(EditQueue.FULL_BUILD_EDIT_TIMEOUT);
+            queue.onFullCompileDone(100);
+        }
+
+        it('sends a heap check request after a long idle period following a full compile', () => {
+            reachIdleAfterFullCompile();
+
+            jest.advanceTimersByTime(EditQueue.HEAP_CHECK_IDLE_TIMEOUT);
+
+            expect(recorder.sendHeapCheckRequestCalls).toBe(1);
+        });
+
+        it('does not send a heap check before the idle period elapses', () => {
+            reachIdleAfterFullCompile();
+
+            jest.advanceTimersByTime(EditQueue.HEAP_CHECK_IDLE_TIMEOUT - 1);
+
+            expect(recorder.sendHeapCheckRequestCalls).toBe(0);
+        });
+
+        it('an edit during the idle period cancels the heap check', () => {
+            reachIdleAfterFullCompile();
+
+            queue.queueEdit3('file:///a.ghul', 1, 'text');
+            jest.advanceTimersByTime(EditQueue.HEAP_CHECK_IDLE_TIMEOUT);
+
+            expect(recorder.sendHeapCheckRequestCalls).toBe(0);
+        });
+
+        it('skips the heap check and re-arms while another request is outstanding', () => {
+            reachIdleAfterFullCompile();
+
+            // A query request (hover, completion, …) bypasses the EditQueue;
+            // the watchdog running stands in for "a request is in flight".
+            const watchdog = ExtensionState.getInstance().watchdog;
+            watchdog.setTimeout(10_000_000);
+            watchdog.startWatchdog();
+
+            jest.advanceTimersByTime(EditQueue.HEAP_CHECK_IDLE_TIMEOUT);
+            expect(recorder.sendHeapCheckRequestCalls).toBe(0);
+
+            // Once the request completes, the re-armed timer sends it.
+            watchdog.clearWatchdog();
+            jest.advanceTimersByTime(EditQueue.HEAP_CHECK_IDLE_TIMEOUT);
+            expect(recorder.sendHeapCheckRequestCalls).toBe(1);
+        });
+
+        it('returns to IDLE after the heap check completes', () => {
+            reachIdleAfterFullCompile();
+            jest.advanceTimersByTime(EditQueue.HEAP_CHECK_IDLE_TIMEOUT);
+            expect(recorder.sendHeapCheckRequestCalls).toBe(1);
+
+            queue.onHeapCheckDone();
+
+            // Back in IDLE: a fresh edit schedules an edit timer and sends.
+            queue.queueEdit3('file:///a.ghul', 1, 'text');
+            jest.advanceTimersByTime(EditQueue.PARTIAL_BUILD_EDIT_TIMEOUT);
             expect(recorder.sendDocumentsCalls).toHaveLength(1);
         });
     });
