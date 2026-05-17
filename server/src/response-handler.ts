@@ -225,6 +225,10 @@ export class ResponseHandler {
         this.edit_queue.onPartialCompileDone(milliseconds);
     }
 
+    handleHeapCheckDone() {
+        this.edit_queue.onHeapCheckDone();
+    }
+
     expectHover(): Promise<Hover> {
         return this._hover_promise_queue.enqueue();
     }

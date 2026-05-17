@@ -57,6 +57,12 @@ export class Watchdog {
         this.timeout_milliseconds = COLD_START_TIMEOUT_MILLISECONDS;
     }
 
+    // True while a request is outstanding: the timer runs from when a request
+    // is sent until a response frame arrives.
+    isRunning(): boolean {
+        return this.watchdog_timer != null;
+    }
+
     // The compiler has not answered within the timeout. A crash would have
     // fired the process 'exit' handler instead, so this is a wedge: nothing
     // recovers it on its own. Hand off to the recovery callback.
