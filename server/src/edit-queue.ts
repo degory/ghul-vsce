@@ -2,7 +2,7 @@ import { TextDocumentChangeEvent } from 'vscode-languageserver'
 
 import { log } from './log';
 
-import { getWatchdogTimeout, rejectAllAndThrow, setWatchdogTimeout } from './extension-state';
+import { getWatchdogTimeout, isWatchdogRunning, rejectAllAndThrow, setWatchdogTimeout } from './extension-state';
 
 import { Requester } from './requester'
 
@@ -17,6 +17,7 @@ enum QueueState {
     DOING_PARTIAL_COMPILE,
     WAITING_FOR_MORE_EDITS_AFTER_PARTIAL_COMPILE,
     DOING_FULL_COMPILE,
+    DOING_HEAP_CHECK,
 }
 
 interface Document {
@@ -33,6 +34,10 @@ export class EditQueue {
     edit_timeout: number;
     edit_timer: NodeJS.Timeout;
 
+    // Long-period timer, armed only in the IDLE state — strictly outside the
+    // edit/compile timer's territory, so the two never run at the same time.
+    idle_timer: NodeJS.Timeout;
+
     edit_count: number;
     build_count: number;
 
@@ -48,6 +53,10 @@ export class EditQueue {
 
     static readonly FULL_BUILD_EDIT_TIMEOUT = 1000;
     static readonly PARTIAL_BUILD_EDIT_TIMEOUT = 100;
+
+    // How long the queue must sit IDLE before asking the analyser to sample
+    // the heap — long enough that it is a genuine lull in editing.
+    static readonly HEAP_CHECK_IDLE_TIMEOUT = 60000;
     
     constructor(
         requester: Requester
@@ -68,6 +77,7 @@ export class EditQueue {
 
     reset() {
         this.pending_changes.clear();
+        this.clearIdleTimer();
 
         this.state = QueueState.IDLE;
     }
@@ -95,8 +105,10 @@ export class EditQueue {
         if (this.state == QueueState.START) {
             // do nothing
         } else if (this.state == QueueState.IDLE) {
+            this.clearIdleTimer();
+
             this.state = QueueState.WAITING_FOR_MORE_EDITS;
-            
+
             this.startEditTimer(this.edit_timeout);
         } else if (this.state == QueueState.WAITING_FOR_MORE_EDITS) {
             this.resetEditTimer(this.edit_timeout);
@@ -108,6 +120,8 @@ export class EditQueue {
             this.resetEditTimer(this.edit_timeout);
         } else if (this.state == QueueState.DOING_FULL_COMPILE) {
             // do nothing, wait for full compiler to complete
+        } else if (this.state == QueueState.DOING_HEAP_CHECK) {
+            // do nothing, wait for the heap check to complete
         } else {
             rejectAllAndThrow("queue edit: unexpected queue state (A): " + QueueState[this.state]);
         }
@@ -124,6 +138,23 @@ export class EditQueue {
             }
         } else {
             log("timer expired but not waiting for edits: " + QueueState[this.state] + " (" + this.state + ")");
+        }
+    }
+
+    // The queue has sat IDLE long enough to be a genuine lull, so ask the
+    // analyser to sample the heap — its forced GC then lands off the latency
+    // path of interactive requests. Query requests (hover, completion, …)
+    // bypass this queue, so the queue can be IDLE while a request is still in
+    // flight; if anything is outstanding, the heap check is dropped and the
+    // idle timer re-armed for the next lull rather than risk overlapping it
+    // with another request.
+    onIdleTimeout() {
+        if (this.state == QueueState.IDLE && !isWatchdogRunning()) {
+            this.requester.sendHeapCheckRequest();
+
+            this.state = QueueState.DOING_HEAP_CHECK;
+        } else {
+            this.startIdleTimer();
         }
     }
 
@@ -189,6 +220,23 @@ export class EditQueue {
             this.startEditTimer(this.edit_timeout);
         } else {
             this.state = QueueState.IDLE;
+            this.startIdleTimer();
+        }
+    }
+
+    onHeapCheckDone() {
+        if (this.state != QueueState.DOING_HEAP_CHECK) {
+            log("edit queue: on heap check done: unexpected queue state: " + QueueState[this.state]);
+        }
+
+        if (this.pending_changes.size > 0) {
+            this.state = QueueState.WAITING_FOR_MORE_EDITS;
+            this.startEditTimer(this.edit_timeout);
+        } else {
+            // Back to IDLE, but the idle timer is deliberately not re-armed:
+            // with no edits there are no compiles, so the heap is not growing.
+            // The next full compile re-arms it.
+            this.state = QueueState.IDLE;
         }
     }
 
@@ -211,6 +259,22 @@ export class EditQueue {
 
     startEditTimer(timeout: number) {
         this.edit_timer = setTimeout(() => { this.onEditTimeout() }, timeout);
+    }
+
+    // Self-clearing, so it is safe to call from every IDLE entry point
+    // (onFullCompileDone, and onIdleTimeout when it re-arms) without leaking
+    // a second timer.
+    startIdleTimer() {
+        this.clearIdleTimer();
+
+        this.idle_timer = setTimeout(() => { this.onIdleTimeout() }, EditQueue.HEAP_CHECK_IDLE_TIMEOUT);
+    }
+
+    clearIdleTimer() {
+        if (this.idle_timer) {
+            clearTimeout(this.idle_timer);
+            this.idle_timer = null;
+        }
     }
 
     start(documents: { uri: string, source: string }[]) {

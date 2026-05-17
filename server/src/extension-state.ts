@@ -175,6 +175,10 @@ export function clearWatchdog() {
     ExtensionState.getInstance().watchdog.clearWatchdog();
 }
 
+export function isWatchdogRunning() {
+    return ExtensionState.getInstance().watchdog.isRunning();
+}
+
 export function resolveAllPendingPromises() {
     ExtensionState.getInstance().resolveAllPendingPromises();
 }

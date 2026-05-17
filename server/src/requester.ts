@@ -257,7 +257,16 @@ export class Requester {
 
         this.write('#COMPILE#\n');
     }
- 
+
+    // Ask the analyser to sample the heap. The EditQueue sends this during a
+    // lull in editing, so the watchdog's forced GC stays off the latency path
+    // of interactive requests.
+    sendHeapCheckRequest() {
+        startWatchdogIfNotRunning();
+
+        this.write('#HEAPCHECK#\n');
+    }
+
     sendRestart() {
         if (this.analysed) {
             startWatchdogIfNotRunning();
