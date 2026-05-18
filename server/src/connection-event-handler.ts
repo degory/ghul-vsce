@@ -161,10 +161,11 @@ export class ConnectionEventHandler {
         // FIXME is there a better way to do this?
         const workspace_root_munged = this.workspace_root.replace(/\\/g, '/');
         
-        this.document_change_tracker = 
+        this.document_change_tracker =
             new DocumentChangeTracker(
                 this.edit_queue,
-                this.config.source.map(glob => `${workspace_root_munged}/${glob}`)
+                this.config.source.map(glob => `${workspace_root_munged}/${glob}`),
+                this.documents
             );
 
         this.config_event_emitter.configAvailable(this.workspace_root, this.config);

@@ -1,4 +1,5 @@
-import { DidChangeWatchedFilesParams, FileChangeType } from "vscode-languageserver";
+import { DidChangeWatchedFilesParams, FileChangeType, TextDocuments } from "vscode-languageserver";
+import { TextDocument } from "vscode-languageserver-textdocument";
 import { URI } from "vscode-uri";
 import { debounce } from "throttle-debounce";
 
@@ -15,13 +16,16 @@ const debounced_reinitialize = debounce(5000, () => { reinitialize(); } );
 export class DocumentChangeTracker {
     edit_queue: EditQueue;
     globs: string[];
+    documents: TextDocuments<TextDocument>;
 
     constructor(
         edit_queue: EditQueue,
-        globs: string[]
+        globs: string[],
+        documents: TextDocuments<TextDocument>
     ) {
         this.edit_queue = edit_queue;
         this.globs = globs;
+        this.documents = documents;
     }
 
     onDidChangeWatchedFiles(params: DidChangeWatchedFilesParams) {
@@ -60,14 +64,33 @@ export class DocumentChangeTracker {
                 log("source file deleted: '", uri, "', clearing in memory");
 
                 this.edit_queue.queueEdit3(uri, null, "");
-            } else if(c.type == FileChangeType.Created) {
-                log("source file created: '", uri, "', initializing from from file contents");
+            } else if(c.type == FileChangeType.Created || c.type == FileChangeType.Changed) {
+                // A file open in an editor is tracked through textDocument
+                // sync; its buffer — not the file on disk — is the source of
+                // truth. Re-reading the saved file here could clobber unsaved
+                // edits, so leave open files to the sync path and only reload
+                // closed files (e.g. those rewritten by a git pull).
+                if (this.isOpenInEditor(uri)) {
+                    continue;
+                }
+
+                log("source file changed on disk: '", uri, "', reloading from file contents");
 
                 let file_contents = readFileSync(fn, "utf8");
 
                 this.edit_queue.queueEdit3(uri, null, file_contents);
             }
         }
+    }
+
+    isOpenInEditor(uri: string) {
+        for (let document of this.documents.all()) {
+            if (normalizeFileUri(document.uri) == uri) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     tryGetValidSourceFile(uri: string) {
