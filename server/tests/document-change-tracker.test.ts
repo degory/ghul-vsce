@@ -1,4 +1,5 @@
-import { DidChangeWatchedFilesParams, DidCloseTextDocumentParams, FileChangeType } from 'vscode-languageserver';
+import { DidChangeWatchedFilesParams, DidCloseTextDocumentParams, FileChangeType, TextDocuments } from 'vscode-languageserver';
+import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import { DocumentChangeTracker } from '../src/document-change-tracker';
 import { EditQueue } from '../src/edit-queue';
@@ -38,6 +39,8 @@ describe('DocumentChangeTracker', () => {
     let editQueue: EditQueue;
     let globs: string[];
     let requester: Requester;
+    let openDocuments: { uri: string }[];
+    let documents: TextDocuments<TextDocument>;
 
     beforeEach(() => {
         editQueue = new EditQueue(requester);
@@ -50,7 +53,14 @@ describe('DocumentChangeTracker', () => {
                 })
         } as unknown as EditQueue;
 
-        documentChangeTracker = new DocumentChangeTracker(editQueue, globs);
+        // Per-test list of editor buffers the tracker should treat as open.
+        openDocuments = [];
+
+        documents = {
+            all: () => openDocuments
+        } as unknown as TextDocuments<TextDocument>;
+
+        documentChangeTracker = new DocumentChangeTracker(editQueue, globs, documents);
     });
 
     it('should queue edit with empty file text for deleted files', () => {
@@ -101,6 +111,50 @@ describe('DocumentChangeTracker', () => {
         documentChangeTracker.onDidChangeWatchedFiles(params);
 
         expect(editQueue.queueEdit3).toHaveBeenCalledWith(uri, null, "contents of file");
+    });
+
+    it('reloads a closed file from disk when it changes on disk (e.g. a git pull)', () => {
+        const uri = 'file:///path/to/document.ghul';
+
+        const fs = require('fs');
+        fs.readFileSync = jest.fn(() => "new contents from disk");
+
+        const params = createDidChangeWatchedFilesParams(uri, FileChangeType.Changed);
+
+        documentChangeTracker.onDidChangeWatchedFiles(params);
+
+        expect(editQueue.queueEdit3).toHaveBeenCalledWith(uri, null, "new contents from disk");
+    });
+
+    it('does not reload an open file when it changes on disk — the editor buffer is the source of truth', () => {
+        const uri = 'file:///path/to/document.ghul';
+
+        // The file is open in an editor, so textDocument sync owns it:
+        openDocuments.push({ uri });
+
+        const fs = require('fs');
+        fs.readFileSync = jest.fn(() => "saved contents from disk");
+
+        const params = createDidChangeWatchedFilesParams(uri, FileChangeType.Changed);
+
+        documentChangeTracker.onDidChangeWatchedFiles(params);
+
+        expect(editQueue.queueEdit3).not.toHaveBeenCalled();
+    });
+
+    it('does not reload an open file on a Created event either', () => {
+        const uri = 'file:///path/to/document.ghul';
+
+        openDocuments.push({ uri });
+
+        const fs = require('fs');
+        fs.readFileSync = jest.fn(() => "contents from disk");
+
+        const params = createDidChangeWatchedFilesParams(uri, FileChangeType.Created);
+
+        documentChangeTracker.onDidChangeWatchedFiles(params);
+
+        expect(editQueue.queueEdit3).not.toHaveBeenCalled();
     });
 
     it('returns early when params has no changes', () => {
