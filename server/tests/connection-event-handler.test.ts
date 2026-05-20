@@ -46,7 +46,7 @@ describe('ConnectionEventHandler', () => {
                             change: 2
                         },
                         completionProvider: {
-                            triggerCharacters: ['.'],
+                            triggerCharacters: ['.', ':'],
                             resolveProvider: false
                         },
                         documentSymbolProvider: true,
@@ -273,7 +273,7 @@ describe('ConnectionEventHandler', () => {
                     change: 2
                 },
                 completionProvider: {
-                    triggerCharacters: ['.'],
+                    triggerCharacters: ['.', ':'],
                     resolveProvider: false
                 },
                 documentSymbolProvider: true,

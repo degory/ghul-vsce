@@ -186,7 +186,15 @@ export class ConnectionEventHandler {
                     change: TextDocumentSyncKind.Incremental
                 },
                 completionProvider: {
-                    triggerCharacters: ['.'],
+                    // `:` opens a type-position request (let / property /
+                    // argument / generic constraint / class-or-trait
+                    // inheritance / `(name: type, ...)` tuple element).
+                    // The analyser returns no candidates for non-type
+                    // `:` contexts (case-when labels, `::` range
+                    // operator, tuple-literal `name: value`), so the
+                    // popup stays hidden in those cases without any
+                    // VSCE-side filtering.
+                    triggerCharacters: ['.', ':'],
                     resolveProvider: false,
                 },
                 documentSymbolProvider: true,
