@@ -115,6 +115,10 @@ export class ConnectionEventHandler {
             (params: TextDocumentPositionParams): Promise<Definition> =>
                 this.onImplementation(params));
 
+        connection.onTypeDefinition(
+            (params: TextDocumentPositionParams): Promise<Definition> =>
+                this.onTypeDefinition(params));
+
         connection.onRenameRequest(
              (params: RenameParams): Promise<WorkspaceEdit> =>
                 this.onRenameRequest(params));
@@ -207,6 +211,7 @@ export class ConnectionEventHandler {
                     triggerCharacters: ["(", "["]
                 },
                 implementationProvider: true,
+                typeDefinitionProvider: true,
                 renameProvider: true,
                 documentFormattingProvider: true,
                 documentRangeFormattingProvider: true
@@ -269,6 +274,10 @@ export class ConnectionEventHandler {
 
     onImplementation(params: TextDocumentPositionParams): Promise<Location[]> {
         return this.requester.sendImplementation(params.textDocument.uri, params.position.line, params.position.character);
+    }
+
+    onTypeDefinition(params: TextDocumentPositionParams): Promise<Definition> {
+        return this.requester.sendTypeDefinition(params.textDocument.uri, params.position.line, params.position.character);
     }
 
     onRenameRequest(params: RenameParams): Promise<WorkspaceEdit> {

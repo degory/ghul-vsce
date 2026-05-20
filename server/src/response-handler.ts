@@ -112,6 +112,7 @@ export class ResponseHandler {
     _symbols_promise_queue: PromiseQueue<SymbolInformation[]>;
     _references_promise_queue: PromiseQueue<Location[]>;
     _implementation_promise_queue: PromiseQueue<Location[]>;
+    _type_definition_promise_queue: PromiseQueue<Definition>;
     _rename_promise_queue: PromiseQueue<WorkspaceEdit>;
     _formatting_promise_queue: PromiseQueue<TextEdit[]>;
     _range_formatting_promise_queue: PromiseQueue<TextEdit[]>;
@@ -138,6 +139,7 @@ export class ResponseHandler {
         this._symbols_promise_queue = new PromiseQueue<SymbolInformation[]>("SYMBOLS");
         this._references_promise_queue = new PromiseQueue<Location[]>("REFERENCES");
         this._implementation_promise_queue = new PromiseQueue<Location[]>("IMPLEMENTATION");
+        this._type_definition_promise_queue = new PromiseQueue<Definition>("TYPEDEFINITION");
         this._rename_promise_queue = new PromiseQueue<WorkspaceEdit>("RENAMEREQUEST");
         this._formatting_promise_queue = new PromiseQueue<TextEdit[]>("FORMAT");
         this._range_formatting_promise_queue = new PromiseQueue<TextEdit[]>("FORMATRANGE");
@@ -156,6 +158,7 @@ export class ResponseHandler {
         this._symbols_promise_queue.resolveAll([]);
         this._references_promise_queue.resolveAll([]);
         this._implementation_promise_queue.resolveAll([]);
+        this._type_definition_promise_queue.resolveAll(null);
         this._rename_promise_queue.resolveAll(null);
         this._formatting_promise_queue.resolveAll([]);
         this._range_formatting_promise_queue.resolveAll([]);
@@ -171,6 +174,7 @@ export class ResponseHandler {
         this._symbols_promise_queue.rejectAll(message);
         this._references_promise_queue.rejectAll(message);
         this._implementation_promise_queue.rejectAll(message);
+        this._type_definition_promise_queue.rejectAll(message);
         this._rename_promise_queue.reject(message);
         this._formatting_promise_queue.rejectAll(message);
         this._range_formatting_promise_queue.rejectAll(message);
@@ -509,7 +513,26 @@ export class ResponseHandler {
             log("implementation caught:", e);
             resolve([])
         }
-    }    
+    }
+
+    expectTypeDefinition(): Promise<Definition> {
+        return this._type_definition_promise_queue.enqueue();
+    }
+
+    handleTypeDefinition(lines: string[]) {
+        let {resolve} = this._type_definition_promise_queue.dequeueAlways();
+
+        try {
+            if (lines.length == 1) {
+                resolve(this.parseLocation(lines[0]));
+            } else {
+                resolve(null);
+            }
+        } catch(e) {
+            log("type definition caught:", e);
+            resolve(null);
+        }
+    }
 
     expectRenameRequest(): Promise<WorkspaceEdit> {
         return this._rename_promise_queue.enqueue();

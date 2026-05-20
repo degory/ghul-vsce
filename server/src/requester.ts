@@ -202,6 +202,21 @@ export class Requester {
         }
     }
 
+    sendTypeDefinition(uri: string, line: number, character: number): Promise<Definition> {
+        if (this.analysed) {
+            startWatchdogIfNotRunning();
+
+            this.write('#TYPEDEFINITION#\n');
+            this.write(normalizeFileUri(uri) + '\n');
+            this.write((line+1) + '\n');
+            this.write((character+1) + '\n');
+
+            return this.response_handler.expectTypeDefinition();
+        } else {
+            return null;
+        }
+    }
+
     sendRenameRequest(uri: string, line: number, character: number, newName: string): Promise<WorkspaceEdit> {
         if (this.analysed) {
             startWatchdogIfNotRunning();
