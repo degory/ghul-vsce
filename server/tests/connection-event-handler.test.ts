@@ -46,7 +46,7 @@ describe('ConnectionEventHandler', () => {
                             change: 2
                         },
                         completionProvider: {
-                            triggerCharacters: ['.'],
+                            triggerCharacters: ['.', ':'],
                             resolveProvider: false
                         },
                         documentSymbolProvider: true,
@@ -59,6 +59,7 @@ describe('ConnectionEventHandler', () => {
                             triggerCharacters: ['(', '[']
                         },
                         implementationProvider: true,
+                        typeDefinitionProvider: true,
                         renameProvider: true
                     }
                 };
@@ -80,6 +81,7 @@ describe('ConnectionEventHandler', () => {
             onWorkspaceSymbol: jest.fn(),
             onReferences: jest.fn(),
             onImplementation: jest.fn(),
+            onTypeDefinition: jest.fn(),
             onRenameRequest: jest.fn(),
             window: {
                 showErrorMessage: jest.fn(),
@@ -273,7 +275,7 @@ describe('ConnectionEventHandler', () => {
                     change: 2
                 },
                 completionProvider: {
-                    triggerCharacters: ['.'],
+                    triggerCharacters: ['.', ':'],
                     resolveProvider: false
                 },
                 documentSymbolProvider: true,
@@ -286,6 +288,7 @@ describe('ConnectionEventHandler', () => {
                     triggerCharacters: ['(', '[']
                 },
                 implementationProvider: true,
+                typeDefinitionProvider: true,
                 renameProvider: true,
                 documentFormattingProvider: true,
                 documentRangeFormattingProvider: true
@@ -532,6 +535,23 @@ describe('ConnectionEventHandler', () => {
         expect(result).toEqual([]);
     });
 
+    it('should handle onTypeDefinition event', async () => {
+        // The outer-suite requester mock doesn't include sendTypeDefinition;
+        // assign and spy explicitly rather than mutating the shared setup:
+        const sendTypeDefinition = jest.fn().mockResolvedValue(null);
+        (requester as any).sendTypeDefinition = sendTypeDefinition;
+
+        const textDocumentPosition: TextDocumentPositionParams = {
+            textDocument: { uri: 'test-uri' },
+            position: { line: 1, character: 2 },
+        };
+
+        const result = await connectionEventHandler.onTypeDefinition(textDocumentPosition);
+
+        expect(sendTypeDefinition).toHaveBeenCalledWith('test-uri', 1, 2);
+        expect(result).toBeNull();
+    });
+
     it('should handle onRenameRequest event', async () => {
         // The outer-suite requester mock doesn't include sendRenameRequest;
         // assign and spy explicitly rather than mutating the shared setup:
@@ -629,6 +649,7 @@ describe('ConnectionEventHandler', () => {
             'onWorkspaceSymbol',
             'onReferences',
             'onImplementation',
+            'onTypeDefinition',
             'onRenameRequest',
             'onDocumentFormatting',
             'onDocumentRangeFormatting',

@@ -135,6 +135,12 @@ export class ResponseParser {
             this.response_handler.handleImplementation(lines);
             break;
 
+        case "TYPEDEFINITION":
+            clearWatchdog();
+
+            this.response_handler.handleTypeDefinition(lines);
+            break;
+
         case "RENAMEREQUEST":
             clearWatchdog();
 

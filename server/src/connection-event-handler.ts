@@ -115,6 +115,10 @@ export class ConnectionEventHandler {
             (params: TextDocumentPositionParams): Promise<Definition> =>
                 this.onImplementation(params));
 
+        connection.onTypeDefinition(
+            (params: TextDocumentPositionParams): Promise<Definition> =>
+                this.onTypeDefinition(params));
+
         connection.onRenameRequest(
              (params: RenameParams): Promise<WorkspaceEdit> =>
                 this.onRenameRequest(params));
@@ -186,7 +190,15 @@ export class ConnectionEventHandler {
                     change: TextDocumentSyncKind.Incremental
                 },
                 completionProvider: {
-                    triggerCharacters: ['.'],
+                    // `:` opens a type-position request (let / property /
+                    // argument / generic constraint / class-or-trait
+                    // inheritance / `(name: type, ...)` tuple element).
+                    // The analyser returns no candidates for non-type
+                    // `:` contexts (case-when labels, `::` range
+                    // operator, tuple-literal `name: value`), so the
+                    // popup stays hidden in those cases without any
+                    // VSCE-side filtering.
+                    triggerCharacters: ['.', ':'],
                     resolveProvider: false,
                 },
                 documentSymbolProvider: true,
@@ -199,6 +211,7 @@ export class ConnectionEventHandler {
                     triggerCharacters: ["(", "["]
                 },
                 implementationProvider: true,
+                typeDefinitionProvider: true,
                 renameProvider: true,
                 documentFormattingProvider: true,
                 documentRangeFormattingProvider: true
@@ -261,6 +274,10 @@ export class ConnectionEventHandler {
 
     onImplementation(params: TextDocumentPositionParams): Promise<Location[]> {
         return this.requester.sendImplementation(params.textDocument.uri, params.position.line, params.position.character);
+    }
+
+    onTypeDefinition(params: TextDocumentPositionParams): Promise<Definition> {
+        return this.requester.sendTypeDefinition(params.textDocument.uri, params.position.line, params.position.character);
     }
 
     onRenameRequest(params: RenameParams): Promise<WorkspaceEdit> {
