@@ -2,6 +2,7 @@ import {
     CompletionItem,
     Definition,
     Hover,
+    SemanticTokens,
     SignatureHelp,
     SymbolInformation,
     Location,
@@ -228,6 +229,19 @@ export class Requester {
             this.write(newName + '\n');
 
             return this.response_handler.expectRenameRequest();
+        } else {
+            return null;
+        }
+    }
+
+    sendSemanticTokens(uri: string): Promise<SemanticTokens> {
+        if (this.analysed) {
+            startWatchdogIfNotRunning();
+
+            this.write('#SEMANTICTOKENS#\n');
+            this.write(normalizeFileUri(uri) + '\n');
+
+            return this.response_handler.expectSemanticTokens();
         } else {
             return null;
         }

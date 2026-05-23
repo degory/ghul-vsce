@@ -1,15 +1,17 @@
-import { 
-    Connection, 
-    CompletionItem, 
-    CompletionItemKind, 
-    Definition, 
-    SignatureHelp, 
-    SymbolKind, 
-    Hover, 
-    SignatureInformation, 
-    ParameterInformation, 
-    SymbolInformation, 
-    Location, 
+import {
+    Connection,
+    CompletionItem,
+    CompletionItemKind,
+    Definition,
+    SemanticTokens,
+    SemanticTokensLegend,
+    SignatureHelp,
+    SymbolKind,
+    Hover,
+    SignatureInformation,
+    ParameterInformation,
+    SymbolInformation,
+    Location,
     WorkspaceEdit,
     TextEdit,
     Range,
@@ -97,6 +99,147 @@ class PromiseQueue<T> {
     }
 }
 
+// LSP semantic-token type names the compiler emits via #SEMANTICTOKENS#.
+// The order pins each name to its index; tokens in the encoded
+// response refer to a type by that index. Keep in sync with
+// SEMANTIC_TOKEN_CLASSIFIER.token_type in the compiler.
+export const SEMANTIC_TOKEN_TYPES: string[] = [
+    'namespace',
+    'class',
+    'interface',
+    'struct',
+    'enum',
+    'enumMember',
+    'typeParameter',
+    'method',
+    'function',
+    'property',
+    'variable',
+    'parameter',
+];
+
+// LSP semantic-token modifier names. Encoded as a bitset (bit i set
+// means the modifier at SEMANTIC_TOKEN_MODIFIERS[i] applies).
+export const SEMANTIC_TOKEN_MODIFIERS: string[] = [
+    'static',
+];
+
+export const SEMANTIC_TOKENS_LEGEND: SemanticTokensLegend = {
+    tokenTypes: SEMANTIC_TOKEN_TYPES,
+    tokenModifiers: SEMANTIC_TOKEN_MODIFIERS,
+};
+
+const TOKEN_TYPE_INDEX = new Map<string, number>(
+    SEMANTIC_TOKEN_TYPES.map((name, i) => [name, i])
+);
+
+const TOKEN_MODIFIER_BIT = new Map<string, number>(
+    SEMANTIC_TOKEN_MODIFIERS.map((name, i) => [name, 1 << i])
+);
+
+// Convert the compiler's tab-separated rows
+// (startLine, startCol, endLine, endCol, tokenType, modifiers — all
+//  1-based coordinates, modifiers comma-separated, possibly empty)
+// into the LSP delta-encoded `SemanticTokens.data` array:
+//   [deltaLine, deltaStart, length, tokenType, tokenModifiers] × N.
+// Rows whose tokenType isn't in the legend, or that span multiple
+// lines, are skipped — LSP semantic tokens must be single-line.
+export function parseSemanticTokens(lines: string[]): SemanticTokens {
+    type Token = {
+        line: number;
+        startChar: number;
+        length: number;
+        typeIndex: number;
+        modifierBits: number;
+    };
+
+    const tokens: Token[] = [];
+
+    for (const line of lines) {
+        if (!line) {
+            continue;
+        }
+
+        const fields = line.split('\t');
+
+        if (fields.length < 5) {
+            continue;
+        }
+
+        const startLine = parseInt(fields[0], 10);
+        const startCol = parseInt(fields[1], 10);
+        const endLine = parseInt(fields[2], 10);
+        const endCol = parseInt(fields[3], 10);
+        const tokenType = fields[4];
+        const modifiers = fields[5] ?? '';
+
+        if (
+            !Number.isFinite(startLine) ||
+            !Number.isFinite(startCol) ||
+            !Number.isFinite(endLine) ||
+            !Number.isFinite(endCol)
+        ) {
+            continue;
+        }
+
+        if (startLine !== endLine) {
+            continue;
+        }
+
+        const typeIndex = TOKEN_TYPE_INDEX.get(tokenType);
+
+        if (typeIndex === undefined) {
+            continue;
+        }
+
+        let modifierBits = 0;
+
+        if (modifiers.length > 0) {
+            for (const modifier of modifiers.split(',')) {
+                const bit = TOKEN_MODIFIER_BIT.get(modifier);
+
+                if (bit !== undefined) {
+                    modifierBits |= bit;
+                }
+            }
+        }
+
+        const length = endCol - startCol;
+
+        if (length <= 0) {
+            continue;
+        }
+
+        tokens.push({
+            line: startLine - 1,
+            startChar: startCol - 1,
+            length,
+            typeIndex,
+            modifierBits,
+        });
+    }
+
+    // LSP requires tokens sorted by (line, startChar) for delta encoding.
+    tokens.sort((a, b) => a.line - b.line || a.startChar - b.startChar);
+
+    const data: number[] = [];
+
+    let prevLine = 0;
+    let prevStart = 0;
+
+    for (const token of tokens) {
+        const deltaLine = token.line - prevLine;
+        const deltaStart = deltaLine === 0 ? token.startChar - prevStart : token.startChar;
+
+        data.push(deltaLine, deltaStart, token.length, token.typeIndex, token.modifierBits);
+
+        prevLine = token.line;
+        prevStart = token.startChar;
+    }
+
+    return { data };
+}
+
 export class ResponseHandler {
     want_plaintext_hover: boolean;
 
@@ -116,6 +259,7 @@ export class ResponseHandler {
     _rename_promise_queue: PromiseQueue<WorkspaceEdit>;
     _formatting_promise_queue: PromiseQueue<TextEdit[]>;
     _range_formatting_promise_queue: PromiseQueue<TextEdit[]>;
+    _semantic_tokens_promise_queue: PromiseQueue<SemanticTokens>;
 
     // The full-document range to replace, one per pending format request,
     // paired FIFO with _formatting_promise_queue.
@@ -143,6 +287,7 @@ export class ResponseHandler {
         this._rename_promise_queue = new PromiseQueue<WorkspaceEdit>("RENAMEREQUEST");
         this._formatting_promise_queue = new PromiseQueue<TextEdit[]>("FORMAT");
         this._range_formatting_promise_queue = new PromiseQueue<TextEdit[]>("FORMATRANGE");
+        this._semantic_tokens_promise_queue = new PromiseQueue<SemanticTokens>("SEMANTICTOKENS");
     }
 
     onConfigAvailable(_workspace: string, config: GhulConfig) {
@@ -162,6 +307,7 @@ export class ResponseHandler {
         this._rename_promise_queue.resolveAll(null);
         this._formatting_promise_queue.resolveAll([]);
         this._range_formatting_promise_queue.resolveAll([]);
+        this._semantic_tokens_promise_queue.resolveAll({ data: [] });
         this._formatting_ranges = [];
     }
 
@@ -178,6 +324,7 @@ export class ResponseHandler {
         this._rename_promise_queue.reject(message);
         this._formatting_promise_queue.rejectAll(message);
         this._range_formatting_promise_queue.rejectAll(message);
+        this._semantic_tokens_promise_queue.rejectAll(message);
         this._formatting_ranges = [];
     }
 
@@ -644,6 +791,21 @@ export class ResponseHandler {
         } catch(e) {
             log("document range formatting: caught:" + e);
             resolve([]);
+        }
+    }
+
+    expectSemanticTokens(): Promise<SemanticTokens> {
+        return this._semantic_tokens_promise_queue.enqueue();
+    }
+
+    handleSemanticTokens(lines: string[]) {
+        let {resolve} = this._semantic_tokens_promise_queue.dequeueAlways();
+
+        try {
+            resolve(parseSemanticTokens(lines));
+        } catch(e) {
+            log("semantic tokens caught:" + e);
+            resolve({ data: [] });
         }
     }
 
