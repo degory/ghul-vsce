@@ -122,6 +122,7 @@ export const SEMANTIC_TOKEN_TYPES: string[] = [
 // means the modifier at SEMANTIC_TOKEN_MODIFIERS[i] applies).
 export const SEMANTIC_TOKEN_MODIFIERS: string[] = [
     'static',
+    'readonly',
 ];
 
 export const SEMANTIC_TOKENS_LEGEND: SemanticTokensLegend = {
@@ -204,7 +205,10 @@ export function parseSemanticTokens(lines: string[]): SemanticTokens {
             }
         }
 
-        const length = endCol - startCol;
+        // Compiler emits end_column as 1-based INCLUSIVE — the column
+        // of the LAST character — so a single-char identifier reports
+        // start == end. Convert to character count by adding 1.
+        const length = endCol - startCol + 1;
 
         if (length <= 0) {
             continue;
