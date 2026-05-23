@@ -9,6 +9,8 @@ import {
     InitializeResult,
     InitializedParams,
     TextDocumentPositionParams,
+    SemanticTokens,
+    SemanticTokensParams,
     SignatureHelp,
     CompletionParams,
     DocumentSymbolParams,
@@ -23,6 +25,8 @@ import {
     TextEdit,
     TextDocuments,
 } from 'vscode-languageserver';
+
+import { SEMANTIC_TOKENS_LEGEND } from './response-handler';
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
@@ -130,6 +134,10 @@ export class ConnectionEventHandler {
         connection.onDocumentRangeFormatting(
             (params: DocumentRangeFormattingParams): Promise<TextEdit[]> =>
                 this.onDocumentRangeFormatting(params));
+
+        connection.languages.semanticTokens.on(
+            (params: SemanticTokensParams): Promise<SemanticTokens> =>
+                this.onSemanticTokens(params));
     }
 
     initialize() {
@@ -214,7 +222,12 @@ export class ConnectionEventHandler {
                 typeDefinitionProvider: true,
                 renameProvider: true,
                 documentFormattingProvider: true,
-                documentRangeFormattingProvider: true
+                documentRangeFormattingProvider: true,
+                semanticTokensProvider: {
+                    legend: SEMANTIC_TOKENS_LEGEND,
+                    full: true,
+                    range: false,
+                }
             }
         }
     }
@@ -303,6 +316,14 @@ export class ConnectionEventHandler {
             document.getText(),
             whole_document
         );
+    }
+
+    onSemanticTokens(params: SemanticTokensParams): Promise<SemanticTokens> {
+        // Flush queued edits so the analyser's hover map reflects the
+        // current document text before we ask for tokens.
+        this.edit_queue.sendQueued();
+
+        return this.requester.sendSemanticTokens(params.textDocument.uri);
     }
 
     onDocumentRangeFormatting(params: DocumentRangeFormattingParams): Promise<TextEdit[]> {

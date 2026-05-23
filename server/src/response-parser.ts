@@ -171,6 +171,12 @@ export class ResponseParser {
             this.response_handler.handleDocumentRangeFormatting(lines);
             break;
 
+        case "SEMANTICTOKENS":
+            clearWatchdog();
+
+            this.response_handler.handleSemanticTokens(lines);
+            break;
+
         default:
             // not a known command, but compiler presumably still alive
             clearWatchdog();

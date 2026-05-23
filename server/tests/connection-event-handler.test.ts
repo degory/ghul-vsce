@@ -20,6 +20,7 @@ import * as generateAssembliesJson from '../src/generate-assemblies-json';
 import { DocumentChangeTracker } from '../src/document-change-tracker';
 
 import * as DocumentChangeTrackerModule from '../src/document-change-tracker';
+import { SEMANTIC_TOKENS_LEGEND } from '../src/response-handler';
 
 jest.mock('../src/server-manager');
 jest.mock('../src/config-event-emitter');
@@ -89,6 +90,11 @@ describe('ConnectionEventHandler', () => {
             },
             onDocumentFormatting: jest.fn(),
             onDocumentRangeFormatting: jest.fn(),
+            languages: {
+                semanticTokens: {
+                    on: jest.fn(),
+                },
+            },
         } as any as Connection;
 
         serverManager = {
@@ -291,7 +297,12 @@ describe('ConnectionEventHandler', () => {
                 typeDefinitionProvider: true,
                 renameProvider: true,
                 documentFormattingProvider: true,
-                documentRangeFormattingProvider: true
+                documentRangeFormattingProvider: true,
+                semanticTokensProvider: {
+                    legend: SEMANTIC_TOKENS_LEGEND,
+                    full: true,
+                    range: false,
+                }
             }
         });
     });
@@ -660,6 +671,7 @@ describe('ConnectionEventHandler', () => {
             for (const h of hooks) {
                 conn[h] = jest.fn();
             }
+            conn.languages = { semanticTokens: { on: jest.fn() } };
             return conn as Connection;
         }
 
