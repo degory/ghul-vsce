@@ -121,7 +121,7 @@
 				},
 				{
 					"name": "keyword.control.ghul",
-					"match": "\\b(?<!\\`)(assert|if|then|elif|else|fi|for|in|while|do|od|continue|break|case|when|default|esac|throw|try|catch|finally|yrt|return|await)\\b"
+					"match": "\\b(?<!\\`)(assert|if|then|elif|else|fi|for|in|while|do|od|continue|break|case|when|default|esac|throw|try|catch|finally|yrt|return|yield|await)\\b"
 				},
 				{
 					"name": "entity.name.function.ghul",
