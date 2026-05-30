@@ -32,6 +32,145 @@ import { EditQueue } from './edit-queue';
 import { ConfigEventEmitter } from './config-event-emitter';
 import { GhulConfig } from './ghul-config';
 
+// ---- wire DTOs (one JSON object per line; snake_case fields) -------------
+//
+// These mirror the compiler-side DTOs in src/analysis/protocol/responses.ghul.
+// Coordinates are 1-based on the wire; the handlers convert to LSP's 0-based.
+
+interface DiagnosticDto {
+    path: string;
+    start_line: number;
+    start_column: number;
+    end_line: number;
+    end_column: number;
+    severity: number;
+    message: string;
+}
+
+interface LocationDto {
+    file: string;
+    start_line: number;
+    start_column: number;
+    end_line: number;
+    end_column: number;
+}
+
+interface HoverEntryDto {
+    start_line: number;
+    start_column: number;
+    end_line: number;
+    end_column: number;
+    description: string;
+}
+
+interface SemanticTokenDto {
+    start_line: number;
+    start_column: number;
+    end_line: number;
+    end_column: number;
+    token_type: string;
+    modifiers: string;
+}
+
+interface CompletionItemDto {
+    name: string;
+    kind: number;
+    description: string;
+}
+
+interface SignatureDto {
+    label: string;
+    parameters: string[];
+}
+
+interface SymbolDto {
+    search_description: string;
+    kind: number;
+    start_line: number;
+    start_column: number;
+    end_line: number;
+    end_column: number;
+    qualifier: string;
+}
+
+interface SymbolFileDto {
+    path: string;
+    symbols: SymbolDto[];
+}
+
+interface RenameEditDto {
+    file: string;
+    start_line: number;
+    start_column: number;
+    end_line: number;
+    end_column: number;
+    new_name: string;
+}
+
+interface DiagnosticsResponse {
+    kind: "diagnostics";
+    diagnostics: DiagnosticDto[];
+    checked_paths: string[];
+    phase: string;
+    elapsed_ms: number;
+    compile_needed: boolean;
+}
+
+interface HoverResponse {
+    kind: "hover";
+    description: string | null;
+}
+
+interface HoverMapResponse {
+    kind: "hover_map";
+    entries: HoverEntryDto[];
+}
+
+interface SemanticTokensResponse {
+    kind: "semantic_tokens";
+    tokens: SemanticTokenDto[];
+}
+
+interface LocationsResponse {
+    locations: LocationDto[];
+}
+
+interface CompletionResponse {
+    kind: "completion";
+    items: CompletionItemDto[];
+}
+
+interface SignatureResponse {
+    kind: "signature";
+    best_signature_index: number;
+    current_parameter_index: number;
+    signatures: SignatureDto[];
+}
+
+interface SymbolsResponse {
+    kind: "symbols";
+    files: SymbolFileDto[];
+}
+
+interface RenameResponse {
+    kind: "rename";
+    edits: RenameEditDto[];
+}
+
+interface FormatResponse {
+    kind: "format";
+    text: string;
+}
+
+interface FormatRangeResponse {
+    kind: "format_range";
+    start_line: number;
+    start_column: number;
+    end_line: number;
+    end_column: number;
+    text: string;
+}
+
 type ResolveReject<T> = {
     resolve: (value: T) => void;
     reject: (error: any) => void;
@@ -62,7 +201,7 @@ class PromiseQueue<T> {
         // compiler is guaranteed to respond to requests in the order they were
         // sent, so safe to just dequeue the next pending promise:
         return (
-            this._queue.shift() ?? 
+            this._queue.shift() ??
             {
                 resolve: value => console.log(this._name + ": oops: unexpected resolve: " + JSON.stringify(value)),
                 reject: error => console.log(this._name + ": oops: unexpected reject: " + error)
@@ -99,7 +238,7 @@ class PromiseQueue<T> {
     }
 }
 
-// LSP semantic-token type names the compiler emits via #SEMANTICTOKENS#.
+// LSP semantic-token type names the compiler emits via semantic_tokens.
 // The order pins each name to its index; tokens in the encoded
 // response refer to a type by that index. Keep in sync with
 // SEMANTIC_TOKEN_CLASSIFIER.token_type in the compiler.
@@ -138,14 +277,14 @@ const TOKEN_MODIFIER_BIT = new Map<string, number>(
     SEMANTIC_TOKEN_MODIFIERS.map((name, i) => [name, 1 << i])
 );
 
-// Convert the compiler's tab-separated rows
-// (startLine, startCol, endLine, endCol, tokenType, modifiers — all
-//  1-based coordinates, modifiers comma-separated, possibly empty)
+// Convert the compiler's semantic-token DTOs
+// (start_line, start_column, end_line, end_column, token_type, modifiers —
+//  all 1-based coordinates, modifiers comma-separated, possibly empty)
 // into the LSP delta-encoded `SemanticTokens.data` array:
 //   [deltaLine, deltaStart, length, tokenType, tokenModifiers] × N.
-// Rows whose tokenType isn't in the legend, or that span multiple
+// Tokens whose tokenType isn't in the legend, or that span multiple
 // lines, are skipped — LSP semantic tokens must be single-line.
-export function parseSemanticTokens(lines: string[]): SemanticTokens {
+export function parseSemanticTokens(dtos: SemanticTokenDto[]): SemanticTokens {
     type Token = {
         line: number;
         startChar: number;
@@ -156,23 +295,17 @@ export function parseSemanticTokens(lines: string[]): SemanticTokens {
 
     const tokens: Token[] = [];
 
-    for (const line of lines) {
-        if (!line) {
+    for (const dto of dtos ?? []) {
+        if (!dto) {
             continue;
         }
 
-        const fields = line.split('\t');
-
-        if (fields.length < 5) {
-            continue;
-        }
-
-        const startLine = parseInt(fields[0], 10);
-        const startCol = parseInt(fields[1], 10);
-        const endLine = parseInt(fields[2], 10);
-        const endCol = parseInt(fields[3], 10);
-        const tokenType = fields[4];
-        const modifiers = fields[5] ?? '';
+        const startLine = dto.start_line;
+        const startCol = dto.start_column;
+        const endLine = dto.end_line;
+        const endCol = dto.end_column;
+        const tokenType = dto.token_type;
+        const modifiers = dto.modifiers ?? '';
 
         if (
             !Number.isFinite(startLine) ||
@@ -346,38 +479,38 @@ export class ResponseHandler {
         } else {
             rejectAllAndThrow("replacing existing edit queue in ResponseHandler");
         }
-    }    
+    }
 
     handleListen() {
         this.server_manager.startListening();
     }
 
-    handleDiagnostics(lines: string[]) {
-        for (let diagnostic of this.parseDiagnostics(lines)) {
-            this.connection.sendDiagnostics( {uri: diagnostic[0], diagnostics: diagnostic[1]})
+    // A single `diagnostics` response now answers EDIT (phase "partial"),
+    // COMPILE (phase "full"), and the unsolicited pre-query recompile
+    // (phase "query"). It carries the squiggle payload AND the edit-queue
+    // timing that the old PARTIAL DONE / FULL DONE frames carried, so it both
+    // applies diagnostics and drives the edit-queue state machine — except for
+    // phase "query", which (like the old query-miss DIAGNOSTICS frame that had
+    // no following DONE) must not advance the state machine.
+    handleDiagnostics(response: DiagnosticsResponse) {
+        for (let [uri, diagnostics] of this.parseDiagnostics(response)) {
+            this.connection.sendDiagnostics({ uri, diagnostics });
         }
 
         this.edit_queue.onDiagnosticsReceived();
-    }
 
-    handleFullCompileDone(lines: string[]) {
         let milliseconds: number = undefined;
 
-        if (lines.length > 0) {
-            milliseconds = parseFloat(lines[0]);
+        if (response.elapsed_ms != null) {
+            milliseconds = response.elapsed_ms;
         }
 
-        this.edit_queue.onFullCompileDone(milliseconds);
-    }
-
-    handlePartialCompileDone(lines: string[]) {
-        let milliseconds: number = undefined;
-
-        if (lines.length > 0) {
-            milliseconds = parseFloat(lines[0]);
+        if (response.phase == "partial") {
+            this.edit_queue.onPartialCompileDone(milliseconds);
+        } else if (response.phase == "full") {
+            this.edit_queue.onFullCompileDone(milliseconds);
         }
-
-        this.edit_queue.onPartialCompileDone(milliseconds);
+        // phase == "query": apply diagnostics only; do not drive the state machine.
     }
 
     handleHeapCheckDone() {
@@ -388,23 +521,25 @@ export class ResponseHandler {
         return this._hover_promise_queue.enqueue();
     }
 
-    handleHover(lines: string[]) {
+    handleHover(response: HoverResponse) {
         let {resolve} = this._hover_promise_queue.dequeueAlways();
 
         try {
-            if (lines.length > 0 && lines[0] != null && lines[0].length > 0) {
+            let description = response.description;
+
+            if (description != null && description.length > 0) {
                 if (this.want_plaintext_hover) {
                     resolve({
-                        contents: { kind: "plaintext", value: lines[0] }
+                        contents: { kind: "plaintext", value: description }
                     });
                 } else {
                     resolve({
-                        contents: { language: "ghul", value: lines[0] }
-                    });    
+                        contents: { language: "ghul", value: description }
+                    });
                 }
             } else {
                 resolve(null);
-            }    
+            }
         } catch(e) {
             log("hover caught:", e);
             resolve(null);
@@ -415,15 +550,17 @@ export class ResponseHandler {
         return this._definition_promise_queue.enqueue();
     }
 
-    handleDefinition(lines: string[]) {
+    handleDefinition(response: LocationsResponse) {
         let {resolve} = this._definition_promise_queue.dequeueAlways();
 
         try {
-            if (lines.length == 1) {
-                resolve(this.parseLocation(lines[0]));
+            let locations = this.parseLocations(response);
+
+            if (locations.length == 1) {
+                resolve(locations[0]);
             } else {
                 resolve(null);
-            }    
+            }
         } catch(e) {
             log("definition caught:", e);
             resolve([]);
@@ -434,24 +571,11 @@ export class ResponseHandler {
         return this._declaration_promise_queue.enqueue();
     }
 
-    handleDeclaration(lines: string[]) {
+    handleDeclaration(response: LocationsResponse) {
         let {resolve} = this._declaration_promise_queue.dequeueAlways();
 
         try {
-            let locations: Location[] = [];
-
-            if (lines.length > 0) {
-                for (let i = 0; i < lines.length; i++) {
-                    let line = lines[i];
-                    let location = this.parseLocation(line);
-
-                    locations.push(location);
-                }
-            }
-
-            resolve(
-                locations
-            );
+            resolve(this.parseLocations(response));
         } catch(e) {
             log("declaration caught:", e);
             resolve([]);
@@ -462,70 +586,57 @@ export class ResponseHandler {
         return this._completion_promise_queue.enqueue();
     }
 
-    handleCompletion(lines: string[]) {
+    handleCompletion(response: CompletionResponse) {
         let {resolve} = this._completion_promise_queue.dequeueAlways();
 
         try {
             let results: CompletionItem[] = [];
 
-            for (let line of lines) {
-                let fields = line.split('\t');
-
-                if (fields.length >= 3) {
-                    results.push({
-                        label: fields[0],
-                        kind:  <CompletionItemKind>parseInt(fields[1]),
-                        detail: fields[2]
-                    });
-                }
+            for (let item of response.items ?? []) {
+                results.push({
+                    label: item.name,
+                    kind: <CompletionItemKind>item.kind,
+                    detail: item.description
+                });
             }
-            
+
             resolve(results)
         } catch(e) {
             log("completion caught:", e);
             resolve([]);
         }
-    }    
+    }
 
     expectSignature(): Promise<SignatureHelp> {
         return this._signature_promise_queue.enqueue();
     }
 
-    handleSignature(lines: string[]) {
+    handleSignature(response: SignatureResponse) {
         let {resolve} = this._signature_promise_queue.dequeueAlways();
 
         try {
-            let active_signature = 0;
-            let active_parameter = 0;
+            let active_signature = response.best_signature_index;
+            let active_parameter = response.current_parameter_index;
+
+            if (active_signature < 0) {
+                active_signature = undefined;
+            }
 
             let signatures: SignatureInformation[] = [];
 
-            if (lines.length > 0) {
-                active_signature = parseInt(lines[0], 10);
-                active_parameter = parseInt(lines[1], 10);
+            for (let signature of response.signatures ?? []) {
+                let parameters: ParameterInformation[] = [];
 
-                if (active_signature < 0) {
-                    active_signature = undefined;
-                }
-
-                for (let i = 2; i < lines.length; i++) {
-                    let parameters: ParameterInformation[] = [];
-
-                    let params_raw = lines[i].split('\t');
-
-                    let signature_label = params_raw[0];
-
-                    for (let j = 1; j < params_raw.length; j++) {
-                        parameters.push({
-                            label: params_raw[j]
-                        });
-                    }
-
-                    signatures.push({
-                        label: signature_label,
-                        parameters: parameters,
+                for (let parameter of signature.parameters ?? []) {
+                    parameters.push({
+                        label: parameter
                     });
                 }
+
+                signatures.push({
+                    label: signature.label,
+                    parameters: parameters,
+                });
             }
 
             let result: SignatureHelp = {
@@ -541,61 +652,54 @@ export class ResponseHandler {
             log("signature caught:", e);
             resolve({signatures: []})
         }
-    }    
+    }
 
     expectSymbols(): Promise<SymbolInformation[]> {
         return this._symbols_promise_queue.enqueue();
     }
 
-    handleSymbols(lines: string[]) {
+    handleSymbols(response: SymbolsResponse) {
         let {resolve} = this._symbols_promise_queue.dequeueAlways();
 
         try {
             let symbols: SymbolInformation[] = [];
 
-            if (lines.length > 0) {
-                let uri: string = "unknown";
-                
-                for (let i = 0; i < lines.length; i++) {
-                    let line = lines[i];
-                    let fields = line.split('\t');
+            for (let file of response.files ?? []) {
+                let uri = file.path;
 
-                    if (fields.length == 1) {
-                        uri = line;
-                    } else {
-                        let symbol: SymbolInformation = {
-                            name: fields[0],
-                            kind: <SymbolKind>parseInt(fields[1]),
-                            location: {
-                                uri: uri,
-                                range: {
-                                    start: {
-                                        line: parseInt(fields[2]) - 1,
-                                        character: parseInt(fields[3]) - 1
-                                    },
-                                    end: {
-                                        line: parseInt(fields[4]) - 1,
-                                        character: parseInt(fields[5]) - 1
-                                    }
+                for (let dto of file.symbols ?? []) {
+                    let symbol: SymbolInformation = {
+                        name: dto.search_description,
+                        kind: <SymbolKind>dto.kind,
+                        location: {
+                            uri: uri,
+                            range: {
+                                start: {
+                                    line: dto.start_line - 1,
+                                    character: dto.start_column - 1
+                                },
+                                end: {
+                                    line: dto.end_line - 1,
+                                    character: dto.end_column - 1
                                 }
-                            },
-                            containerName: fields[6]
-                        };
+                            }
+                        },
+                        containerName: dto.qualifier
+                    };
 
-                        if (symbol.location.uri == "internal" || symbol.location.uri == "reflected") {
-                            log("oops: unexpected internal/reflected uri in symbols response: " + symbol.location.uri);
-                            continue;
-                        }
-
-                        if (symbol.location.range.start.line < 0 || symbol.location.range.start.character < 0 ||
-                            symbol.location.range.end.line < 0 || symbol.location.range.end.character < 0)
-                        {
-                            log("oops: unexpected negative line/character in symbols response: " + JSON.stringify(symbol.location.range));
-                            continue;
-                        }    
-
-                        symbols.push(symbol);
+                    if (symbol.location.uri == "internal" || symbol.location.uri == "reflected") {
+                        log("oops: unexpected internal/reflected uri in symbols response: " + symbol.location.uri);
+                        continue;
                     }
+
+                    if (symbol.location.range.start.line < 0 || symbol.location.range.start.character < 0 ||
+                        symbol.location.range.end.line < 0 || symbol.location.range.end.character < 0)
+                    {
+                        log("oops: unexpected negative line/character in symbols response: " + JSON.stringify(symbol.location.range));
+                        continue;
+                    }
+
+                    symbols.push(symbol);
                 }
             }
 
@@ -606,60 +710,32 @@ export class ResponseHandler {
             log("symbols caught:" + e);
             resolve([]);
         }
-    }    
-    
+    }
+
     expectReferences(): Promise<Location[]> {
         return this._references_promise_queue.enqueue();
     }
 
-    handleReferences(lines: string[]) {
+    handleReferences(response: LocationsResponse) {
         let {resolve} = this._references_promise_queue.dequeueAlways();
 
         try {
-            let locations: Location[] = [];
-
-            if (lines.length > 0) {
-                for (let i = 0; i < lines.length; i++) {
-                    let line = lines[i];
-
-                    let location = this.parseLocation(line);
-
-                    locations.push(location);
-                }
-            }
-
-            resolve(
-                locations
-            );
+            resolve(this.parseLocations(response));
         } catch(e) {
             log("references caught:", e);
             resolve([]);
         }
-    }        
+    }
 
     expectImplementation(): Promise<Location[]> {
         return this._implementation_promise_queue.enqueue();
     }
 
-    handleImplementation(lines: string[]) {
+    handleImplementation(response: LocationsResponse) {
         let {resolve} = this._implementation_promise_queue.dequeueAlways();
 
         try {
-            let locations: Location[] = [];
-
-            if (lines.length > 0) {
-                for (let i = 0; i < lines.length; i++) {
-                    let line = lines[i];
-
-                    let location = this.parseLocation(line);
-
-                    locations.push(location);
-                }
-            }
-
-            resolve(
-                locations
-            );
+            resolve(this.parseLocations(response));
         } catch(e) {
             log("implementation caught:", e);
             resolve([])
@@ -670,12 +746,14 @@ export class ResponseHandler {
         return this._type_definition_promise_queue.enqueue();
     }
 
-    handleTypeDefinition(lines: string[]) {
+    handleTypeDefinition(response: LocationsResponse) {
         let {resolve} = this._type_definition_promise_queue.dequeueAlways();
 
         try {
-            if (lines.length == 1) {
-                resolve(this.parseLocation(lines[0]));
+            let locations = this.parseLocations(response);
+
+            if (locations.length == 1) {
+                resolve(locations[0]);
             } else {
                 resolve(null);
             }
@@ -689,7 +767,7 @@ export class ResponseHandler {
         return this._rename_promise_queue.enqueue();
     }
 
-    handleRenameRequest(lines: string[]) {
+    handleRenameRequest(response: RenameResponse) {
         let {resolve} = this._rename_promise_queue.dequeueAlways();
 
         try {
@@ -697,36 +775,33 @@ export class ResponseHandler {
                 [uri: string]: TextEdit[];
             } = {};
 
-            if (lines.length > 0) {
-                for (let i = 0; i < lines.length; i++) {
-                    let line = lines[i];
-                    let fields = line.split('\t');
+            for (let dto of response.edits ?? []) {
+                let uri = dto.file;
 
-                    let uri = fields[0];
+                let edits = changes[uri];
 
-                    let edits = changes[uri];
-
-                    if (!edits) {
-                        edits = [];
-                        changes[uri] = edits;
-                    }
-
-                    let edit = {
-                        range: {
-                            start: {
-                                line: parseInt(fields[1]) - 1,
-                                character: parseInt(fields[2]) - 1
-                            },
-                            end: {
-                                line: parseInt(fields[3]) - 1,
-                                character: parseInt(fields[4])
-                            }
-                        },
-                        newText: fields[5]
-                    };
-
-                    edits.push(edit)
+                if (!edits) {
+                    edits = [];
+                    changes[uri] = edits;
                 }
+
+                // end_column is used without the -1 the other coordinates get,
+                // matching the old text protocol's rename end-column handling.
+                let edit = {
+                    range: {
+                        start: {
+                            line: dto.start_line - 1,
+                            character: dto.start_column - 1
+                        },
+                        end: {
+                            line: dto.end_line - 1,
+                            character: dto.end_column
+                        }
+                    },
+                    newText: dto.new_name
+                };
+
+                edits.push(edit)
             }
 
             resolve(
@@ -736,24 +811,22 @@ export class ResponseHandler {
             log("rename request: caught:" + e);
             resolve({});
         }
-    }    
+    }
 
     expectDocumentFormatting(range: Range): Promise<TextEdit[]> {
         this._formatting_ranges.push(range);
         return this._formatting_promise_queue.enqueue();
     }
 
-    handleDocumentFormatting(lines: string[]) {
+    handleDocumentFormatting(response: FormatResponse) {
         let {resolve} = this._formatting_promise_queue.dequeueAlways();
         let range = this._formatting_ranges.shift();
 
         try {
-            // The compiler returns the whole reformatted document; the parser
-            // has already stripped the FORMAT header and trailing terminator.
-            // Replace the whole document in one edit. If the compiler could
-            // not format (it echoes the buffer back unchanged), the edit is a
-            // harmless no-op.
-            let newText = lines.join('\n') + '\n';
+            // The compiler returns the whole reformatted document. Replace the
+            // whole document in one edit. If the compiler could not format (it
+            // echoes the buffer back unchanged), the edit is a harmless no-op.
+            let newText = response.text;
 
             resolve([{ range, newText }]);
         } catch(e) {
@@ -766,17 +839,13 @@ export class ResponseHandler {
         return this._range_formatting_promise_queue.enqueue();
     }
 
-    handleDocumentRangeFormatting(lines: string[]) {
+    handleDocumentRangeFormatting(response: FormatRangeResponse) {
         let {resolve} = this._range_formatting_promise_queue.dequeueAlways();
 
         try {
-            // First line is the tab-separated 1-based span the compiler chose
-            // to format (start line, start column, end line, end column); the
-            // rest is the replacement text. A zero start line means nothing
-            // was formatted.
-            let fields = (lines[0] ?? "").split('\t');
-
-            let startLine = parseInt(fields[0]);
+            // The span is the 1-based range the compiler chose to format. A
+            // zero start line (an all-zero span) means nothing was formatted.
+            let startLine = response.start_line;
 
             if (!startLine) {
                 resolve([]);
@@ -785,10 +854,10 @@ export class ResponseHandler {
 
             let edit = {
                 range: {
-                    start: { line: startLine - 1, character: parseInt(fields[1]) - 1 },
-                    end: { line: parseInt(fields[2]) - 1, character: parseInt(fields[3]) - 1 }
+                    start: { line: startLine - 1, character: response.start_column - 1 },
+                    end: { line: response.end_line - 1, character: response.end_column - 1 }
                 },
-                newText: lines.slice(1).join('\n')
+                newText: response.text
             };
 
             resolve([edit]);
@@ -802,11 +871,11 @@ export class ResponseHandler {
         return this._semantic_tokens_promise_queue.enqueue();
     }
 
-    handleSemanticTokens(lines: string[]) {
+    handleSemanticTokens(response: SemanticTokensResponse) {
         let {resolve} = this._semantic_tokens_promise_queue.dequeueAlways();
 
         try {
-            resolve(parseSemanticTokens(lines));
+            resolve(parseSemanticTokens(response.tokens));
         } catch(e) {
             log("semantic tokens caught:" + e);
             resolve({ data: [] });
@@ -818,80 +887,89 @@ export class ResponseHandler {
         this.server_manager.noteRecycle();
         this.edit_queue.reset();
     }
-    
+
     handleUnexpected() {
         this.server_manager.abort();
     }
 
-    parseDiagnostics(lines: string[]) {
+    // Build a per-URI diagnostics map. Every path the compile checked
+    // (checked_paths) gets an entry — empty unless it carries diagnostics —
+    // so the client clears stale squiggles for clean files and refreshes the
+    // rest. This replaces the old text protocol's bare-path-line "clear
+    // errors" signal.
+    parseDiagnostics(response: DiagnosticsResponse): Map<string, Diagnostic[]> {
         let problems = new Map<string, Diagnostic[]>();
 
-        for (var i = 0; i < lines.length; i++) {
-            let line = lines[i];
-
-            let fields = line.split('\t');
-
-            if (fields.length == 0) {
-                continue;
+        let toUri = (path: string): string | null => {
+            if (path == "internal" || path == "reflected") {
+                return null;
             }
 
-            let uri = fields[0];
-
-            if (uri == "internal" || uri == "reflected") {
-                continue;
-            }
+            let uri = path;
 
             if (!uri.startsWith("file://")) {
                 uri = "file://" + uri;
             }
 
-            uri = normalizeFileUri(uri);
+            return normalizeFileUri(uri);
+        };
+
+        for (let path of response.checked_paths ?? []) {
+            let uri = toUri(path);
+
+            if (uri != null && !problems.has(uri)) {
+                problems.set(uri, []);
+            }
+        }
+
+        for (let dto of response.diagnostics ?? []) {
+            let uri = toUri(dto.path);
+
+            if (uri == null) {
+                continue;
+            }
 
             if (!problems.has(uri)) {
                 problems.set(uri, []);
             }
 
-            if (fields.length != 7) {
-                continue;
-            }
-
-            let problem = {
-                severity: SeverityMapper.getSeverity(fields[5], "new"),
+            let problem: Diagnostic = {
+                severity: SeverityMapper.getSeverity(dto.severity, "new"),
                 range: {
-                    start: { line: Number(fields[1]) - 1, character: Number(fields[2]) - 1 },
-                    end: { line: Number(fields[3]) - 1, character: Number(fields[4]) - 1 }
+                    start: { line: dto.start_line - 1, character: dto.start_column - 1 },
+                    end: { line: dto.end_line - 1, character: dto.end_column - 1 }
                 },
-                message: fields[6],
+                message: dto.message,
                 source: 'ghūl'
-            }
+            };
 
-            let list = problems.get(uri);
-
-            list.push(problem);
+            problems.get(uri).push(problem);
         }
 
         return problems;
     }
 
+    private parseLocations(response: LocationsResponse): Location[] {
+        let locations: Location[] = [];
 
-    private parseLocation(line: string) {
-        let fields = line.split('\t');
-
-        let location: Location = {
-            uri: fields[0],
-            range: {
-                start: {
-                    line: parseInt(fields[1]) - 1,
-                    character: parseInt(fields[2]) - 1
-                },
-                end: {
-                    line: parseInt(fields[3]) - 1,
-                    character: parseInt(fields[4])
+        for (let dto of response.locations ?? []) {
+            locations.push({
+                uri: dto.file,
+                range: {
+                    start: {
+                        line: dto.start_line - 1,
+                        character: dto.start_column - 1
+                    },
+                    end: {
+                        line: dto.end_line - 1,
+                        // end_column without -1, matching the old text
+                        // protocol's parseLocation handling.
+                        character: dto.end_column
+                    }
                 }
-            }
-        };
+            });
+        }
 
-        return location;
+        return locations;
     }
 }
-

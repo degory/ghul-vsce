@@ -1,306 +1,132 @@
-import {
-    CompletionItem,
-    Definition,
-    Hover,
-    SemanticTokens,
-    SignatureHelp,
-    SymbolInformation,
-    Location,
-    WorkspaceEdit,
-    TextEdit,
-    Range
-} from 'vscode-languageserver';
+import { ResponseHandler } from './response-handler';
 
 import { log } from './log';
 
-import { ChildProcess } from 'child_process';
+import { EditQueue } from './edit-queue';
 
-import { normalizeFileUri } from './normalize-file-uri';
-
-import { ServerEventEmitter } from './server-event-emitter';
-
-import { ResponseHandler } from './response-handler';
-
-import { rejectAllAndThrow, startWatchdogIfNotRunning } from './extension-state';
-
-const version = require('./version') as string;
-
+// Each request is one JSON object per line, newline-terminated, discriminated by
+// a `command` field. The compiler reads one line, deserializes it into the
+// matching request type, and answers with one JSON response line (see
+// response-parser.ts). Line/character positions are 1-based on the wire (the
+// compiler works in 1-based coordinates; the LSP layer converts).
 export class Requester {
-    analysed: boolean;
-    stream: any;    
-
     response_handler: ResponseHandler;
-
-    watchdog_timer: NodeJS.Timer;
+    edit_queue: EditQueue;
+    child: any;
 
     constructor(
-        server_event_emitter: ServerEventEmitter,
         response_handler: ResponseHandler
     ) {
         this.response_handler = response_handler;
-        this.analysed = true;
-
-        server_event_emitter.onRunning((child: ChildProcess) => {
-            log(`ghūl language extension v${version}: initialized`);
-            this.stream = child.stdin;
-        });        
     }
 
-    write(text: String) {
+    setChild(child: any) {
+        this.child = child;
+    }
+
+    setEditQueue(edit_queue: EditQueue) {
+        this.edit_queue = edit_queue;
+    }
+
+    write(text: string) {
         try {
-            this.stream.write(text);
-        } catch(ex) {            
-            log("caught exception trying to send request data: compiler may have died:" + ex);
-            rejectAllAndThrow(ex);
-        }
-    }
-    
-    sendDocuments(documents: { uri: string, source: string }[]) {        
-        startWatchdogIfNotRunning();
-
-        this.write('#EDIT#\n');
-
-        for (let { uri } of documents) {
-            this.write(normalizeFileUri(uri) + '\n');
-        }
-
-        this.write('\n');
-
-        for (let { source } of documents) {
-            this.write(source);
-            this.write('\f');
+            if (this.child && this.child.stdin && this.child.stdin.writable) {
+                this.child.stdin.write(text);
+            }
+        } catch(e) {
+            log("could not write to compiler: " + e);
+            this.edit_queue.handleConnectionLost();
         }
     }
 
-    sendHover(uri: string, line: number, character: number): Promise<Hover> {
-        if (this.analysed) {
-            startWatchdogIfNotRunning();
-
-            this.write('#HOVER#\n');
-            this.write(normalizeFileUri(uri) + '\n');
-            this.write((line+1) + '\n');
-            this.write((character+1) + '\n');
-
-            return this.response_handler.expectHover();
-        } else {
-            return null;
-        }
+    send(request: object) {
+        this.write(JSON.stringify(request) + "\n");
     }
 
-    sendDefinition(uri: string, line: number, character: number): Promise<Definition> {
-        if (this.analysed) {
-            startWatchdogIfNotRunning();
-
-            this.write('#DEFINITION#\n');
-            this.write(normalizeFileUri(uri) + '\n');
-            this.write((line+1) + '\n');
-            this.write((character+1) + '\n');
-
-            return this.response_handler.expectDefinition();
-        } else {
-            return null;
-        }
+    sendDocuments(documents: { uri: string, source: string }[]) {
+        this.send({
+            command: "edit",
+            files: documents.map(d => ({ path: d.uri, source: d.source }))
+        });
     }
 
-    sendDeclaration(uri: string, line: number, character: number): Promise<Definition> {
-        if (this.analysed) {
-            startWatchdogIfNotRunning();
-
-            this.write('#DECLARATION#\n');
-            this.write(normalizeFileUri(uri) + '\n');
-            this.write((line+1) + '\n');
-            this.write((character+1) + '\n');
-
-            return this.response_handler.expectDeclaration();
-        } else {
-            return null;
-        }
+    sendEdit(uri: string, source: string) {
+        this.sendDocuments([{ uri, source }]);
     }
 
-    sendCompletion(uri: string, line: number, character: number): Promise<CompletionItem[]> {
-        if (this.analysed) {
-            startWatchdogIfNotRunning();
-
-            this.write("#COMPLETE#\n");
-            this.write(normalizeFileUri(uri) + '\n');
-            this.write((line+1) + '\n');
-            this.write((character+1) + '\n');
-
-            return this.response_handler.expectCompletion();
-        } else {
-            return null;
-        }
-    }    
-
-    sendSignature(uri: string, line: number, character: number): Promise<SignatureHelp> {
-        if (this.analysed) {
-            startWatchdogIfNotRunning();
-
-            this.write('#SIGNATURE#\n');
-            this.write(normalizeFileUri(uri) + '\n');
-            this.write((line+1) + '\n');
-            this.write((character+1) + '\n');
-
-            return this.response_handler.expectSignature();
-        } else {
-            return null;
-        }
-    }
-    
-    sendDocumentSymbol(uri: string): Promise<SymbolInformation[]> {
-        if (this.analysed) {
-            startWatchdogIfNotRunning();
-
-            this.write('#SYMBOLS#\n');
-            this.write(normalizeFileUri(uri) + '\n');
-
-            return this.response_handler.expectSymbols();            
-        } else {
-            return null;
-        }
+    sendCompile() {
+        this.send({ command: "compile" });
     }
 
-    sendWorkspaceSymbol(): Promise<SymbolInformation[]> {
-        if (this.analysed) {
-            startWatchdogIfNotRunning();
-
-            this.write('#SYMBOLS#\n');
-            this.write('\n');
-
-            return this.response_handler.expectSymbols();            
-        } else {
-            return null;
-        }
+    sendHover(uri: string, line: number, character: number) {
+        this.send({ command: "hover", path: uri, line, column: character });
     }
 
-    sendReferences(uri: string, line: number, character: number): Promise<Location[]> {
-        if (this.analysed) {
-            startWatchdogIfNotRunning();
-
-            this.write('#REFERENCES#\n');
-            this.write(normalizeFileUri(uri) + '\n');
-            this.write((line+1) + '\n');
-            this.write((character+1) + '\n');
-
-            return this.response_handler.expectReferences();
-        } else {
-            return null;
-        }
+    sendDefinition(uri: string, line: number, character: number) {
+        this.send({ command: "definition", path: uri, line, column: character });
     }
 
-    sendImplementation(uri: string, line: number, character: number): Promise<Location[]> {
-        if (this.analysed) {
-            startWatchdogIfNotRunning();
-
-            this.write('#IMPLEMENTATION#\n');
-            this.write(normalizeFileUri(uri) + '\n');
-            this.write((line+1) + '\n');
-            this.write((character+1) + '\n');
-
-            return this.response_handler.expectImplementation();
-        } else {
-            return null;
-        }
+    sendDeclaration(uri: string, line: number, character: number) {
+        this.send({ command: "declaration", path: uri, line, column: character });
     }
 
-    sendTypeDefinition(uri: string, line: number, character: number): Promise<Definition> {
-        if (this.analysed) {
-            startWatchdogIfNotRunning();
-
-            this.write('#TYPEDEFINITION#\n');
-            this.write(normalizeFileUri(uri) + '\n');
-            this.write((line+1) + '\n');
-            this.write((character+1) + '\n');
-
-            return this.response_handler.expectTypeDefinition();
-        } else {
-            return null;
-        }
+    sendReferences(uri: string, line: number, character: number) {
+        this.send({ command: "references", path: uri, line, column: character });
     }
 
-    sendRenameRequest(uri: string, line: number, character: number, newName: string): Promise<WorkspaceEdit> {
-        if (this.analysed) {
-            startWatchdogIfNotRunning();
-
-            this.write('#RENAMEREQUEST#\n');
-            this.write(normalizeFileUri(uri) + '\n');
-            this.write((line+1) + '\n');
-            this.write((character+1) + '\n');
-            this.write(newName + '\n');
-
-            return this.response_handler.expectRenameRequest();
-        } else {
-            return null;
-        }
+    sendImplementation(uri: string, line: number, character: number) {
+        this.send({ command: "implementation", path: uri, line, column: character });
     }
 
-    sendSemanticTokens(uri: string): Promise<SemanticTokens> {
-        if (this.analysed) {
-            startWatchdogIfNotRunning();
-
-            this.write('#SEMANTICTOKENS#\n');
-            this.write(normalizeFileUri(uri) + '\n');
-
-            return this.response_handler.expectSemanticTokens();
-        } else {
-            return null;
-        }
+    sendTypeDefinition(uri: string, line: number, character: number) {
+        this.send({ command: "type_definition", path: uri, line, column: character });
     }
 
-    sendDocumentFormatting(uri: string, source: string, range: Range): Promise<TextEdit[]> {
-        if (this.analysed) {
-            startWatchdogIfNotRunning();
-
-            this.write('#FORMAT#\n');
-            this.write(normalizeFileUri(uri) + '\n');
-            this.write(source);
-            this.write('\f');
-
-            return this.response_handler.expectDocumentFormatting(range);
-        } else {
-            return null;
-        }
+    sendCompletion(uri: string, line: number, character: number) {
+        this.send({ command: "complete", path: uri, line, column: character });
     }
 
-    sendDocumentRangeFormatting(uri: string, source: string, range: Range): Promise<TextEdit[]> {
-        if (this.analysed) {
-            startWatchdogIfNotRunning();
-
-            this.write('#FORMATRANGE#\n');
-            this.write(normalizeFileUri(uri) + '\n');
-            this.write((range.start.line + 1) + '\n');
-            this.write((range.start.character + 1) + '\n');
-            this.write((range.end.line + 1) + '\n');
-            this.write((range.end.character + 1) + '\n');
-            this.write(source);
-            this.write('\f');
-
-            return this.response_handler.expectDocumentRangeFormatting();
-        } else {
-            return null;
-        }
+    sendSignature(uri: string, line: number, character: number) {
+        this.send({ command: "signature", path: uri, line, column: character });
     }
 
-    sendFullCompileRequest() {
-        startWatchdogIfNotRunning();
-
-        this.write('#COMPILE#\n');
+    sendSymbols(uri: string) {
+        this.send({ command: "symbols", path: uri });
     }
 
-    // Ask the analyser to sample the heap. The EditQueue sends this during a
-    // lull in editing, so the watchdog's forced GC stays off the latency path
-    // of interactive requests.
-    sendHeapCheckRequest() {
-        startWatchdogIfNotRunning();
+    sendWorkspaceSymbols() {
+        this.send({ command: "symbols", path: "" });
+    }
 
-        this.write('#HEAPCHECK#\n');
+    sendRenameRequest(uri: string, line: number, character: number, newName: string) {
+        this.send({ command: "rename", path: uri, line, column: character, new_name: newName });
+    }
+
+    sendSemanticTokens(uri: string) {
+        this.send({ command: "semantic_tokens", path: uri });
+    }
+
+    sendFormat(uri: string, source: string) {
+        this.send({ command: "format", path: uri, source });
+    }
+
+    sendFormatRange(uri: string, startLine: number, startCharacter: number, endLine: number, endCharacter: number, source: string) {
+        this.send({
+            command: "format_range",
+            path: uri,
+            start_line: startLine,
+            start_column: startCharacter,
+            end_line: endLine,
+            end_column: endCharacter,
+            source
+        });
+    }
+
+    sendHeapCheck() {
+        this.send({ command: "heap_check" });
     }
 
     sendRestart() {
-        if (this.analysed) {
-            startWatchdogIfNotRunning();
-
-            this.write('#RESTART#\n');
-        }        
+        this.send({ command: "restart" });
     }
 }

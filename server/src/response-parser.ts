@@ -14,9 +14,9 @@ export class ResponseParser {
         this.response_handler = response_handler;
     }
 
-    // Drop any half-received frame. Called on every (re)launch: a compiler
-    // killed mid-frame leaves a partial section behind, and without this the
-    // replacement compiler's first frame — its LISTEN — is concatenated onto
+    // Drop any half-received line. Called on every (re)launch: a compiler
+    // killed mid-line leaves a partial message behind, and without this the
+    // replacement compiler's first message — its LISTEN — is concatenated onto
     // that fragment, fails to parse, and the project is never analysed.
     reset() {
         this.buffer = '';
@@ -25,162 +25,106 @@ export class ResponseParser {
     handleChunk(chunk: string) {
         chunk = chunk.replace(/\r/g, '');
 
-		this.buffer += chunk;
+        this.buffer += chunk;
 
-		let sections = this.buffer.split('\f');
+        let lines = this.buffer.split('\n');
 
-		if (sections.length > 1) {
-			let lastIndex = sections.length - 1;
+        // The last element is the (possibly empty) partial line after the final
+        // newline; hold it back until the rest of it arrives.
+        this.buffer = lines.pop();
 
-			for (var i = 0; i < lastIndex; i++) {
-                let section = sections[i];
-
-				if (section.length > 0) {
-					this.handleSection(section);
-				} else {
-                    log("response parser: protocol error: empty section " + i + " of " + lastIndex);
-                    rejectAllPendingPromises("response parser: protocol error: empty section " + i + " of " + lastIndex);
-				}
-			}
-
-			this.buffer = sections[lastIndex];
-		}
+        for (let line of lines) {
+            if (line.length > 0) {
+                this.handleLine(line);
+            }
+        }
     }
-    
-    handleSection(section: String) {
-        let lines = section.split('\n');
 
-        if (lines.length < 2) {
-            log("response parser: protocol error: no command received");
-            rejectAllPendingPromises("response parser: protocol error: no command received");
+    handleLine(line: string) {
+        let message: any;
+
+        try {
+            message = JSON.parse(line);
+        } catch (e) {
+            log("response parser: protocol error: could not parse JSON message: " + e);
+            rejectAllPendingPromises("response parser: protocol error: could not parse JSON message: " + e);
             return;
         }
 
-        let command = lines[0].trim();
+        // Every message clears the watchdog: the compiler is alive and talking.
+        clearWatchdog();
 
-        lines.shift(); // remove command
-        lines.pop(); // remove empty terminator
-
-        switch (command) {
-        case "LISTEN":
-            clearWatchdog();
-
+        switch (message.kind) {
+        case "listen":
             this.response_handler.handleListen();
             break;
 
-        // new style diagnostics:
-        case "DIAGNOSTICS":
-            clearWatchdog();
-
-            this.response_handler.handleDiagnostics(lines);
+        case "diagnostics":
+            this.response_handler.handleDiagnostics(message);
             break;
 
-        case "PARTIAL DONE":
-            clearWatchdog();
-
-            this.response_handler.handlePartialCompileDone(lines);
+        case "hover":
+            this.response_handler.handleHover(message);
             break;
 
-        case "FULL DONE":
-            clearWatchdog();
-
-            this.response_handler.handleFullCompileDone(lines);
-            break;
-           
-        case "HOVER":
-            clearWatchdog();
-
-            this.response_handler.handleHover(lines);
+        case "definition":
+            this.response_handler.handleDefinition(message);
             break;
 
-        case "DEFINITION":
-            clearWatchdog();
-
-            this.response_handler.handleDefinition(lines);
+        case "declaration":
+            this.response_handler.handleDeclaration(message);
             break;
 
-        case "DECLARATION":
-            clearWatchdog();
-
-            this.response_handler.handleDeclaration(lines);
-            break;
-    
-        case "COMPLETION":
-            clearWatchdog();
-
-            this.response_handler.handleCompletion(lines);
-            break;            
-
-        case "SIGNATURE":
-            clearWatchdog();
-
-            this.response_handler.handleSignature(lines);
-            break;            
-
-        case "SYMBOLS":
-            clearWatchdog();
-
-            this.response_handler.handleSymbols(lines);
+        case "completion":
+            this.response_handler.handleCompletion(message);
             break;
 
-        case "REFERENCES":
-            clearWatchdog();
-
-            this.response_handler.handleReferences(lines);
+        case "signature":
+            this.response_handler.handleSignature(message);
             break;
 
-        case "IMPLEMENTATION":
-            clearWatchdog();
-
-            this.response_handler.handleImplementation(lines);
+        case "symbols":
+            this.response_handler.handleSymbols(message);
             break;
 
-        case "TYPEDEFINITION":
-            clearWatchdog();
-
-            this.response_handler.handleTypeDefinition(lines);
+        case "references":
+            this.response_handler.handleReferences(message);
             break;
 
-        case "RENAMEREQUEST":
-            clearWatchdog();
-
-            this.response_handler.handleRenameRequest(lines);
+        case "implementation":
+            this.response_handler.handleImplementation(message);
             break;
 
-        case "RESTART":
-            clearWatchdog();
+        case "type_definition":
+            this.response_handler.handleTypeDefinition(message);
+            break;
 
+        case "rename":
+            this.response_handler.handleRenameRequest(message);
+            break;
+
+        case "restart":
             this.response_handler.handleRestart();
             break;
 
-        case "HEAPCHECK":
-            clearWatchdog();
-
+        case "heap_check":
             this.response_handler.handleHeapCheckDone();
             break;
 
-        case "FORMAT":
-            clearWatchdog();
-
-            this.response_handler.handleDocumentFormatting(lines);
+        case "format":
+            this.response_handler.handleDocumentFormatting(message);
             break;
 
-        case "FORMATRANGE":
-            clearWatchdog();
-
-            this.response_handler.handleDocumentRangeFormatting(lines);
+        case "format_range":
+            this.response_handler.handleDocumentRangeFormatting(message);
             break;
 
-        case "SEMANTICTOKENS":
-            clearWatchdog();
-
-            this.response_handler.handleSemanticTokens(lines);
+        case "semantic_tokens":
+            this.response_handler.handleSemanticTokens(message);
             break;
 
         default:
-            // not a known command, but compiler presumably still alive
-            clearWatchdog();
-
+            // not a known kind, but compiler presumably still alive
             this.response_handler.handleUnexpected();
         }
     }
