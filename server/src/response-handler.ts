@@ -55,14 +55,6 @@ interface LocationDto {
     end_column: number;
 }
 
-interface HoverEntryDto {
-    start_line: number;
-    start_column: number;
-    end_line: number;
-    end_column: number;
-    description: string;
-}
-
 interface SemanticTokenDto {
     start_line: number;
     start_column: number;
@@ -119,11 +111,6 @@ interface DiagnosticsResponse {
 interface HoverResponse {
     kind: "hover";
     description: string | null;
-}
-
-interface HoverMapResponse {
-    kind: "hover_map";
-    entries: HoverEntryDto[];
 }
 
 interface SemanticTokensResponse {
