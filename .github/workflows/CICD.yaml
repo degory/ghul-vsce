@@ -73,6 +73,49 @@ jobs:
     - name: Run tests
       run: npm test
 
+  code_review:
+    needs: [version, unit_tests]
+    name: Claude code review
+
+    timeout-minutes: 15
+
+    runs-on: ubuntu-latest
+
+    if: ${{ github.event_name == 'pull_request' && github.actor != 'dependabot[bot]' }}
+
+    continue-on-error: true
+
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 1
+
+    - uses: anthropics/claude-code-action@v1
+      with:
+        claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        allowed_bots: "*"
+        prompt: |
+          Review pull request #${{ github.event.pull_request.number }} on ${{ github.repository }}.
+
+          CI has already passed for this commit — TypeScript compiles, unit tests pass, the beta package builds. Don't second-guess validity.
+
+          Read this file first:
+          1. .github/claude-review.md — how to operate, severity bar, what to flag
+
+          The PR branch is already checked out. Useful commands:
+          - `gh pr diff ${{ github.event.pull_request.number }}` — the diff
+          - `gh pr view ${{ github.event.pull_request.number }} --json title,body` — PR title and description
+
+          Post findings only to GitHub per the brief. Do not put review text in chat messages.
+        claude_args: |
+          --model claude-opus-4-8
+          --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr review:*),Read,Glob,Grep"
+
   upload_beta_package:
     needs: [version, unit_tests]
     name: Publish beta package
