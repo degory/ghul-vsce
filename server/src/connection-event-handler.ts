@@ -2,6 +2,7 @@
 import {
     DidChangeConfigurationParams,
     DidChangeWatchedFilesParams,
+    WorkspaceFoldersChangeEvent,
     Definition,
     CompletionItem,
     Hover,
@@ -24,7 +25,10 @@ import {
     DocumentRangeFormattingParams,
     TextEdit,
     TextDocuments,
+    WorkspaceFolder,
 } from 'vscode-languageserver';
+
+import { URI } from 'vscode-uri';
 
 import { SEMANTIC_TOKENS_LEGEND } from './response-handler';
 
@@ -64,6 +68,12 @@ export class ConnectionEventHandler {
 
         connection.onDidChangeWatchedFiles((change: DidChangeWatchedFilesParams) =>
             this.extension_state.onDidChangeWatchedFiles(change));
+
+        // didChangeWorkspaceFolders only fires once the client knows we
+        // support it — that's what the workspace.workspaceFolders capability
+        // in the InitializeResult below advertises.
+        connection.workspace.onDidChangeWorkspaceFolders((event: WorkspaceFoldersChangeEvent) =>
+            this.onDidChangeWorkspaceFolders(event));
 
         connection.onCompletion(
             (textDocumentPosition: CompletionParams): Promise<CompletionItem[]> =>
@@ -131,14 +141,22 @@ export class ConnectionEventHandler {
     }
 
     onInitialize(params: any): InitializeResult {
-        // Single-workspace scaffolding: register the legacy rootPath as the
-        // sole workspace. Multi-workspace will read params.workspaceFolders
-        // instead and register one context per folder.
-        const workspace_root: string = params.rootPath;
+        // Modern VS Code clients send workspaceFolders for both single-root
+        // and multi-root sessions. The legacy rootPath / rootUri fields are
+        // still in the LSP spec but deprecated; honour them only as a
+        // fallback in case an older client connects.
+        const roots = this.collectWorkspaceRoots(params);
 
-        const workspace = this.extension_state.registerWorkspace(workspace_root);
+        for (const root of roots) {
+            if (!WorkspaceContext.looksLikeGhulWorkspace(root)) {
+                log(`skipping non-ghūl workspace folder: ${root}`);
+                continue;
+            }
 
-        workspace.initialize();
+            const workspace = this.extension_state.registerWorkspace(root);
+
+            workspace.initialize();
+        }
 
         return {
             capabilities: {
@@ -176,8 +194,85 @@ export class ConnectionEventHandler {
                     legend: SEMANTIC_TOKENS_LEGEND,
                     full: true,
                     range: false,
+                },
+                workspace: {
+                    workspaceFolders: {
+                        // Tell VS Code we expect to see workspaceFolders in
+                        // the initialize params and want notifications when
+                        // the user adds or removes a folder at runtime.
+                        supported: true,
+                        changeNotifications: true,
+                    }
                 }
             }
+        }
+    }
+
+    // Resolve the set of workspace folder paths the client is opening.
+    // Preference order:
+    //   1. params.workspaceFolders — modern, plural, supports multi-root.
+    //   2. params.rootUri          — single-root, URI form.
+    //   3. params.rootPath         — single-root, plain filesystem path.
+    private collectWorkspaceRoots(params: any): string[] {
+        const folders: WorkspaceFolder[] | null | undefined = params.workspaceFolders;
+
+        if (folders && folders.length > 0) {
+            return folders
+                .map(folder => this.folderUriToPath(folder.uri))
+                .filter((p): p is string => !!p);
+        }
+
+        if (params.rootUri) {
+            const path = this.folderUriToPath(params.rootUri);
+            if (path) {
+                return [path];
+            }
+        }
+
+        if (params.rootPath) {
+            return [params.rootPath];
+        }
+
+        return [];
+    }
+
+    private folderUriToPath(uri: string): string | null {
+        try {
+            const parsed = URI.parse(uri);
+            return parsed.fsPath || null;
+        } catch (e) {
+            log(`could not parse workspace folder uri '${uri}': ${e}`);
+            return null;
+        }
+    }
+
+    onDidChangeWorkspaceFolders(event: WorkspaceFoldersChangeEvent) {
+        // Removals first: VS Code can deliver a remove+add for the same
+        // folder in one event (a folder toggled out and back in); the
+        // remove must land first so the re-add isn't a no-op against the
+        // stale registration.
+        for (const folder of event.removed) {
+            const root = this.folderUriToPath(folder.uri);
+            if (root) {
+                log(`workspace folder removed: ${root}`);
+                this.extension_state.unregisterWorkspace(root);
+            }
+        }
+
+        for (const folder of event.added) {
+            const root = this.folderUriToPath(folder.uri);
+            if (!root) {
+                continue;
+            }
+
+            if (!WorkspaceContext.looksLikeGhulWorkspace(root)) {
+                log(`skipping added non-ghūl workspace folder: ${root}`);
+                continue;
+            }
+
+            log(`workspace folder added: ${root}`);
+            const workspace = this.extension_state.registerWorkspace(root);
+            workspace.initialize();
         }
     }
 
@@ -269,17 +364,26 @@ export class ConnectionEventHandler {
         return workspace.requester.sendDocumentSymbol(params.textDocument.uri);
     }
 
-    // Workspace-symbol queries are not URI-scoped. For now route to the
-    // default (first-registered) workspace; multi-workspace will need to fan
-    // out across every workspace and merge the results.
-    onWorkspaceSymbol(): Promise<SymbolInformation[]> {
-        const workspace = this.extension_state.defaultWorkspace();
+    // Workspace-symbol queries aren't URI-scoped, so run them against every
+    // registered workspace in parallel and flatten the results. A workspace
+    // whose analyser is still warming up or has crashed returns a null or
+    // empty array; we coerce both to [] so a single misbehaving workspace
+    // can't hide the symbols from the rest.
+    async onWorkspaceSymbol(): Promise<SymbolInformation[]> {
+        const workspaces = this.extension_state.allWorkspaces();
 
-        if (!workspace) {
-            return Promise.resolve([]);
+        if (workspaces.length === 0) {
+            return [];
         }
 
-        return workspace.requester.sendWorkspaceSymbol();
+        const per_workspace = await Promise.all(
+            workspaces.map(w => w.requester.sendWorkspaceSymbol() ?? Promise.resolve([]))
+        );
+
+        return per_workspace.reduce<SymbolInformation[]>(
+            (all, symbols) => symbols ? all.concat(symbols) : all,
+            []
+        );
     }
 
     onReferences(params: ReferenceParams): Promise<Location[]> {
