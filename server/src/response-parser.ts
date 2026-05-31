@@ -1,17 +1,21 @@
 import { ResponseHandler } from './response-handler';
 
+import { Watchdog } from './watchdog';
+
 import { log } from './log';
-import { clearWatchdog, rejectAllPendingPromises } from './extension-state';
 
 export class ResponseParser {
     buffer: string;
     response_handler: ResponseHandler;
+    watchdog: Watchdog;
 
     constructor(
-        response_handler: ResponseHandler
+        response_handler: ResponseHandler,
+        watchdog: Watchdog
     ) {
         this.buffer = '';
         this.response_handler = response_handler;
+        this.watchdog = watchdog;
     }
 
     // Drop any half-received line. Called on every (re)launch: a compiler
@@ -47,12 +51,12 @@ export class ResponseParser {
             message = JSON.parse(line);
         } catch (e) {
             log("response parser: protocol error: could not parse JSON message: " + e);
-            rejectAllPendingPromises("response parser: protocol error: could not parse JSON message: " + e);
+            this.response_handler.rejectAllPendingPromises("response parser: protocol error: could not parse JSON message: " + e);
             return;
         }
 
         // Every message clears the watchdog: the compiler is alive and talking.
-        clearWatchdog();
+        this.watchdog.clearWatchdog();
 
         switch (message.kind) {
         case "listen":

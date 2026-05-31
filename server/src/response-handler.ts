@@ -20,8 +20,6 @@ import {
 
 import { log } from './log';
 
-import { rejectAllAndThrow } from './extension-state';
-
 import { normalizeFileUri } from './normalize-file-uri';
 
 import { SeverityMapper } from './severity-map';
@@ -454,11 +452,20 @@ export class ResponseHandler {
         this._formatting_ranges = [];
     }
 
+    // Log, reject every pending promise queue, and throw. The combination
+    // unwinds the request currently in flight AND tells every awaiter the
+    // run is over, instead of stalling them on a never-resolved promise.
+    rejectAllAndThrow(message: string): never {
+        log(message);
+        this.rejectAllPendingPromises(message);
+        throw message;
+    }
+
     setServerManager(server_manager: ServerManager) {
         if (this.server_manager == null) {
             this.server_manager = server_manager;
         } else {
-            rejectAllAndThrow("replacing existing server manager in ResponseHandler");
+            this.rejectAllAndThrow("replacing existing server manager in ResponseHandler");
         }
     }
 
@@ -466,7 +473,7 @@ export class ResponseHandler {
         if (this.edit_queue == null) {
             this.edit_queue = edit_queue;
         } else {
-            rejectAllAndThrow("replacing existing edit queue in ResponseHandler");
+            this.rejectAllAndThrow("replacing existing edit queue in ResponseHandler");
         }
     }
 

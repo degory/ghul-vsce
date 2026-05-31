@@ -1,15 +1,17 @@
 import { DidChangeWatchedFilesParams, DidCloseTextDocumentParams, FileChangeType, TextDocuments } from 'vscode-languageserver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
-import { DocumentChangeTracker } from '../src/document-change-tracker';
+import { DocumentChangeTracker, ReinitializableWorkspace } from '../src/document-change-tracker';
 import { EditQueue } from '../src/edit-queue';
-import { Requester } from '../src/requester';
 import { URI } from 'vscode-uri';
 
 
 jest.mock('../src/edit-queue');
-jest.mock('../src/requester');
 jest.mock('fs');
+
+class RecordingWorkspace implements ReinitializableWorkspace {
+    reinitialize = jest.fn();
+}
 
 
 // @ts-ignore
@@ -36,21 +38,19 @@ function createDidChangeWatchedFilesParams(uri: string, type: FileChangeType): D
 
 describe('DocumentChangeTracker', () => {
     let documentChangeTracker: DocumentChangeTracker;
+    let workspace: RecordingWorkspace;
     let editQueue: EditQueue;
     let globs: string[];
-    let requester: Requester;
     let openDocuments: { uri: string }[];
     let documents: TextDocuments<TextDocument>;
 
     beforeEach(() => {
-        editQueue = new EditQueue(requester);
+        workspace = new RecordingWorkspace();
         globs = ['**/*.ghul'];
 
         editQueue = {
-            queueEdit3: // jest mock that logs its arguments to the console log when called
-                jest.fn((uri: string, version: number | null, text: string) => {
-                    console.log(`QQQQQQ queueEdit3: uri: ${uri}, version: ${version}, text: ${text}`);
-                })
+            queueEdit3:
+                jest.fn((_uri: string, _version: number | null, _text: string) => { /* recorded by jest */ })
         } as unknown as EditQueue;
 
         // Per-test list of editor buffers the tracker should treat as open.
@@ -60,7 +60,7 @@ describe('DocumentChangeTracker', () => {
             all: () => openDocuments
         } as unknown as TextDocuments<TextDocument>;
 
-        documentChangeTracker = new DocumentChangeTracker(editQueue, globs, documents);
+        documentChangeTracker = new DocumentChangeTracker(workspace, editQueue, globs, documents);
     });
 
     it('should queue edit with empty file text for deleted files', () => {
@@ -188,10 +188,8 @@ describe('DocumentChangeTracker', () => {
     });
 
     describe('project-file changes trigger a debounced re-initialise', () => {
-        // debounced_reinitialize() schedules a real setTimeout(5000) that
-        // would later call ExtensionState.getInstance().connection_event_handler
-        // .initialize() and NPE in test context. Fake-timer-isolate so the
-        // schedule is registered but never fires:
+        // The tracker calls workspace.reinitialize() via a 5-second debounce;
+        // fake timers keep that schedule from firing during the test.
         beforeAll(() => { jest.useFakeTimers(); });
         afterAll(() => { jest.useRealTimers(); });
 
@@ -204,8 +202,19 @@ describe('DocumentChangeTracker', () => {
 
             documentChangeTracker.onDidChangeWatchedFiles(params);
 
-            // The function returns early after scheduling debounced_reinitialize:
+            // The function returns early after scheduling the debounced reinitialise:
             expect(editQueue.queueEdit3).not.toHaveBeenCalled();
+        });
+
+        it('a .block-compiler change reinitialises the workspace immediately', () => {
+            const params = createDidChangeWatchedFilesParams(
+                'file:///workspace/.block-compiler',
+                FileChangeType.Created
+            );
+
+            documentChangeTracker.onDidChangeWatchedFiles(params);
+
+            expect(workspace.reinitialize).toHaveBeenCalledTimes(1);
         });
     });
 });

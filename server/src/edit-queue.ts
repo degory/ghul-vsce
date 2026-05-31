@@ -2,9 +2,11 @@ import { TextDocumentChangeEvent } from 'vscode-languageserver'
 
 import { log } from './log';
 
-import { getWatchdogTimeout, isWatchdogRunning, rejectAllAndThrow, setWatchdogTimeout } from './extension-state';
-
 import { Requester } from './requester'
+
+import { ResponseHandler } from './response-handler';
+
+import { Watchdog } from './watchdog';
 
 import { normalizeFileUri } from './normalize-file-uri';
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -44,6 +46,8 @@ export class EditQueue {
 
     pending_changes: Map<string,Document>;
     requester: Requester;
+    response_handler: ResponseHandler;
+    watchdog: Watchdog;
 
     send_start_time: number;
     analyse_start_time: number;
@@ -56,15 +60,19 @@ export class EditQueue {
     // How long the queue must sit IDLE before asking the analyser to sample
     // the heap — long enough that it is a genuine lull in editing.
     static readonly HEAP_CHECK_IDLE_TIMEOUT = 60000;
-    
+
     constructor(
-        requester: Requester
+        requester: Requester,
+        response_handler: ResponseHandler,
+        watchdog: Watchdog
     ) {
         this.edit_count = 0;
         this.build_count = 0;
         this.fake_version = -1;
 
         this.requester = requester;
+        this.response_handler = response_handler;
+        this.watchdog = watchdog;
 
         this.pending_changes = new Map();
 
@@ -123,7 +131,7 @@ export class EditQueue {
         } else if (this.state == QueueState.DOING_HEAP_CHECK) {
             // do nothing, wait for the heap check to complete
         } else {
-            rejectAllAndThrow("queue edit: unexpected queue state (A): " + QueueState[this.state]);
+            this.response_handler.rejectAllAndThrow("queue edit: unexpected queue state (A): " + QueueState[this.state]);
         }
     }
 
@@ -153,7 +161,7 @@ export class EditQueue {
     // idle timer re-armed for the next lull rather than risk overlapping it
     // with another request.
     onIdleTimeout() {
-        if (this.state == QueueState.IDLE && !isWatchdogRunning()) {
+        if (this.state == QueueState.IDLE && !this.watchdog.isRunning()) {
             this.requester.sendHeapCheckRequest();
 
             this.state = QueueState.DOING_HEAP_CHECK;
@@ -183,11 +191,11 @@ export class EditQueue {
             if (this.full_build_timeout < this.edit_timeout) {
                 this.full_build_timeout = this.edit_timeout;
 
-                setWatchdogTimeout(this.full_build_timeout * 2);
+                this.watchdog.setTimeout(this.full_build_timeout * 2);
             }
 
             if ((this.edit_count & 31) == 0) {
-                log(`edit request average: ${milliseconds.toFixed()} ms, edit timeout: ${this.edit_timeout.toFixed()} ms, compile timeout: ${this.full_build_timeout.toFixed()} ms, watchdog timeout: ${getWatchdogTimeout().toFixed()} ms`);
+                log(`edit request average: ${milliseconds.toFixed()} ms, edit timeout: ${this.edit_timeout.toFixed()} ms, compile timeout: ${this.full_build_timeout.toFixed()} ms, watchdog timeout: ${this.watchdog.timeout_milliseconds.toFixed()} ms`);
             }
 
             this.edit_count++;
@@ -217,10 +225,10 @@ export class EditQueue {
                 this.full_build_timeout = this.edit_timeout;
             }
 
-            setWatchdogTimeout(this.full_build_timeout * 2);
+            this.watchdog.setTimeout(this.full_build_timeout * 2);
 
             if ((this.build_count & 31) == 0) {
-                log(`compile request average: ${milliseconds.toFixed()} ms, edit timeout: ${this.edit_timeout.toFixed()} ms, compile timeout: ${this.full_build_timeout.toFixed()} ms, watchdog timeout: ${getWatchdogTimeout().toFixed()} ms`);
+                log(`compile request average: ${milliseconds.toFixed()} ms, edit timeout: ${this.edit_timeout.toFixed()} ms, compile timeout: ${this.full_build_timeout.toFixed()} ms, watchdog timeout: ${this.watchdog.timeout_milliseconds.toFixed()} ms`);
             }
 
             this.build_count++;

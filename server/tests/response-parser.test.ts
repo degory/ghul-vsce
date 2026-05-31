@@ -1,15 +1,14 @@
 import { ResponseParser } from '../src/response-parser';
 import { ResponseHandler } from '../src/response-handler';
-import { ConfigEventEmitter } from '../src/config-event-emitter';
 import { Watchdog } from '../src/watchdog';
-import { ExtensionState } from '../src/extension-state';
-import { Connection } from 'vscode-languageserver';
 
 // Records every handler call from the parser so tests can assert dispatch.
 // Each entry captures the method name and (where the new typed handlers
 // receive one) the full message object.
 class RecordingHandler {
     calls: Array<{ method: string; message?: any }> = [];
+
+    rejectAllPendingPromises = jest.fn();
 
     handleListen() { this.calls.push({ method: 'handleListen' }); }
     handleDiagnostics(message: any) { this.calls.push({ method: 'handleDiagnostics', message }); }
@@ -31,20 +30,6 @@ class RecordingHandler {
     handleUnexpected() { this.calls.push({ method: 'handleUnexpected' }); }
 }
 
-// ResponseParser calls clearWatchdog / rejectAllPendingPromises on the
-// extension-state singleton, so wire a real Watchdog + ResponseHandler in.
-function wireSingleton(): { handler: ResponseHandler } {
-    const state = ExtensionState.getInstance();
-    state.watchdog = new Watchdog(1000, () => {});
-
-    const connection = {} as Connection;
-    const config = new ConfigEventEmitter();
-    const handler = new ResponseHandler(connection, config);
-    state.response_handler = handler;
-
-    return { handler };
-}
-
 // One protocol message is one JSON object terminated by a single \n.
 function line(message: object): string {
     return JSON.stringify(message) + '\n';
@@ -52,12 +37,13 @@ function line(message: object): string {
 
 describe('ResponseParser', () => {
     let recorder: RecordingHandler;
+    let watchdog: Watchdog;
     let parser: ResponseParser;
 
     beforeEach(() => {
-        wireSingleton();
         recorder = new RecordingHandler();
-        parser = new ResponseParser(recorder as unknown as ResponseHandler);
+        watchdog = new Watchdog(1000, () => {});
+        parser = new ResponseParser(recorder as unknown as ResponseHandler, watchdog);
     });
 
     it('buffers until the line is terminated by a newline', () => {
@@ -124,13 +110,10 @@ describe('ResponseParser', () => {
     });
 
     it('rejects pending promises on malformed JSON (without throwing through the parser)', () => {
-        const reject = jest.spyOn(ExtensionState.getInstance().response_handler, 'rejectAllPendingPromises')
-            .mockImplementation(() => {});
-
         parser.handleChunk('this is not json\n');
 
         expect(recorder.calls).toEqual([]);
-        expect(reject).toHaveBeenCalled();
+        expect(recorder.rejectAllPendingPromises).toHaveBeenCalled();
     });
 
     it('reassembles a message split across two chunks', () => {
@@ -141,7 +124,7 @@ describe('ResponseParser', () => {
     });
 
     it('clears the watchdog on every dispatched message', () => {
-        const clear = jest.spyOn(ExtensionState.getInstance().watchdog, 'clearWatchdog');
+        const clear = jest.spyOn(watchdog, 'clearWatchdog');
 
         parser.handleChunk(line({ kind: 'listen' }));
 

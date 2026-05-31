@@ -3,8 +3,8 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import { EditQueue } from '../src/edit-queue';
 import { Requester } from '../src/requester';
+import { ResponseHandler } from '../src/response-handler';
 import { Watchdog } from '../src/watchdog';
-import { ExtensionState } from '../src/extension-state';
 
 // A minimal Requester stand-in that records every send for assertion.
 // We use a class rather than jest.fn() so the test reads like a script.
@@ -32,16 +32,27 @@ function makeChange(uri: string, version: number, text: string): TextDocumentCha
 
 describe('EditQueue', () => {
     let recorder: RecordingRequester;
+    let watchdog: Watchdog;
+    let responseHandler: ResponseHandler;
     let queue: EditQueue;
 
     beforeEach(() => {
         jest.useFakeTimers();
-        // Watchdog gets touched via setWatchdogTimeout/getWatchdogTimeout from
-        // edit-queue. Wire a real one so those calls don't NPE.
-        ExtensionState.getInstance().watchdog = new Watchdog(10000, () => {});
+
+        watchdog = new Watchdog(10000, () => {});
+        // The EditQueue only ever asks ResponseHandler to rejectAllAndThrow
+        // — every other code path bypasses it. A stub with that one method
+        // is enough for the steady-state tests below.
+        responseHandler = {
+            rejectAllAndThrow: (message: string) => { throw message; },
+        } as unknown as ResponseHandler;
 
         recorder = new RecordingRequester();
-        queue = new EditQueue(recorder as unknown as Requester);
+        queue = new EditQueue(
+            recorder as unknown as Requester,
+            responseHandler,
+            watchdog
+        );
     });
 
     afterEach(() => {
@@ -265,7 +276,6 @@ describe('EditQueue', () => {
 
             // A query request (hover, completion, …) bypasses the EditQueue;
             // the watchdog running stands in for "a request is in flight".
-            const watchdog = ExtensionState.getInstance().watchdog;
             watchdog.setTimeout(10_000_000);
             watchdog.startWatchdog();
 

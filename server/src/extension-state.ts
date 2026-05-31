@@ -1,141 +1,48 @@
-
 import {
     Connection,
-	TextDocuments
+    TextDocuments,
+    DidChangeWatchedFilesParams
 } from 'vscode-languageserver';
 
 import {
-	createConnection
+    createConnection
 } from 'vscode-languageserver/node'
+
+import { TextDocument } from 'vscode-languageserver-textdocument';
+
+import { URI } from 'vscode-uri';
 
 import { ConnectionEventHandler } from './connection-event-handler';
 
-import { Requester } from './requester';
-
-import { EditQueue } from './edit-queue';
-
-import { ServerEventEmitter } from './server-event-emitter';
-
-import { ResponseHandler } from './response-handler';
-
-import { ResponseParser } from './response-parser';
-
-import { ConfigEventEmitter } from './config-event-emitter';
-
-import { GhulAnalyser } from './ghul-analyser';
-
-import { ServerManager } from './server-manager';
-import { TextDocument } from 'vscode-languageserver-textdocument';
+import { WorkspaceContext } from './workspace-context';
 
 import { log } from './log';
-import { DocumentChangeTracker } from './document-change-tracker';
 
-import { Watchdog } from './watchdog';
-
+// Top-level host. Owns the single LSP Connection and the shared TextDocuments
+// registry, plus a registry of WorkspaceContext instances. Per-workspace state
+// (the compiler child, edit queue, watchdog, response handler) lives on the
+// individual WorkspaceContext; this class only routes between them.
+//
+// Today there is exactly one workspace folder, registered by
+// ConnectionEventHandler.onInitialize from params.rootPath. Multi-workspace
+// support is wired from this side by reading params.workspaceFolders and
+// registering one context per entry, then doing the same for
+// workspace/didChangeWorkspaceFolders.
 export class ExtensionState {
     private static instance: ExtensionState;
 
-    public server_event_emitter: ServerEventEmitter;
-    public config_event_emitter: ConfigEventEmitter;
-    
     public connection: Connection;
-    
-    public response_handler: ResponseHandler;
-    
-    public requester: Requester;
-    
-    public edit_queue: EditQueue;
-    
-    public response_parser: ResponseParser;
-    
-    public server_manager: ServerManager;
-    
+
     public documents: TextDocuments<TextDocument>;
 
-    public document_change_tracker: DocumentChangeTracker;
-    
     public connection_event_handler: ConnectionEventHandler;
 
-    public watchdog: Watchdog;
-
-    public resolveAllPendingPromises() {
-        this.response_handler.resolveAllPendingPromises();
-    }
-    
-    public rejectAllPendingPromises(message: string) {
-        this.response_handler.rejectAllPendingPromises(message);
-    }
-    
-    public rejectAllAndThrow(message: string) {
-        log(message);
-
-        this.rejectAllPendingPromises(message);
-        throw message;
-    }
-
-    public reinitialize() {
-        this.connection_event_handler.initialize();
-    }
+    // Keyed by workspace_root path. Insertion order matters: the first
+    // registered workspace is the default for requests whose URI doesn't
+    // belong to any folder.
+    private workspaces: Map<string, WorkspaceContext> = new Map();
 
     private constructor() {
-    }
-
-    public connect() {
-        this.server_event_emitter = new ServerEventEmitter();
-        this.config_event_emitter = new ConfigEventEmitter();
-        
-        this.connection = createConnection()
-        
-        this.response_handler = new ResponseHandler(
-            this.connection,
-            this.config_event_emitter
-        );
-        
-        this.requester = new Requester(this.server_event_emitter, this.response_handler);
-        
-        this.edit_queue = new EditQueue(this.requester);
-
-        this.documents = new TextDocuments(TextDocument);
-
-        new GhulAnalyser(
-            this.edit_queue,
-            this.config_event_emitter,
-            this.server_event_emitter,
-            this.documents
-        );
-
-        this.response_parser = new ResponseParser(this.response_handler);
-
-        this.server_manager = new ServerManager(
-            this.config_event_emitter,
-            this.server_event_emitter,
-            this.edit_queue,
-            this.response_parser,
-            this.connection
-        );
-
-        // Created after the server manager so its timeout can hand off to it:
-        // a wedged compiler is killed and relaunched.
-        this.watchdog = new Watchdog(10000, () => this.server_manager.recoverFromHang());
-
-        this.response_handler.setServerManager(this.server_manager);
-        this.response_handler.setEditQueue(this.edit_queue);
-
-        this.documents.onDidChangeContent((change) => {
-            this.edit_queue.queueEdit(change);
-        });
-
-        this.connection_event_handler = new ConnectionEventHandler(
-            this.connection,
-            this.server_manager,
-            this.config_event_emitter,
-            this.requester,
-            this.edit_queue,
-            this.documents
-        );
-
-        this.documents.listen(this.connection);
-        this.connection.listen();
     }
 
     public static getInstance(): ExtensionState {
@@ -145,52 +52,135 @@ export class ExtensionState {
 
         return ExtensionState.instance;
     }
-}
 
-export function getWatchdogTimeout() {
-    return ExtensionState.getInstance().watchdog.timeout_milliseconds;
-}
+    // Visible-for-tests reset. Drops registered workspaces so each test starts
+    // from a clean slate; production code never calls this.
+    public reset() {
+        this.workspaces.clear();
+    }
 
-export function setWatchdogTimeout(timeout_milliseconds: number) {
-    ExtensionState.getInstance().watchdog.setTimeout(timeout_milliseconds);
-}
+    public connect() {
+        this.connection = createConnection();
+        this.documents = new TextDocuments(TextDocument);
 
-export function startWatchdogIfNotRunning() {
-    ExtensionState.getInstance().watchdog.startWatchdogIfNotRunning();
-}
+        // Per-URI demux: route the change to the workspace that owns the file.
+        // If no workspace owns it, drop the change — the file is outside every
+        // registered .ghulproj source set.
+        this.documents.onDidChangeContent((change) => {
+            const workspace = this.getWorkspaceForUri(change.document.uri);
 
-export function enterWatchdogColdStart() {
-    ExtensionState.getInstance().watchdog.enterColdStart();
-}
+            workspace?.edit_queue.queueEdit(change);
+        });
 
-export function startWatchdog() {
-    ExtensionState.getInstance().watchdog.startWatchdog();
-}
+        this.connection_event_handler = new ConnectionEventHandler(
+            this,
+            this.connection,
+            this.documents
+        );
 
-export function resetWatchdog() {
-    ExtensionState.getInstance().watchdog.resetWatchdog();
-}
+        this.documents.listen(this.connection);
+        this.connection.listen();
+    }
 
-export function clearWatchdog() {
-    ExtensionState.getInstance().watchdog.clearWatchdog();
-}
+    // Create a WorkspaceContext for the given root and store it in the
+    // registry. Caller is responsible for invoking context.initialize();
+    // ConnectionEventHandler.onInitialize does it straight away today.
+    public registerWorkspace(workspace_root: string): WorkspaceContext {
+        const existing = this.workspaces.get(workspace_root);
 
-export function isWatchdogRunning() {
-    return ExtensionState.getInstance().watchdog.isRunning();
-}
+        if (existing) {
+            return existing;
+        }
 
-export function resolveAllPendingPromises() {
-    ExtensionState.getInstance().resolveAllPendingPromises();
-}
+        const context = new WorkspaceContext(workspace_root, this.connection, this.documents);
 
-export function rejectAllPendingPromises(message: string) {
-    ExtensionState.getInstance().rejectAllPendingPromises(message);
-}
+        this.workspaces.set(workspace_root, context);
 
-export function rejectAllAndThrow(message: string) {
-    ExtensionState.getInstance().rejectAllAndThrow(message);
-}
+        return context;
+    }
 
-export function reinitialize() {
-    ExtensionState.getInstance().reinitialize();
+    public unregisterWorkspace(workspace_root: string) {
+        const context = this.workspaces.get(workspace_root);
+
+        if (!context) {
+            return;
+        }
+
+        context.server_manager?.kill();
+        this.workspaces.delete(workspace_root);
+    }
+
+    public allWorkspaces(): WorkspaceContext[] {
+        return Array.from(this.workspaces.values());
+    }
+
+    // For requests that aren't tied to a specific URI (workspace/symbol,
+    // background heap checks). Returns the first registered workspace today;
+    // multi-workspace will need callers that aggregate across all workspaces.
+    public defaultWorkspace(): WorkspaceContext | null {
+        const iter = this.workspaces.values().next();
+
+        return iter.done ? null : iter.value;
+    }
+
+    // Find the workspace that owns this document URI by longest matching
+    // workspace_root prefix on the parsed fsPath. Returns null if no
+    // workspace claims the file — caller should drop the request rather
+    // than route arbitrarily.
+    public getWorkspaceForUri(uri: string): WorkspaceContext | null {
+        let fs_path: string;
+
+        try {
+            fs_path = URI.parse(uri).fsPath;
+        } catch (e) {
+            log(`getWorkspaceForUri: could not parse uri '${uri}': ${e}`);
+            return null;
+        }
+
+        if (!fs_path) {
+            return null;
+        }
+
+        const fs_path_normalised = fs_path.replace(/\\/g, '/');
+
+        let best: WorkspaceContext | null = null;
+        let best_length = -1;
+
+        for (const context of this.workspaces.values()) {
+            const root_normalised = context.workspace_root.replace(/\\/g, '/');
+
+            if (
+                fs_path_normalised === root_normalised ||
+                fs_path_normalised.startsWith(root_normalised + '/')
+            ) {
+                if (root_normalised.length > best_length) {
+                    best = context;
+                    best_length = root_normalised.length;
+                }
+            }
+        }
+
+        return best;
+    }
+
+    // Single demux for watched-file events: the LSP Connection only allows one
+    // handler, so we register it here and fan each change out to the workspace
+    // that owns it.
+    public onDidChangeWatchedFiles(params: DidChangeWatchedFilesParams) {
+        if (!params?.changes) {
+            return;
+        }
+
+        for (const change of params.changes) {
+            const workspace = this.getWorkspaceForUri(change.uri);
+
+            if (!workspace) {
+                continue;
+            }
+
+            workspace.document_change_tracker?.onDidChangeWatchedFiles({
+                changes: [change]
+            });
+        }
+    }
 }

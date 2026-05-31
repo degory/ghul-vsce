@@ -1,107 +1,44 @@
-import {
-    ExtensionState,
-    getWatchdogTimeout,
-    setWatchdogTimeout,
-    startWatchdog,
-    startWatchdogIfNotRunning,
-    resetWatchdog,
-    clearWatchdog,
-    resolveAllPendingPromises,
-    rejectAllPendingPromises,
-    rejectAllAndThrow,
-    reinitialize,
-} from '../src/extension-state';
-import { Watchdog } from '../src/watchdog';
-import { ResponseHandler } from '../src/response-handler';
-import { ConfigEventEmitter } from '../src/config-event-emitter';
-import { Connection } from 'vscode-languageserver';
+import { ExtensionState } from '../src/extension-state';
 
-// The singleton is process-wide. Tests here verify the thin module-level
-// functions that proxy into it; ExtensionState.connect() lives at the LSP
-// wire boundary and is exercised in integration testing rather than here.
+// ExtensionState now owns the workspace registry only — the LSP Connection
+// and per-workspace state (compiler child, watchdog, response handler) live
+// on WorkspaceContext. These tests cover the registry + URI router; the
+// connect() bootstrap and per-workspace lifecycle are exercised in
+// integration testing rather than here.
 
-describe('extension-state module-level helpers', () => {
-    let watchdog: Watchdog;
-    let responseHandler: ResponseHandler;
-
+describe('ExtensionState registry', () => {
     beforeEach(() => {
-        jest.useFakeTimers();
-        const state = ExtensionState.getInstance();
-        watchdog = new Watchdog(2500, () => {});
-        state.watchdog = watchdog;
-        responseHandler = new ResponseHandler({} as Connection, new ConfigEventEmitter());
-        state.response_handler = responseHandler;
+        ExtensionState.getInstance().reset();
     });
 
     afterEach(() => {
-        ExtensionState.getInstance().watchdog.clearWatchdog();
-        jest.useRealTimers();
-    });
-
-    it('getWatchdogTimeout returns the configured timeout', () => {
-        expect(getWatchdogTimeout()).toBe(2500);
-    });
-
-    it('setWatchdogTimeout updates the timeout via Watchdog.setTimeout', () => {
-        setWatchdogTimeout(7000);
-        expect(getWatchdogTimeout()).toBe(7000);
-    });
-
-    it('setWatchdogTimeout clamps below 1000ms to 1000ms', () => {
-        setWatchdogTimeout(300);
-        expect(getWatchdogTimeout()).toBe(1000);
-    });
-
-    it('startWatchdog and clearWatchdog round-trip the timer state', () => {
-        startWatchdog();
-        expect(watchdog.watchdog_timer).toBeDefined();
-        clearWatchdog();
-        expect(watchdog.watchdog_timer).toBeNull();
-    });
-
-    it('startWatchdogIfNotRunning only starts once when called repeatedly', () => {
-        startWatchdogIfNotRunning();
-        const first = watchdog.watchdog_timer;
-        startWatchdogIfNotRunning();
-        expect(watchdog.watchdog_timer).toBe(first);
-    });
-
-    it('resetWatchdog restarts the timer', () => {
-        startWatchdog();
-        const first = watchdog.watchdog_timer;
-        resetWatchdog();
-        expect(watchdog.watchdog_timer).not.toBe(first);
-    });
-
-    it('resolveAllPendingPromises empties every queue in the response handler', () => {
-        const hover = responseHandler.expectHover();
-        resolveAllPendingPromises();
-        return expect(hover).resolves.toBeNull();
-    });
-
-    it('rejectAllPendingPromises rejects every queue with the given message', async () => {
-        const def = responseHandler.expectDefinition();
-        rejectAllPendingPromises('boom');
-        await expect(def).rejects.toBe('boom');
-    });
-
-    it('rejectAllAndThrow rejects pending promises AND throws the message', async () => {
-        const def = responseHandler.expectDefinition();
-
-        expect(() => rejectAllAndThrow('kaboom')).toThrow('kaboom');
-        await expect(def).rejects.toBe('kaboom');
-    });
-
-    it('reinitialize delegates to the connection_event_handler', () => {
-        const ceh = { initialize: jest.fn() };
-        ExtensionState.getInstance().connection_event_handler = ceh as any;
-
-        reinitialize();
-
-        expect(ceh.initialize).toHaveBeenCalled();
+        ExtensionState.getInstance().reset();
     });
 
     it('getInstance returns the same instance on subsequent calls', () => {
         expect(ExtensionState.getInstance()).toBe(ExtensionState.getInstance());
+    });
+
+    it('allWorkspaces returns an empty list when nothing is registered', () => {
+        expect(ExtensionState.getInstance().allWorkspaces()).toEqual([]);
+    });
+
+    it('defaultWorkspace returns null when nothing is registered', () => {
+        expect(ExtensionState.getInstance().defaultWorkspace()).toBeNull();
+    });
+
+    it('getWorkspaceForUri returns null when nothing is registered', () => {
+        expect(
+            ExtensionState.getInstance().getWorkspaceForUri('file:///some/file.ghul')
+        ).toBeNull();
+    });
+
+    it('getWorkspaceForUri returns null for malformed URIs', () => {
+        // A junk string with no parseable scheme: vscode-uri returns an empty
+        // fsPath, which the router treats as "no owning workspace" rather than
+        // routing arbitrarily.
+        expect(
+            ExtensionState.getInstance().getWorkspaceForUri('not a uri')
+        ).toBeNull();
     });
 });

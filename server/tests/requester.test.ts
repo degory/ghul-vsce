@@ -5,7 +5,6 @@ import { Requester } from '../src/requester';
 import { ResponseHandler } from '../src/response-handler';
 import { ServerEventEmitter } from '../src/server-event-emitter';
 import { Watchdog } from '../src/watchdog';
-import { ExtensionState } from '../src/extension-state';
 
 class CapturingStream extends EventEmitter {
     written: string[] = [];
@@ -52,10 +51,11 @@ describe('Requester', () => {
     let events: ServerEventEmitter;
     let response: RecordingResponseHandler;
     let stream: CapturingStream;
+    let watchdog: Watchdog;
     let requester: Requester;
 
     beforeEach(() => {
-        ExtensionState.getInstance().watchdog = new Watchdog(10000, () => {});
+        watchdog = new Watchdog(10000, () => {});
 
         events = new ServerEventEmitter();
         response = new RecordingResponseHandler();
@@ -63,7 +63,8 @@ describe('Requester', () => {
 
         requester = new Requester(
             events,
-            response as unknown as ResponseHandler
+            response as unknown as ResponseHandler,
+            watchdog
         );
 
         // onRunning is wired in the constructor; fire it now so the stream
@@ -72,10 +73,9 @@ describe('Requester', () => {
     });
 
     afterEach(() => {
-        // send* methods call startWatchdogIfNotRunning(); if we leave the
-        // timer alive past test end it fires into a now-empty singleton and
-        // crashes the worker. Clear it here:
-        ExtensionState.getInstance().watchdog.clearWatchdog();
+        // send* methods arm the watchdog; if we leave the timer alive past
+        // test end it fires into a torn-down test and crashes the worker.
+        watchdog.clearWatchdog();
     });
 
     it('returns null from send methods before analysed becomes true (set via constructor default)', () => {
