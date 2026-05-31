@@ -13,11 +13,6 @@ export interface GhulConfig {
 	source: string[],
 	arguments: string[],
 	want_plaintext_hover: boolean,
-	// True when the user opted into the incremental body re-walk via
-	// `ghul.json`'s `incremental_analysis`. Off by default — the path
-	// is sound but still earning trust. When on, `--incremental-analysis`
-	// is in `arguments`, and handleListen() will log a warning if the
-	// spawned compiler doesn't advertise the matching capability.
 	incremental_analysis: boolean,
 	// Human-readable descriptions of anything that went wrong while loading
 	// the configuration — an unreadable project file, malformed JSON, no

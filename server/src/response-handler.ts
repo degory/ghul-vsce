@@ -473,11 +473,6 @@ export class ResponseHandler {
     handleListen(message?: { capabilities?: string[] }) {
         let capabilities = message?.capabilities ?? [];
 
-        // The user opted into incremental analysis via ghul.json, but
-        // the spawned compiler is an older binary that doesn't know the
-        // CLI flag (so it warned and ignored the option). Flag it once
-        // — the analyser still serves requests; only the opt-in is
-        // inert. Upgrading ghul.compiler restores the feature.
         if (
             this.incremental_analysis_requested &&
             !capabilities.includes("incremental-analysis")

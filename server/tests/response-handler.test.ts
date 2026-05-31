@@ -151,11 +151,6 @@ describe('ResponseHandler', () => {
             } as ServerManager;
         };
 
-        // The advertised "incremental-analysis" capability tells the
-        // client the spawned compiler honours --incremental-analysis.
-        // A user with the setting on but talking to an older binary
-        // (capability missing) gets a one-line warning so they know
-        // why the feature isn't active.
         let logSpy: jest.SpyInstance;
 
         beforeEach(() => {
