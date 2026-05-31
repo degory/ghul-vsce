@@ -126,6 +126,52 @@ describe('GhulAnalyser', () => {
         expect(editQueue.started[0][0].source).toBe('class A is {} // unsaved buffer');
     });
 
+    it('resolves relative source patterns against workspace_root, not process.cwd', () => {
+        // In a multi-root session each workspace has its own analyser but
+        // shares the language server's process. globSync without an explicit
+        // cwd would resolve every workspace's relative patterns against the
+        // process cwd — typically the first-loaded workspace's root — and
+        // feed every analyser the wrong source set.
+        mkdirSync(join(workspace, 'src'));
+        writeFileSync(join(workspace, 'src', 'real.ghul'), 'class Real is {}');
+
+        const decoy = mkdtempSync(join(tmpdir(), 'ghul-vsce-decoy-'));
+        try {
+            mkdirSync(join(decoy, 'src'));
+            writeFileSync(join(decoy, 'src', 'decoy.ghul'), 'class Decoy is {}');
+            const originalCwd = process.cwd();
+            process.chdir(decoy);
+            try {
+                new GhulAnalyser(
+                    editQueue as unknown as EditQueue,
+                    configEvents,
+                    serverEvents,
+                    fakeDocuments(),
+                );
+
+                configEvents.configAvailable(workspace, {
+                    block: false,
+                    compiler: ['c'],
+                    source: ['src/**/*.ghul'],
+                    arguments: [],
+                    want_plaintext_hover: false,
+                });
+
+                serverEvents.listening();
+            } finally {
+                process.chdir(originalCwd);
+            }
+
+            expect(editQueue.started).toHaveLength(1);
+            const uris = editQueue.started[0].map(d => d.uri);
+            expect(uris).toHaveLength(1);
+            expect(uris[0]).toMatch(/real\.ghul$/);
+            expect(uris[0]).not.toMatch(/decoy\.ghul$/);
+        } finally {
+            try { rmSync(decoy, { recursive: true, force: true }); } catch { /* swallow */ }
+        }
+    });
+
     it('starts edit queue with an empty document list when no source files match', () => {
         new GhulAnalyser(
             editQueue as unknown as EditQueue,
