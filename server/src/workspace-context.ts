@@ -1,6 +1,6 @@
 import * as path from 'path';
 
-import { globSync } from 'glob';
+import { readdirSync } from 'fs';
 
 import { Connection, TextDocuments } from 'vscode-languageserver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -160,21 +160,22 @@ export class WorkspaceContext {
     // sibling JS projects, …); we only spin up a compiler for the folders
     // that actually have a ghūl project, otherwise every non-ghūl folder
     // would surface a "no usable ghūl compiler found" error.
+    //
+    // Uses readdirSync rather than glob so paths containing glob
+    // metacharacters (`[`, `]`, `{`, `}`, `?`) — e.g. `my-project[v2]` —
+    // still match correctly.
     static looksLikeGhulWorkspace(workspace_root: string): boolean {
         if (!workspace_root) {
             return false;
         }
 
-        const root = workspace_root.replace(/\\/g, '/');
-
-        if (globSync(`${root}/*.ghulproj`).length > 0) {
-            return true;
+        let entries: string[];
+        try {
+            entries = readdirSync(workspace_root);
+        } catch {
+            return false;
         }
 
-        if (globSync(`${root}/ghul.json`).length > 0) {
-            return true;
-        }
-
-        return false;
+        return entries.some(e => e.endsWith('.ghulproj') || e === 'ghul.json');
     }
 }

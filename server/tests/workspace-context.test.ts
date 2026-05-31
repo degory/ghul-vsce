@@ -229,4 +229,28 @@ describe('WorkspaceContext.looksLikeGhulWorkspace', () => {
 
         expect(WorkspaceContext.looksLikeGhulWorkspace(tmpDir)).toBe(false);
     });
+
+    it('returns true for paths containing glob metacharacters', () => {
+        // Regression: the original implementation passed the workspace root
+        // straight through to globSync, so a folder whose name contained
+        // glob metacharacters (`[`, `]`, `{`, `}`, `?`) would be silently
+        // mis-parsed and the analyser would never start for it.
+        const { writeFileSync, mkdtempSync } = jest.requireActual('fs');
+        const { tmpdir } = jest.requireActual('os');
+        const path = jest.requireActual('path');
+
+        const trickyDir = mkdtempSync(path.join(tmpdir(), 'ghul-vsce-tricky-[v2]-'));
+        try {
+            writeFileSync(path.join(trickyDir, 'thing.ghulproj'), '<Project />');
+            expect(WorkspaceContext.looksLikeGhulWorkspace(trickyDir)).toBe(true);
+        } finally {
+            const { rmSync } = jest.requireActual('fs');
+            rmSync(trickyDir, { recursive: true, force: true });
+        }
+    });
+
+    it('returns false for a non-existent folder', () => {
+        expect(WorkspaceContext.looksLikeGhulWorkspace('/no/such/folder/anywhere'))
+            .toBe(false);
+    });
 });
