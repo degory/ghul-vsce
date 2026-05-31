@@ -49,6 +49,7 @@ function makeMockConnection(): Connection {
     for (const h of hooks) {
         conn[h] = jest.fn();
     }
+    conn.onInitialized = jest.fn();
     conn.languages = { semanticTokens: { on: jest.fn() } };
     conn.window = {
         showErrorMessage: jest.fn(),
@@ -213,15 +214,25 @@ describe('ConnectionEventHandler', () => {
             expect(extensionState.registerWorkspace).not.toHaveBeenCalled();
         });
 
-        it('subscribes to workspace folder change notifications when the client supports them', () => {
-            // Regression: the underlying getter throws if the client never
-            // declared workspace.workspaceFolders, so subscription has to wait
-            // until onInitialize sees that capability rather than happen at
-            // construction time. Otherwise the server crashes on every start.
+        it('defers workspace folder change subscription until onInitialized fires', () => {
+            // The library's onDidChangeWorkspaceFolders getter performs a
+            // dynamic client/registerCapability when the auto-registered
+            // flag is still false, which is the case during onInitialize
+            // — the flag is only set when the library processes the
+            // capabilities we return. Subscribing then races the not-yet
+            // sent initialize response and crashes the server on every
+            // start; the subscription must wait until onInitialized.
             handler.onInitialize({
                 capabilities: { workspace: { workspaceFolders: true } },
                 workspaceFolders: [{ uri: 'file:///x', name: 'x' }],
             } as any);
+
+            expect((connection as any).workspace.onDidChangeWorkspaceFolders).not.toHaveBeenCalled();
+            expect((connection as any).onInitialized).toHaveBeenCalled();
+
+            const initializedCallback =
+                (connection as any).onInitialized.mock.calls[0][0];
+            initializedCallback();
 
             expect((connection as any).workspace.onDidChangeWorkspaceFolders).toHaveBeenCalled();
         });
@@ -232,6 +243,7 @@ describe('ConnectionEventHandler', () => {
                 workspaceFolders: [{ uri: 'file:///x', name: 'x' }],
             } as any);
 
+            expect((connection as any).onInitialized).not.toHaveBeenCalled();
             expect((connection as any).workspace.onDidChangeWorkspaceFolders).not.toHaveBeenCalled();
         });
 
