@@ -24,14 +24,15 @@ describe('generateAssembliesJson', () => {
         try { rmSync(workspace, { recursive: true, force: true }); } catch { /* swallow */ }
     });
 
-    it('runs dotnet build when a .ghulproj is present', () => {
+    it('runs dotnet build in the workspace directory when a .ghulproj is present', () => {
         writeFileSync(join(workspace, 'test.ghulproj'), '<Project/>');
 
         generateAssembliesJson(workspace);
 
         expect(execSync).toHaveBeenCalledTimes(1);
         expect(execSync).toHaveBeenCalledWith(
-            'dotnet build -verbosity:minimal -t:GenerateAssembliesJson'
+            'dotnet build -verbosity:minimal -t:GenerateAssembliesJson',
+            { cwd: workspace }
         );
     });
 

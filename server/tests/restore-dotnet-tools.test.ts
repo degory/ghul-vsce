@@ -22,13 +22,13 @@ describe('restoreDotNetTools', () => {
         try { rmSync(workspace, { recursive: true, force: true }); } catch { /* swallow */ }
     });
 
-    it('runs dotnet tool restore when the manifest exists', () => {
+    it('runs dotnet tool restore in the workspace directory when the manifest exists', () => {
         mkdirSync(join(workspace, '.config'));
         writeFileSync(join(workspace, '.config/dotnet-tools.json'), '{"version":1}');
 
         restoreDotNetTools(workspace);
 
-        expect(execSync).toHaveBeenCalledWith('dotnet tool restore');
+        expect(execSync).toHaveBeenCalledWith('dotnet tool restore', { cwd: workspace });
     });
 
     it('does nothing when the manifest is missing', () => {

@@ -17,7 +17,7 @@ export function generateAssembliesJson(workspace: string): string | null {
     log("generating .assemblies.json...");
 
     try {
-        log(execSync("dotnet build -verbosity:minimal -t:GenerateAssembliesJson").toString());
+        log(execSync("dotnet build -verbosity:minimal -t:GenerateAssembliesJson", { cwd: workspace }).toString());
         log("finished generating .assemblies.json");
         return null;
     } catch (e) {
