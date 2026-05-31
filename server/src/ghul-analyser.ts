@@ -55,7 +55,7 @@ export class GhulAnalyser {
         config.source.forEach(pattern => {
             sourceFiles
                 .push(
-                    ...globSync(pattern)
+                    ...globSync(pattern, { cwd: this.workspace_root, absolute: true })
                         .filter(f => f.endsWith('.ghul'))
                         .map(f => pathToFileURL(f))
                 );
