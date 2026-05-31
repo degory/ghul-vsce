@@ -231,10 +231,9 @@ describe('WorkspaceContext.looksLikeGhulWorkspace', () => {
     });
 
     it('returns true for paths containing glob metacharacters', () => {
-        // Regression: the original implementation passed the workspace root
-        // straight through to globSync, so a folder whose name contained
-        // glob metacharacters (`[`, `]`, `{`, `}`, `?`) would be silently
-        // mis-parsed and the analyser would never start for it.
+        // globSync silently mis-parses paths containing metacharacters
+        // (`[`, `]`, `{`, `}`, `?`), returning no matches and leaving the
+        // analyser unstarted; readdirSync avoids this entirely.
         const { writeFileSync, mkdtempSync } = jest.requireActual('fs');
         const { tmpdir } = jest.requireActual('os');
         const path = jest.requireActual('path');
