@@ -144,6 +144,54 @@ describe('ResponseHandler', () => {
         expect(startListeningSpy).toHaveBeenCalled();
     });
 
+    describe('handleListen capability check', () => {
+        const installStubManager = () => {
+            responseHandler.server_manager = {
+                startListening: () => {}
+            } as ServerManager;
+        };
+
+        // The advertised "incremental-analysis" capability tells the
+        // client the spawned compiler honours --incremental-analysis.
+        // A user with the setting on but talking to an older binary
+        // (capability missing) gets a one-line warning so they know
+        // why the feature isn't active.
+        let logSpy: jest.SpyInstance;
+
+        beforeEach(() => {
+            installStubManager();
+            logSpy = jest.spyOn(require('../src/log'), 'log').mockImplementation(() => {});
+        });
+
+        afterEach(() => {
+            logSpy.mockRestore();
+        });
+
+        it('warns when the setting is on but capability is absent', () => {
+            responseHandler.incremental_analysis_requested = true;
+            responseHandler.handleListen({ capabilities: [] });
+            expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('incremental_analysis'));
+        });
+
+        it('warns when the setting is on and the listen frame has no capabilities field at all', () => {
+            responseHandler.incremental_analysis_requested = true;
+            responseHandler.handleListen({});
+            expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('incremental_analysis'));
+        });
+
+        it('does not warn when the setting is on and capability is advertised', () => {
+            responseHandler.incremental_analysis_requested = true;
+            responseHandler.handleListen({ capabilities: ['incremental-analysis'] });
+            expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('incremental_analysis'));
+        });
+
+        it('does not warn when the setting is off, even if capability is absent', () => {
+            responseHandler.incremental_analysis_requested = false;
+            responseHandler.handleListen({ capabilities: [] });
+            expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('incremental_analysis'));
+        });
+    });
+
     it('handleDiagnostics sends one sendDiagnostics call per checked path with its diagnostics', () => {
         responseHandler.connection = {
             sendDiagnostics: () => {}

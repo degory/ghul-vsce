@@ -56,7 +56,7 @@ export class ResponseParser {
 
         switch (message.kind) {
         case "listen":
-            this.response_handler.handleListen();
+            this.response_handler.handleListen(message);
             break;
 
         case "diagnostics":
