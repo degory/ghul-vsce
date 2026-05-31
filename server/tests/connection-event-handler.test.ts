@@ -213,6 +213,28 @@ describe('ConnectionEventHandler', () => {
             expect(extensionState.registerWorkspace).not.toHaveBeenCalled();
         });
 
+        it('subscribes to workspace folder change notifications when the client supports them', () => {
+            // Regression: the underlying getter throws if the client never
+            // declared workspace.workspaceFolders, so subscription has to wait
+            // until onInitialize sees that capability rather than happen at
+            // construction time. Otherwise the server crashes on every start.
+            handler.onInitialize({
+                capabilities: { workspace: { workspaceFolders: true } },
+                workspaceFolders: [{ uri: 'file:///x', name: 'x' }],
+            } as any);
+
+            expect((connection as any).workspace.onDidChangeWorkspaceFolders).toHaveBeenCalled();
+        });
+
+        it('does not subscribe when the client did not declare workspace folder support', () => {
+            handler.onInitialize({
+                capabilities: {},
+                workspaceFolders: [{ uri: 'file:///x', name: 'x' }],
+            } as any);
+
+            expect((connection as any).workspace.onDidChangeWorkspaceFolders).not.toHaveBeenCalled();
+        });
+
         it('advertises full LSP capabilities including workspace folder change notifications', () => {
             const result = handler.onInitialize({
                 workspaceFolders: [{ uri: 'file:///x', name: 'x' }],

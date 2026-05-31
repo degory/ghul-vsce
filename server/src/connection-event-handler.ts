@@ -69,11 +69,10 @@ export class ConnectionEventHandler {
         connection.onDidChangeWatchedFiles((change: DidChangeWatchedFilesParams) =>
             this.extension_state.onDidChangeWatchedFiles(change));
 
-        // didChangeWorkspaceFolders only fires once the client knows we
-        // support it — that's what the workspace.workspaceFolders capability
-        // in the InitializeResult below advertises.
-        connection.workspace.onDidChangeWorkspaceFolders((event: WorkspaceFoldersChangeEvent) =>
-            this.onDidChangeWorkspaceFolders(event));
+        // onDidChangeWorkspaceFolders is NOT registered here — its getter
+        // throws "Client doesn't support sending workspace folder change
+        // events." until the client capabilities have been processed. We
+        // register it in onInitialize, gated on the actual client capability.
 
         connection.onCompletion(
             (textDocumentPosition: CompletionParams): Promise<CompletionItem[]> =>
@@ -156,6 +155,17 @@ export class ConnectionEventHandler {
             const workspace = this.extension_state.registerWorkspace(root);
 
             workspace.initialize();
+        }
+
+        // Subscribe to workspace folder change notifications only when the
+        // client supports them. The getter throws if the corresponding client
+        // capability isn't set, so we must check the capability params here
+        // rather than blindly subscribe at construction time.
+        if (params.capabilities?.workspace?.workspaceFolders) {
+            this.connection.workspace.onDidChangeWorkspaceFolders(
+                (event: WorkspaceFoldersChangeEvent) =>
+                    this.onDidChangeWorkspaceFolders(event)
+            );
         }
 
         return {
