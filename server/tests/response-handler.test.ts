@@ -608,18 +608,12 @@ describe('ResponseHandler', () => {
     });
 
     it('setServerManager throws on a second assignment', () => {
-        const ExtensionState = require('../src/extension-state').ExtensionState;
-        ExtensionState.getInstance().response_handler = responseHandler;
-
         responseHandler.server_manager = { startListening: jest.fn() } as any;
 
         expect(() => responseHandler.setServerManager({} as any)).toThrow();
     });
 
     it('setEditQueue throws on a second assignment', () => {
-        const ExtensionState = require('../src/extension-state').ExtensionState;
-        ExtensionState.getInstance().response_handler = responseHandler;
-
         responseHandler.edit_queue = { reset: jest.fn() } as any;
 
         expect(() => responseHandler.setEditQueue({} as any)).toThrow();

@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { writeFileSync } from 'fs';
 import { quote } from 'shell-quote';
 
@@ -9,16 +10,17 @@ import {
 import { Connection } from 'vscode-languageserver';
 
 import { log } from './log';
-import { enterWatchdogColdStart, rejectAllPendingPromises, resolveAllPendingPromises } from './extension-state';
 
 import { GhulConfig } from './ghul-config';
 
+import { ResponseHandler } from './response-handler';
 import { ResponseParser } from './response-parser';
 
 import { ServerEventEmitter } from './server-event-emitter';
 
 import { ConfigEventEmitter } from './config-event-emitter';
 import { EditQueue } from './edit-queue';
+import { Watchdog } from './watchdog';
 
 export enum ServerState {
 	Cold,
@@ -50,7 +52,9 @@ export class ServerManager {
 	ghul_config: GhulConfig;
 	workspace_root: string;
 	edit_queue: EditQueue;
+	response_handler: ResponseHandler;
 	response_parser: ResponseParser;
+	watchdog: Watchdog;
 
 	restart_attempts: number;
 	restart_timer: NodeJS.Timeout;
@@ -59,18 +63,26 @@ export class ServerManager {
 		config_event_source: ConfigEventEmitter,
 		event_emitter: ServerEventEmitter,
 		edit_queue: EditQueue,
+		response_handler: ResponseHandler,
 		response_parser: ResponseParser,
+		watchdog: Watchdog,
+		workspace_root: string,
 		connection?: Connection
 	) {
 		this.event_emitter = event_emitter;
 		this.edit_queue = edit_queue;
+		this.response_handler = response_handler;
 		this.response_parser = response_parser;
+		this.watchdog = watchdog;
+		this.workspace_root = workspace_root;
 		this.connection = connection;
 
 		this.restart_attempts = 0;
 
-		config_event_source.onConfigAvailable((workspace: string, config: GhulConfig) => {
-			this.workspace_root = workspace;
+		// The workspace_root passed by configAvailable is the same path we were
+		// constructed with — kept here for backwards compatibility with the
+		// onConfigAvailable signature; ignored for per-workspace state.
+		config_event_source.onConfigAvailable((_workspace: string, config: GhulConfig) => {
 			this.ghul_config = config;
 			this.start();
 		});
@@ -123,11 +135,20 @@ export class ServerManager {
 			return;
 		}
 
-		writeFileSync(".analysis.rsp", quote(this.ghul_config.arguments));
+		// Per-workspace .analysis.rsp so multiple compilers in the same
+		// extension host don't stomp on each other; the compiler reads the
+		// file relative to its working directory, which we anchor to the
+		// workspace root for the same reason.
+		const rsp_path = path.join(this.workspace_root, '.analysis.rsp');
+		writeFileSync(rsp_path, quote(this.ghul_config.arguments));
 
 		log(`compiler is "${quote(ghul_compiler)}"`);
 
-		this.child = spawn(ghul_compiler[0], [...ghul_compiler.slice(1), "@.analysis.rsp"]);
+		this.child = spawn(
+			ghul_compiler[0],
+			[...ghul_compiler.slice(1), "@.analysis.rsp"],
+			{ cwd: this.workspace_root }
+		);
 
 		// 'error' (e.g. the compiler binary is missing) and 'exit' (the
 		// compiler started then died) are both failure routes for this
@@ -142,7 +163,7 @@ export class ServerManager {
 
 			this.child = null;
 
-			resolveAllPendingPromises();
+			this.response_handler.resolveAllPendingPromises();
 			this.edit_queue.reset();
 
 			log(description);
@@ -171,7 +192,7 @@ export class ServerManager {
 		// and leave the project unanalysed, and the calibrated timeout would
 		// kill it part-way through its cold first compile.
 		this.response_parser.reset();
-		enterWatchdogColdStart();
+		this.watchdog.enterColdStart();
 
 		this.child.stdout.on('data', (chunk: Buffer) => {
 			this.response_parser.handleChunk(chunk.toString());
@@ -186,7 +207,7 @@ export class ServerManager {
 				if (this.expecting_exit) {
 					log(`compiler PID ${pid}: exited`);
 					this.child = null;
-					resolveAllPendingPromises();
+					this.response_handler.resolveAllPendingPromises();
 					this.expecting_exit = false;
 					return;
 				}
@@ -199,7 +220,7 @@ export class ServerManager {
 					this.expecting_recycle = false;
 					log(`compiler PID ${pid}: recycled — relaunching`);
 					this.child = null;
-					resolveAllPendingPromises();
+					this.response_handler.resolveAllPendingPromises();
 					this.edit_queue.reset();
 					this.launch();
 					return;
@@ -315,7 +336,7 @@ export class ServerManager {
 	// exited. Kill it so the 'exit' handler routes through normal crash
 	// recovery (back-off included — a wedged compiler may wedge again).
 	recoverFromHang() {
-		rejectAllPendingPromises("ghūl language extension: compiler watchdog timeout");
+		this.response_handler.rejectAllPendingPromises("ghūl language extension: compiler watchdog timeout");
 
 		if (this.child) {
 			log(`compiler PID ${this.child.pid}: unresponsive — killing`);

@@ -1,703 +1,410 @@
-import { ConnectionEventHandler } from '../src/connection-event-handler';
-import { CompletionParams, Connection, DocumentSymbolParams, InitializeResult, InitializedParams, ReferenceParams, TextDocumentPositionParams,
-    TextDocuments
-} from 'vscode-languageserver';
 import {
-    TextDocument
-} from 'vscode-languageserver-textdocument';
+    CompletionParams,
+    Connection,
+    DocumentSymbolParams,
+    ReferenceParams,
+    TextDocumentPositionParams,
+    TextDocuments,
+} from 'vscode-languageserver';
+import { TextDocument } from 'vscode-languageserver-textdocument';
 
-
-import { ServerManager } from '../src/server-manager';
-import { ConfigEventEmitter } from '../src/config-event-emitter';
+import { ConnectionEventHandler } from '../src/connection-event-handler';
+import { ExtensionState } from '../src/extension-state';
+import { WorkspaceContext } from '../src/workspace-context';
 import { Requester } from '../src/requester';
 import { EditQueue } from '../src/edit-queue';
-import { GhulConfig } from '../src/ghul-config';
-
-import * as GetGhulConfig from '../src/ghul-config';
-
-import * as restoreDotNetTools from '../src/restore-dotnet-tools';
-import * as generateAssembliesJson from '../src/generate-assemblies-json';
-import { DocumentChangeTracker } from '../src/document-change-tracker';
-
-import * as DocumentChangeTrackerModule from '../src/document-change-tracker';
 import { SEMANTIC_TOKENS_LEGEND } from '../src/response-handler';
 
-jest.mock('../src/server-manager');
-jest.mock('../src/config-event-emitter');
-jest.mock('../src/requester');
-jest.mock('../src/edit-queue');
-jest.mock('../src/document-change-tracker');
+// ConnectionEventHandler is the thin router between the LSP Connection and
+// the per-workspace state held by each WorkspaceContext. Most of the work
+// happens in WorkspaceContext / WorkspaceContext.initialize, covered in
+// workspace-context.test.ts; here we pin (1) that every connection.onX hook
+// is registered, (2) that per-URI requests are dispatched to the workspace
+// the URI belongs to, and (3) that requests with no owning workspace come
+// back with an empty result rather than blowing up.
+
+const hooks = [
+    'onInitialize',
+    'onShutdown',
+    'onExit',
+    'onDidChangeConfiguration',
+    'onDidChangeWatchedFiles',
+    'onCompletion',
+    'onHover',
+    'onDefinition',
+    'onDeclaration',
+    'onSignatureHelp',
+    'onDocumentSymbol',
+    'onWorkspaceSymbol',
+    'onReferences',
+    'onImplementation',
+    'onTypeDefinition',
+    'onRenameRequest',
+    'onDocumentFormatting',
+    'onDocumentRangeFormatting',
+] as const;
+
+function makeMockConnection(): Connection {
+    const conn: any = {};
+    for (const h of hooks) {
+        conn[h] = jest.fn();
+    }
+    conn.languages = { semanticTokens: { on: jest.fn() } };
+    conn.window = {
+        showErrorMessage: jest.fn(),
+        showWarningMessage: jest.fn(),
+    };
+    return conn as Connection;
+}
+
+function makeMockRequester(): Requester {
+    return {
+        sendCompletion: jest.fn().mockResolvedValue([]),
+        sendHover: jest.fn().mockResolvedValue(null),
+        sendDefinition: jest.fn().mockResolvedValue([]),
+        sendDeclaration: jest.fn().mockResolvedValue([]),
+        sendSignature: jest.fn().mockResolvedValue(null),
+        sendDocumentSymbol: jest.fn().mockResolvedValue([]),
+        sendWorkspaceSymbol: jest.fn().mockResolvedValue([]),
+        sendReferences: jest.fn().mockResolvedValue([]),
+        sendImplementation: jest.fn().mockResolvedValue([]),
+        sendTypeDefinition: jest.fn().mockResolvedValue(null),
+        sendRenameRequest: jest.fn().mockResolvedValue(null),
+        sendSemanticTokens: jest.fn().mockResolvedValue({ data: [] }),
+        sendDocumentFormatting: jest.fn().mockResolvedValue([]),
+        sendDocumentRangeFormatting: jest.fn().mockResolvedValue([]),
+    } as unknown as Requester;
+}
+
+function makeMockEditQueue(): EditQueue {
+    return {
+        sendQueued: jest.fn(),
+        queueEdit: jest.fn(),
+    } as unknown as EditQueue;
+}
+
+function makeMockWorkspace(requester: Requester, edit_queue: EditQueue): WorkspaceContext {
+    return {
+        requester,
+        edit_queue,
+    } as unknown as WorkspaceContext;
+}
 
 describe('ConnectionEventHandler', () => {
     let connection: Connection;
-    let serverManager: ServerManager;
-    let configEventEmitter: ConfigEventEmitter;
+    let documents: TextDocuments<TextDocument>;
+    let extensionState: ExtensionState;
+    let workspace: WorkspaceContext;
     let requester: Requester;
     let editQueue: EditQueue;
-    let documents: TextDocuments<TextDocument>;
-    let connectionEventHandler: ConnectionEventHandler;
+    let handler: ConnectionEventHandler;
 
     beforeEach(() => {
-        connection = {
-            onInitialize: (_params: InitializedParams): InitializeResult => {
-                return {
-                    capabilities: {
-                        textDocumentSync: {
-                            openClose: true,
-                            change: 2
-                        },
-                        completionProvider: {
-                            triggerCharacters: ['.', ':'],
-                            resolveProvider: false
-                        },
-                        documentSymbolProvider: true,
-                        workspaceSymbolProvider: true,
-                        hoverProvider: true,
-                        definitionProvider: true,
-                        declarationProvider: true,
-                        referencesProvider: true,
-                        signatureHelpProvider: {
-                            triggerCharacters: ['(', '[']
-                        },
-                        implementationProvider: true,
-                        typeDefinitionProvider: true,
-                        renameProvider: true
-                    }
-                };
-            },
-            onShutdown: jest.fn(),
-            onExit: jest.fn(),
-            onDidChangeConfiguration: jest.fn(),
-            onDidOpenTextDocument: jest.fn(),
-            onDidOpen: jest.fn(),
-            onDidCloseTextDocument: jest.fn(),
-            onDidClose: jest.fn(),
-            onDidChangeWatchedFiles: jest.fn(),
-            onCompletion: jest.fn(),
-            onHover: jest.fn(),
-            onDefinition: jest.fn(),
-            onDeclaration: jest.fn(),
-            onSignatureHelp: jest.fn(),
-            onDocumentSymbol: jest.fn(),
-            onWorkspaceSymbol: jest.fn(),
-            onReferences: jest.fn(),
-            onImplementation: jest.fn(),
-            onTypeDefinition: jest.fn(),
-            onRenameRequest: jest.fn(),
-            window: {
-                showErrorMessage: jest.fn(),
-                showWarningMessage: jest.fn(),
-            },
-            onDocumentFormatting: jest.fn(),
-            onDocumentRangeFormatting: jest.fn(),
-            languages: {
-                semanticTokens: {
-                    on: jest.fn(),
-                },
-            },
-        } as any as Connection;
-
-        serverManager = {
-            kill: jest.fn(),
-        } as any as ServerManager;
-
+        connection = makeMockConnection();
         documents = {
             get: jest.fn(),
-        } as any as TextDocuments<TextDocument>;
+        } as unknown as TextDocuments<TextDocument>;
 
-        configEventEmitter = {
-            onConfigAvailable: jest.fn(),
-            configAvailable: jest.fn(),
-        } as any as ConfigEventEmitter;
+        requester = makeMockRequester();
+        editQueue = makeMockEditQueue();
+        workspace = makeMockWorkspace(requester, editQueue);
 
-        requester = {
-            sendCompletion: jest.fn(),
-            sendHover: jest.fn(),
-            sendDefinition: jest.fn(),
-            sendDeclaration: jest.fn(),
-            sendSignature: jest.fn(),
-            sendDocumentSymbol: jest.fn(),
-            sendWorkspaceSymbol: jest.fn(),
-            sendReferences: jest.fn(),
-            sendImplementation: jest.fn(),
-        } as any as Requester;
+        // The handler reaches into ExtensionState for routing. Stub only the
+        // methods it actually calls so each test can decide whether a
+        // workspace owns the URI.
+        extensionState = {
+            getWorkspaceForUri: jest.fn().mockReturnValue(workspace),
+            defaultWorkspace: jest.fn().mockReturnValue(workspace),
+            registerWorkspace: jest.fn().mockReturnValue({
+                initialize: jest.fn(),
+            }),
+            allWorkspaces: jest.fn().mockReturnValue([]),
+            onDidChangeWatchedFiles: jest.fn(),
+        } as unknown as ExtensionState;
 
-        editQueue = {
-            sendQueued: jest.fn(),
-        } as any as EditQueue;
-
-        connectionEventHandler = new ConnectionEventHandler(connection, serverManager, configEventEmitter, requester, editQueue, documents);
+        handler = new ConnectionEventHandler(extensionState, connection, documents);
     });
 
     afterEach(() => {
         jest.resetAllMocks();
     });
 
-    it('should initialize correctly', () => {
-        // Arrange
-
-        const restoreDotNetToolsSpy = jest.spyOn(restoreDotNetTools, 'restoreDotNetTools').mockImplementation();
-        const generateAssembliesJsonSpy = jest.spyOn(generateAssembliesJson, 'generateAssembliesJson').mockImplementation();
-        const getGhulConfigSpy = jest.spyOn(GetGhulConfig, 'getGhulConfig').mockReturnValue({
-            compiler: ['ghul'],
-            source: ["test.ghul"],
-            arguments: [],
-            want_plaintext_hover: false,
-        } as GhulConfig);
-
-        const documentChangeTracker = {
-            onDidOpenTextDocument: jest.fn(),
-            onDidOpen: jest.fn(),
-            onDidCloseTextDocument: jest.fn(),
-            onDidClose: jest.fn(),
-            onDidChangeWatchedFiles: jest.fn(),
-        } as any as DocumentChangeTracker;
-
-        jest.spyOn(DocumentChangeTrackerModule, 'DocumentChangeTracker').mockImplementation(() => {
-            return documentChangeTracker;
+    describe('constructor', () => {
+        it.each(hooks)('registers a handler for connection.%s', hook => {
+            expect((connection as any)[hook]).toHaveBeenCalled();
         });
 
-        const configAvailableSpy = jest.spyOn(configEventEmitter, 'configAvailable').mockImplementation();
-
-        connectionEventHandler.workspace_root = '/path/to/workspace';
-
-        // Act
-        connectionEventHandler.initialize();
-
-        // Assert
-        expect(restoreDotNetToolsSpy).toHaveBeenCalledWith(connectionEventHandler.workspace_root);
-        expect(generateAssembliesJsonSpy).toHaveBeenCalledWith(connectionEventHandler.workspace_root);
-        expect(getGhulConfigSpy).toHaveBeenCalledWith(connectionEventHandler.workspace_root);
-        expect(connectionEventHandler.document_change_tracker).toBe(documentChangeTracker);
-        expect(configAvailableSpy).toHaveBeenCalledWith(connectionEventHandler.workspace_root, {
-            compiler: ['ghul'],
-            source: ["test.ghul"],
-            arguments: [],
-            want_plaintext_hover: false,
-        } as GhulConfig);
+        it('registers a semantic tokens handler', () => {
+            expect((connection as any).languages.semanticTokens.on).toHaveBeenCalled();
+        });
     });
 
-    it('should generate .assemblies.json before reading it via getGhulConfig', () => {
-        // getGhulConfig builds the -a argument list from .assemblies.json,
-        // which is written by generateAssembliesJson. If the read runs first
-        // on a fresh checkout where the file does not yet exist, .analysis.rsp
-        // ends up empty and the analyser falls back to a tiny default
-        // assembly list — producing spurious "not defined" / "not found"
-        // diagnostics for any reference outside that list.
-        const restoreDotNetToolsSpy = jest.spyOn(restoreDotNetTools, 'restoreDotNetTools').mockImplementation();
-        const generateAssembliesJsonSpy = jest.spyOn(generateAssembliesJson, 'generateAssembliesJson').mockImplementation();
-        const getGhulConfigSpy = jest.spyOn(GetGhulConfig, 'getGhulConfig').mockReturnValue({
-            compiler: ['ghul'],
-            source: ["test.ghul"],
-            arguments: [],
-            want_plaintext_hover: false,
-        } as GhulConfig);
+    describe('onInitialize', () => {
+        it('registers the workspace from params.rootPath and runs its initialise', () => {
+            const initialize = jest.fn();
+            (extensionState.registerWorkspace as jest.Mock).mockReturnValue({ initialize });
 
-        jest.spyOn(DocumentChangeTrackerModule, 'DocumentChangeTracker').mockImplementation(() => ({
-            onDidOpenTextDocument: jest.fn(),
-            onDidOpen: jest.fn(),
-            onDidCloseTextDocument: jest.fn(),
-            onDidClose: jest.fn(),
-            onDidChangeWatchedFiles: jest.fn(),
-        } as any as DocumentChangeTracker));
+            const result = handler.onInitialize({ rootPath: '/path/to/workspace' } as any);
 
-        jest.spyOn(configEventEmitter, 'configAvailable').mockImplementation();
-
-        connectionEventHandler.workspace_root = '/path/to/workspace';
-
-        connectionEventHandler.initialize();
-
-        const generateOrder = generateAssembliesJsonSpy.mock.invocationCallOrder[0];
-        const restoreOrder = restoreDotNetToolsSpy.mock.invocationCallOrder[0];
-        const configOrder = getGhulConfigSpy.mock.invocationCallOrder[0];
-
-        expect(restoreOrder).toBeLessThan(generateOrder);
-        expect(generateOrder).toBeLessThan(configOrder);
-    });
-
-    it('surfaces a warning when the config loaded with problems but is still runnable', () => {
-        // A degraded load — e.g. a malformed .assemblies.json — still has a
-        // usable compiler, so analysis proceeds but the user is told why it
-        // may be incomplete.
-        jest.spyOn(restoreDotNetTools, 'restoreDotNetTools').mockReturnValue(null);
-        jest.spyOn(generateAssembliesJson, 'generateAssembliesJson').mockReturnValue(null);
-        jest.spyOn(GetGhulConfig, 'getGhulConfig').mockReturnValue({
-            compiler: ['ghul'],
-            source: ['test.ghul'],
-            arguments: [],
-            want_plaintext_hover: false,
-            problems: ['could not load .assemblies.json: unexpected token'],
-        } as GhulConfig);
-
-        jest.spyOn(DocumentChangeTrackerModule, 'DocumentChangeTracker').mockImplementation(() => ({
-            onDidChangeWatchedFiles: jest.fn(),
-        } as any as DocumentChangeTracker));
-        jest.spyOn(configEventEmitter, 'configAvailable').mockImplementation();
-
-        connectionEventHandler.workspace_root = '/path/to/workspace';
-        connectionEventHandler.initialize();
-
-        expect(connection.window.showWarningMessage).toHaveBeenCalledTimes(1);
-        const [message] = (connection.window.showWarningMessage as jest.Mock).mock.calls[0];
-        expect(message).toContain('.assemblies.json');
-    });
-
-    it('does not warn when the config loaded cleanly', () => {
-        jest.spyOn(restoreDotNetTools, 'restoreDotNetTools').mockReturnValue(null);
-        jest.spyOn(generateAssembliesJson, 'generateAssembliesJson').mockReturnValue(null);
-        jest.spyOn(GetGhulConfig, 'getGhulConfig').mockReturnValue({
-            compiler: ['ghul'],
-            source: ['test.ghul'],
-            arguments: [],
-            want_plaintext_hover: false,
-            problems: [],
-        } as GhulConfig);
-
-        jest.spyOn(DocumentChangeTrackerModule, 'DocumentChangeTracker').mockImplementation(() => ({
-            onDidChangeWatchedFiles: jest.fn(),
-        } as any as DocumentChangeTracker));
-        jest.spyOn(configEventEmitter, 'configAvailable').mockImplementation();
-
-        connectionEventHandler.workspace_root = '/path/to/workspace';
-        connectionEventHandler.initialize();
-
-        expect(connection.window.showWarningMessage).not.toHaveBeenCalled();
-    });
-
-    it('should handle onInitialize event', () => {
-        // Arrange
-        const initializeSpy = jest.spyOn(connectionEventHandler, 'initialize').mockImplementation();
-        const onInitializeParams = { rootPath: '/path/to/workspace' };
-
-        // Act
-        const result = connectionEventHandler.onInitialize(onInitializeParams);
-
-        // Assert
-        expect(initializeSpy).toHaveBeenCalled();
-        expect(result).toEqual({
-            capabilities: {
-                textDocumentSync: {
-                    openClose: true,
-                    change: 2
-                },
-                completionProvider: {
-                    triggerCharacters: ['.', ':'],
-                    resolveProvider: false
-                },
+            expect(extensionState.registerWorkspace).toHaveBeenCalledWith('/path/to/workspace');
+            expect(initialize).toHaveBeenCalled();
+            expect(result.capabilities).toEqual(expect.objectContaining({
+                completionProvider: { triggerCharacters: ['.', ':'], resolveProvider: false },
                 documentSymbolProvider: true,
                 workspaceSymbolProvider: true,
                 hoverProvider: true,
                 definitionProvider: true,
                 declarationProvider: true,
                 referencesProvider: true,
-                signatureHelpProvider: {
-                    triggerCharacters: ['(', '[']
-                },
+                signatureHelpProvider: { triggerCharacters: ['(', '['] },
                 implementationProvider: true,
                 typeDefinitionProvider: true,
                 renameProvider: true,
                 documentFormattingProvider: true,
                 documentRangeFormattingProvider: true,
-                semanticTokensProvider: {
+                semanticTokensProvider: expect.objectContaining({
                     legend: SEMANTIC_TOKENS_LEGEND,
                     full: true,
                     range: false,
-                }
-            }
+                }),
+            }));
         });
     });
 
-    // Add more test cases for other methods in the ConnectionEventHandler class
-    it('should handle onShutdown event', () => {
-        // Arrange
-        const killSpy = jest.spyOn(serverManager, 'kill');
-        const logSpy = jest.spyOn(console, 'log');
+    describe('onShutdown', () => {
+        it('kills the server manager of every registered workspace', () => {
+            const killA = jest.fn();
+            const killB = jest.fn();
+            (extensionState.allWorkspaces as jest.Mock).mockReturnValue([
+                { server_manager: { kill: killA } },
+                { server_manager: { kill: killB } },
+            ]);
 
-        // Act
-        connectionEventHandler.onShutdown();
+            handler.onShutdown();
 
-        // Assert
-        expect(logSpy).toHaveBeenCalledWith("ghūl:", "language extension: shutting down...");
-        expect(killSpy).toHaveBeenCalled();
-    })
+            expect(killA).toHaveBeenCalled();
+            expect(killB).toHaveBeenCalled();
+        });
+    });
 
-    it('should handle onExit event', () => {
-        // Arrange
-        const logSpy = jest.spyOn(console, 'log');
+    describe('per-URI request routing', () => {
+        const URI = 'file:///workspace/file.ghul';
 
-        // Act
-        connectionEventHandler.onExit();
+        it('onCompletion with `.` trigger flushes the queue and routes via the URI', async () => {
+            const params: CompletionParams = {
+                textDocument: { uri: URI },
+                position: { line: 1, character: 2 },
+                context: { triggerCharacter: '.', triggerKind: 1 },
+            };
 
-        // Assert
-        expect(logSpy).toHaveBeenCalledWith("ghūl:", "language extension: exit");
-    })
+            await handler.onCompletion(params);
 
-    it('should handle onDidChangeConfiguration event', () => {
-        // Arrange
-        const logSpy = jest.spyOn(console, 'log');
-
-        // Act
-        connectionEventHandler.onDidChangeConfiguration({
-            settings: {
-                ghul: {
-                    compiler: 'ghul',
-                    source: ["test.ghul"],
-                    arguments: [],
-                    want_plaintext_hover: false,
-                }
-            }
+            expect(extensionState.getWorkspaceForUri).toHaveBeenCalledWith(URI);
+            expect(editQueue.sendQueued).toHaveBeenCalled();
+            expect(requester.sendCompletion).toHaveBeenCalledWith(URI, 1, 2);
         });
 
-        // Assert
-
-        // TODO: handle configuration change is currently a NOOP, because we have no extension
-        // configuration to handle:
-        expect(logSpy).toHaveBeenCalledWith("ghūl:", "language extension: configuration changed");
-    })
-
-    it('should handle onCompletion event with triggerCharacter dot', async () => {
-        // Arrange
-        const textDocumentPosition: CompletionParams = {
-            textDocument: { uri: 'test-uri' },
-            position: { line: 1, character: 2 },
-            context: { triggerCharacter: '.', triggerKind: 1 },
-        };
-
-        const sendQueuedSpy = jest.spyOn(editQueue, 'sendQueued');
-        const sendCompletionSpy = jest.spyOn(requester, 'sendCompletion').mockResolvedValue([]);
-
-        // Act
-        const result = await connectionEventHandler.onCompletion(textDocumentPosition);
-
-        // Assert
-        expect(sendQueuedSpy).toHaveBeenCalled();
-        expect(sendCompletionSpy).toHaveBeenCalledWith('test-uri', 1, 2);
-        expect(result).toEqual([]);
-    });
-
-    it('should handle onCompletion event with triggerCharacter other than dot', async () => {
-        // Arrange
-        const textDocumentPosition: CompletionParams = {
-            textDocument: { uri: 'test-uri' },
-            position: { line: 1, character: 2 },
-            context: { triggerCharacter: '@', triggerKind: 1 },
-        };
-
-        const sendQueuedSpy = jest.spyOn(editQueue, 'sendQueued');
-        const sendCompletionSpy = jest.spyOn(requester, 'sendCompletion').mockResolvedValue([]);
-
-        // Act
-        const result = await connectionEventHandler.onCompletion(textDocumentPosition);
-
-        // Assert
-        expect(sendQueuedSpy).not.toHaveBeenCalled();
-        expect(sendCompletionSpy).toHaveBeenCalledWith('test-uri', 1, 2);
-        expect(result).toEqual([]);
-    });
-
-    it('should handle onHover event', async () => {
-        // Arrange
-        const textDocumentPosition: TextDocumentPositionParams = {
-            textDocument: { uri: 'test-uri' },
-            position: { line: 1, character: 2 },
-        };
-
-        const sendHoverSpy = jest.spyOn(requester, 'sendHover').mockResolvedValue({ contents: 'Hover content' });
-
-        // Act
-        const result = await connectionEventHandler.onHover(textDocumentPosition);
-
-        // Assert
-        expect(sendHoverSpy).toHaveBeenCalledWith('test-uri', 1, 2);
-        expect(result).toEqual({ contents: 'Hover content' });
-    });
-
-    it('should handle onDefinition event', async () => {
-        // Arrange
-        const textDocumentPosition: TextDocumentPositionParams = {
-            textDocument: { uri: 'test-uri' },
-            position: { line: 1, character: 2 },
-        };
-
-        const sendDefinitionSpy = jest.spyOn(requester, 'sendDefinition').mockResolvedValue({ uri: 'definition-uri', range: { start: { line: 1, character: 2 }, end: { line: 3, character: 4 } } });
-
-        // Act
-        const result = await connectionEventHandler.onDefinition(textDocumentPosition);
-
-        // Assert
-        expect(sendDefinitionSpy).toHaveBeenCalledWith('test-uri', 1, 2);
-        expect(result).toEqual({ uri: 'definition-uri', range: { start: { line: 1, character: 2 }, end: { line: 3, character: 4 } } });
-    });
-
-    it('should handle onDeclaration event', async () => {
-        // Arrange
-        const textDocumentPosition: TextDocumentPositionParams = {
-            textDocument: { uri: 'test-uri' },
-            position: { line: 1, character: 2 },
-        };
-
-        const sendDeclarationSpy = jest.spyOn(requester, 'sendDeclaration').mockResolvedValue({ uri: 'declaration-uri', range: { start: { line: 1, character: 2 }, end: { line: 3, character: 4 } } });
-
-        // Act
-        const result = await connectionEventHandler.onDeclaration(textDocumentPosition);
-
-        // Assert
-        expect(sendDeclarationSpy).toHaveBeenCalledWith('test-uri', 1, 2);
-        expect(result).toEqual({ uri: 'declaration-uri', range: { start: { line: 1, character: 2 }, end: { line: 3, character: 4 } } });
-    });
-
-    it('should handle onSignatureHelp event', async () => {
-        // Arrange
-        const textDocumentPosition: TextDocumentPositionParams = {
-            textDocument: { uri: 'test-uri' },
-            position: { line: 1, character: 2 },
-        };
-
-        const sendQueuedSpy = jest.spyOn(editQueue, 'sendQueued');
-
-        let expectedSignatures = {
-            signatures: [
-                {
-                    label: 'signature-label',
-                    documentation: 'signature-documentation',
-                    parameters: [
-                        {
-                            label: 'parameter-label',
-                            documentation: 'parameter-documentation',
-                        }
-                    ]
-                }
-            ],
-            activeSignature: 0,
-            activeParameter: 0,
-        }
-
-        const sendSignatureSpy = jest.spyOn(requester, 'sendSignature').mockResolvedValue(expectedSignatures);
-
-        // Act
-        const result = await connectionEventHandler.onSignatureHelp(textDocumentPosition);
-
-        // Assert
-        expect(sendQueuedSpy).toHaveBeenCalled();
-        expect(sendSignatureSpy).toHaveBeenCalledWith('test-uri', 1, 2);
-        expect(result).toEqual(expectedSignatures);
-    });
-
-    it('should handle onDocumentSymbol event', async () => {
-        // Arrange
-        const documentSymbolParams: DocumentSymbolParams = {
-            textDocument: { uri: 'test-uri' },
-        };
-
-        const sendDocumentSymbolSpy = jest.spyOn(requester, 'sendDocumentSymbol').mockResolvedValue([]);
-
-        // Act
-        const result = await connectionEventHandler.onDocumentSymbol(documentSymbolParams);
-
-        // Assert
-        expect(sendDocumentSymbolSpy).toHaveBeenCalledWith('test-uri');
-        expect(result).toEqual([]);
-    });
-
-    it('should handle onWorkspaceSymbol event', async () => {
-        // Arrange
-        const sendWorkspaceSymbolSpy = jest.spyOn(requester, 'sendWorkspaceSymbol').mockResolvedValue([]);
-
-        // Act
-        const result = await connectionEventHandler.onWorkspaceSymbol();
-
-        // Assert
-        expect(sendWorkspaceSymbolSpy).toHaveBeenCalled();
-        expect(result).toEqual([]);
-    });
-
-    it('should handle onReferences event', async () => {
-        // Arrange
-        const referenceParams: ReferenceParams = {
-            textDocument: { uri: 'test-uri' },
-            position: { line: 1, character: 2 },
-            context: { includeDeclaration: true },
-        };
-
-        const sendReferencesSpy = jest.spyOn(requester, 'sendReferences').mockResolvedValue([]);
-
-        // Act
-        const result = await connectionEventHandler.onReferences(referenceParams);
-
-        // Assert
-        expect(sendReferencesSpy).toHaveBeenCalledWith('test-uri', 1, 2);
-        expect(result).toEqual([]);
-    });
-
-    it('should handle onImplementation event', async () => {
-        // Arrange
-        const textDocumentPosition: TextDocumentPositionParams = {
-            textDocument: { uri: 'test-uri' },
-            position: { line: 1, character: 2 },
-        };
-
-        const sendImplementationSpy = jest.spyOn(requester, 'sendImplementation').mockResolvedValue([]);
-
-        // Act
-        const result = await connectionEventHandler.onImplementation(textDocumentPosition);
-
-        // Assert
-        expect(sendImplementationSpy).toHaveBeenCalledWith('test-uri', 1, 2);
-        expect(result).toEqual([]);
-    });
-
-    it('should handle onTypeDefinition event', async () => {
-        // The outer-suite requester mock doesn't include sendTypeDefinition;
-        // assign and spy explicitly rather than mutating the shared setup:
-        const sendTypeDefinition = jest.fn().mockResolvedValue(null);
-        (requester as any).sendTypeDefinition = sendTypeDefinition;
-
-        const textDocumentPosition: TextDocumentPositionParams = {
-            textDocument: { uri: 'test-uri' },
-            position: { line: 1, character: 2 },
-        };
-
-        const result = await connectionEventHandler.onTypeDefinition(textDocumentPosition);
-
-        expect(sendTypeDefinition).toHaveBeenCalledWith('test-uri', 1, 2);
-        expect(result).toBeNull();
-    });
-
-    it('should handle onRenameRequest event', async () => {
-        // The outer-suite requester mock doesn't include sendRenameRequest;
-        // assign and spy explicitly rather than mutating the shared setup:
-        const sendRenameRequest = jest.fn().mockResolvedValue({ changes: { 'test-uri': [] } });
-        (requester as any).sendRenameRequest = sendRenameRequest;
-
-        const result = await connectionEventHandler.onRenameRequest({
-            textDocument: { uri: 'test-uri' },
-            position: { line: 1, character: 2 },
-            newName: 'NewName',
-        } as any);
-
-        expect(sendRenameRequest).toHaveBeenCalledWith('test-uri', 1, 2, 'NewName');
-        expect(result).toEqual({ changes: { 'test-uri': [] } });
-    });
-
-    it('should handle onDocumentFormatting event', async () => {
-        const edit = { range: { start: { line: 0, character: 0 }, end: { line: 4, character: 0 } }, newText: 'formatted\n' };
-        const sendDocumentFormatting = jest.fn().mockResolvedValue([edit]);
-        (requester as any).sendDocumentFormatting = sendDocumentFormatting;
-        (documents.get as jest.Mock).mockReturnValue({ getText: () => 'source', lineCount: 3 });
-
-        const result = await connectionEventHandler.onDocumentFormatting({
-            textDocument: { uri: 'test-uri' },
-        } as any);
-
-        expect(sendDocumentFormatting).toHaveBeenCalledWith('test-uri', 'source', expect.objectContaining({
-            start: { line: 0, character: 0 },
-        }));
-        expect(result).toEqual([edit]);
-    });
-
-    it('onDocumentFormatting returns no edits for an untracked document', async () => {
-        const sendDocumentFormatting = jest.fn();
-        (requester as any).sendDocumentFormatting = sendDocumentFormatting;
-        (documents.get as jest.Mock).mockReturnValue(undefined);
-
-        const result = await connectionEventHandler.onDocumentFormatting({
-            textDocument: { uri: 'missing-uri' },
-        } as any);
-
-        expect(sendDocumentFormatting).not.toHaveBeenCalled();
-        expect(result).toEqual([]);
-    });
-
-    it('should handle onDocumentRangeFormatting event', async () => {
-        const edit = { range: { start: { line: 3, character: 0 }, end: { line: 5, character: 0 } }, newText: 'formatted' };
-        const sendDocumentRangeFormatting = jest.fn().mockResolvedValue([edit]);
-        (requester as any).sendDocumentRangeFormatting = sendDocumentRangeFormatting;
-        (documents.get as jest.Mock).mockReturnValue({ getText: () => 'source', lineCount: 9 });
-
-        const range = { start: { line: 3, character: 4 }, end: { line: 5, character: 0 } };
-        const result = await connectionEventHandler.onDocumentRangeFormatting({
-            textDocument: { uri: 'test-uri' },
-            range,
-        } as any);
-
-        expect(sendDocumentRangeFormatting).toHaveBeenCalledWith('test-uri', 'source', range);
-        expect(result).toEqual([edit]);
-    });
-
-    it('onDocumentRangeFormatting returns no edits for an untracked document', async () => {
-        const sendDocumentRangeFormatting = jest.fn();
-        (requester as any).sendDocumentRangeFormatting = sendDocumentRangeFormatting;
-        (documents.get as jest.Mock).mockReturnValue(undefined);
-
-        const result = await connectionEventHandler.onDocumentRangeFormatting({
-            textDocument: { uri: 'missing-uri' },
-            range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
-        } as any);
-
-        expect(sendDocumentRangeFormatting).not.toHaveBeenCalled();
-        expect(result).toEqual([]);
-    });
-
-    describe('connection.onX callbacks registered by constructor', () => {
-        // The constructor wires each connection.onX with an inline arrow that
-        // forwards to this.onX(). Capture the registered callback per event
-        // and confirm it routes back to the matching instance method.
-        //
-        // We build a fresh all-jest.fn() connection rather than reuse the
-        // outer suite's hand-rolled one so .mock.calls works uniformly.
-
-        const hooks = [
-            'onInitialize',
-            'onShutdown',
-            'onExit',
-            'onDidChangeConfiguration',
-            'onCompletion',
-            'onHover',
-            'onDefinition',
-            'onDeclaration',
-            'onSignatureHelp',
-            'onDocumentSymbol',
-            'onWorkspaceSymbol',
-            'onReferences',
-            'onImplementation',
-            'onTypeDefinition',
-            'onRenameRequest',
-            'onDocumentFormatting',
-            'onDocumentRangeFormatting',
-        ] as const;
-
-        function makeMockConnection(): Connection {
-            const conn: any = {};
-            for (const h of hooks) {
-                conn[h] = jest.fn();
-            }
-            conn.languages = { semanticTokens: { on: jest.fn() } };
-            return conn as Connection;
-        }
-
-        function captureLastCall(fn: jest.Mock): Function | undefined {
-            return fn.mock.calls[fn.mock.calls.length - 1]?.[0] as Function | undefined;
-        }
-
-        it.each(hooks)('connection.%s callback forwards to the matching instance method', hook => {
-            const conn = makeMockConnection();
-            const ceh = new (require('../src/connection-event-handler').ConnectionEventHandler)(
-                conn, serverManager, configEventEmitter, requester, editQueue, documents
-            );
-
-            const cb = captureLastCall((conn as any)[hook] as jest.Mock);
-            expect(cb).toBeDefined();
-            jest.spyOn(ceh, hook).mockImplementation(() => Promise.resolve(undefined) as any);
-
-            cb!({
-                rootPath: '/foo',
-                textDocument: { uri: 'u' },
+        it('onCompletion without `.` trigger does not flush the queue', async () => {
+            const params: CompletionParams = {
+                textDocument: { uri: URI },
+                position: { line: 1, character: 2 },
+                context: { triggerCharacter: '@', triggerKind: 1 },
+            };
+
+            await handler.onCompletion(params);
+
+            expect(editQueue.sendQueued).not.toHaveBeenCalled();
+            expect(requester.sendCompletion).toHaveBeenCalledWith(URI, 1, 2);
+        });
+
+        it('onHover routes via the URI', async () => {
+            const params: TextDocumentPositionParams = {
+                textDocument: { uri: URI },
+                position: { line: 3, character: 4 },
+            };
+
+            await handler.onHover(params);
+
+            expect(requester.sendHover).toHaveBeenCalledWith(URI, 3, 4);
+        });
+
+        it('onDefinition routes via the URI', async () => {
+            const params: TextDocumentPositionParams = {
+                textDocument: { uri: URI },
                 position: { line: 0, character: 0 },
-                context: { triggerCharacter: '.', triggerKind: 1, includeDeclaration: true },
-                newName: 'N',
+            };
+
+            await handler.onDefinition(params);
+
+            expect(requester.sendDefinition).toHaveBeenCalledWith(URI, 0, 0);
+        });
+
+        it('onDeclaration routes via the URI', async () => {
+            const params: TextDocumentPositionParams = {
+                textDocument: { uri: URI },
+                position: { line: 0, character: 0 },
+            };
+
+            await handler.onDeclaration(params);
+
+            expect(requester.sendDeclaration).toHaveBeenCalledWith(URI, 0, 0);
+        });
+
+        it('onSignatureHelp flushes the queue and routes via the URI', async () => {
+            const params: TextDocumentPositionParams = {
+                textDocument: { uri: URI },
+                position: { line: 1, character: 2 },
+            };
+
+            await handler.onSignatureHelp(params);
+
+            expect(editQueue.sendQueued).toHaveBeenCalled();
+            expect(requester.sendSignature).toHaveBeenCalledWith(URI, 1, 2);
+        });
+
+        it('onDocumentSymbol routes via the URI', async () => {
+            const params: DocumentSymbolParams = { textDocument: { uri: URI } };
+
+            await handler.onDocumentSymbol(params);
+
+            expect(requester.sendDocumentSymbol).toHaveBeenCalledWith(URI);
+        });
+
+        it('onReferences routes via the URI', async () => {
+            const params: ReferenceParams = {
+                textDocument: { uri: URI },
+                position: { line: 5, character: 6 },
+                context: { includeDeclaration: true },
+            };
+
+            await handler.onReferences(params);
+
+            expect(requester.sendReferences).toHaveBeenCalledWith(URI, 5, 6);
+        });
+
+        it('onImplementation routes via the URI', async () => {
+            const params: TextDocumentPositionParams = {
+                textDocument: { uri: URI },
+                position: { line: 0, character: 0 },
+            };
+
+            await handler.onImplementation(params);
+
+            expect(requester.sendImplementation).toHaveBeenCalledWith(URI, 0, 0);
+        });
+
+        it('onTypeDefinition routes via the URI', async () => {
+            const params: TextDocumentPositionParams = {
+                textDocument: { uri: URI },
+                position: { line: 0, character: 0 },
+            };
+
+            await handler.onTypeDefinition(params);
+
+            expect(requester.sendTypeDefinition).toHaveBeenCalledWith(URI, 0, 0);
+        });
+
+        it('onRenameRequest routes via the URI and passes the new name', async () => {
+            await handler.onRenameRequest({
+                textDocument: { uri: URI },
+                position: { line: 1, character: 2 },
+                newName: 'NewName',
             } as any);
 
-            expect(ceh[hook]).toHaveBeenCalled();
+            expect(requester.sendRenameRequest).toHaveBeenCalledWith(URI, 1, 2, 'NewName');
+        });
+
+        it('onSemanticTokens flushes the queue and routes via the URI', async () => {
+            await handler.onSemanticTokens({
+                textDocument: { uri: URI },
+            } as any);
+
+            expect(editQueue.sendQueued).toHaveBeenCalled();
+            expect(requester.sendSemanticTokens).toHaveBeenCalledWith(URI);
+        });
+
+        it('onDocumentFormatting routes via the URI when the buffer is known', async () => {
+            (documents.get as jest.Mock).mockReturnValue({
+                getText: () => 'source',
+                lineCount: 3,
+            });
+
+            await handler.onDocumentFormatting({ textDocument: { uri: URI } } as any);
+
+            expect(requester.sendDocumentFormatting).toHaveBeenCalledWith(
+                URI,
+                'source',
+                expect.objectContaining({ start: { line: 0, character: 0 } })
+            );
+        });
+
+        it('onDocumentRangeFormatting routes via the URI when the buffer is known', async () => {
+            (documents.get as jest.Mock).mockReturnValue({
+                getText: () => 'source',
+                lineCount: 9,
+            });
+            const range = { start: { line: 3, character: 4 }, end: { line: 5, character: 0 } };
+
+            await handler.onDocumentRangeFormatting({
+                textDocument: { uri: URI },
+                range,
+            } as any);
+
+            expect(requester.sendDocumentRangeFormatting).toHaveBeenCalledWith(URI, 'source', range);
+        });
+    });
+
+    describe('untracked URIs short-circuit', () => {
+        beforeEach(() => {
+            (extensionState.getWorkspaceForUri as jest.Mock).mockReturnValue(null);
+        });
+
+        it('onCompletion returns an empty list when no workspace owns the URI', async () => {
+            const result = await handler.onCompletion({
+                textDocument: { uri: 'file:///outside.ghul' },
+                position: { line: 0, character: 0 },
+                context: { triggerCharacter: '.', triggerKind: 1 },
+            });
+
+            expect(result).toEqual([]);
+            expect(requester.sendCompletion).not.toHaveBeenCalled();
+        });
+
+        it('onHover returns null when no workspace owns the URI', async () => {
+            const result = await handler.onHover({
+                textDocument: { uri: 'file:///outside.ghul' },
+                position: { line: 0, character: 0 },
+            });
+
+            expect(result).toBeNull();
+            expect(requester.sendHover).not.toHaveBeenCalled();
+        });
+
+        it('onDocumentFormatting returns an empty list when no workspace owns the URI', async () => {
+            const result = await handler.onDocumentFormatting({
+                textDocument: { uri: 'file:///outside.ghul' },
+            } as any);
+
+            expect(result).toEqual([]);
+            expect(requester.sendDocumentFormatting).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('workspace-wide requests', () => {
+        it('onWorkspaceSymbol routes to the default workspace', async () => {
+            await handler.onWorkspaceSymbol();
+
+            expect(extensionState.defaultWorkspace).toHaveBeenCalled();
+            expect(requester.sendWorkspaceSymbol).toHaveBeenCalled();
+        });
+
+        it('onWorkspaceSymbol returns an empty list when no workspace is registered', async () => {
+            (extensionState.defaultWorkspace as jest.Mock).mockReturnValue(null);
+
+            const result = await handler.onWorkspaceSymbol();
+
+            expect(result).toEqual([]);
+            expect(requester.sendWorkspaceSymbol).not.toHaveBeenCalled();
         });
     });
 });

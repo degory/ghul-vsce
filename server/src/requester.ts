@@ -21,7 +21,7 @@ import { ServerEventEmitter } from './server-event-emitter';
 
 import { ResponseHandler } from './response-handler';
 
-import { rejectAllAndThrow, startWatchdogIfNotRunning } from './extension-state';
+import { Watchdog } from './watchdog';
 
 const version = require('./version') as string;
 
@@ -30,14 +30,17 @@ export class Requester {
     stream: any;
 
     response_handler: ResponseHandler;
+    watchdog: Watchdog;
 
     watchdog_timer: NodeJS.Timer;
 
     constructor(
         server_event_emitter: ServerEventEmitter,
-        response_handler: ResponseHandler
+        response_handler: ResponseHandler,
+        watchdog: Watchdog
     ) {
         this.response_handler = response_handler;
+        this.watchdog = watchdog;
         this.analysed = true;
 
         server_event_emitter.onRunning((child: ChildProcess) => {
@@ -51,7 +54,7 @@ export class Requester {
             this.stream.write(text);
         } catch(ex) {
             log("caught exception trying to send request data: compiler may have died:" + ex);
-            rejectAllAndThrow(ex);
+            this.response_handler.rejectAllAndThrow(ex);
         }
     }
 
@@ -62,7 +65,7 @@ export class Requester {
     }
 
     sendDocuments(documents: { uri: string, source: string }[]) {
-        startWatchdogIfNotRunning();
+        this.watchdog.startWatchdogIfNotRunning();
 
         this.send({
             command: "edit",
@@ -75,7 +78,7 @@ export class Requester {
 
     sendHover(uri: string, line: number, character: number): Promise<Hover> {
         if (this.analysed) {
-            startWatchdogIfNotRunning();
+            this.watchdog.startWatchdogIfNotRunning();
 
             this.send({
                 command: "hover",
@@ -92,7 +95,7 @@ export class Requester {
 
     sendDefinition(uri: string, line: number, character: number): Promise<Definition> {
         if (this.analysed) {
-            startWatchdogIfNotRunning();
+            this.watchdog.startWatchdogIfNotRunning();
 
             this.send({
                 command: "definition",
@@ -109,7 +112,7 @@ export class Requester {
 
     sendDeclaration(uri: string, line: number, character: number): Promise<Definition> {
         if (this.analysed) {
-            startWatchdogIfNotRunning();
+            this.watchdog.startWatchdogIfNotRunning();
 
             this.send({
                 command: "declaration",
@@ -126,7 +129,7 @@ export class Requester {
 
     sendCompletion(uri: string, line: number, character: number): Promise<CompletionItem[]> {
         if (this.analysed) {
-            startWatchdogIfNotRunning();
+            this.watchdog.startWatchdogIfNotRunning();
 
             this.send({
                 command: "complete",
@@ -143,7 +146,7 @@ export class Requester {
 
     sendSignature(uri: string, line: number, character: number): Promise<SignatureHelp> {
         if (this.analysed) {
-            startWatchdogIfNotRunning();
+            this.watchdog.startWatchdogIfNotRunning();
 
             this.send({
                 command: "signature",
@@ -160,7 +163,7 @@ export class Requester {
 
     sendDocumentSymbol(uri: string): Promise<SymbolInformation[]> {
         if (this.analysed) {
-            startWatchdogIfNotRunning();
+            this.watchdog.startWatchdogIfNotRunning();
 
             this.send({
                 command: "symbols",
@@ -175,7 +178,7 @@ export class Requester {
 
     sendWorkspaceSymbol(): Promise<SymbolInformation[]> {
         if (this.analysed) {
-            startWatchdogIfNotRunning();
+            this.watchdog.startWatchdogIfNotRunning();
 
             this.send({
                 command: "symbols",
@@ -190,7 +193,7 @@ export class Requester {
 
     sendReferences(uri: string, line: number, character: number): Promise<Location[]> {
         if (this.analysed) {
-            startWatchdogIfNotRunning();
+            this.watchdog.startWatchdogIfNotRunning();
 
             this.send({
                 command: "references",
@@ -207,7 +210,7 @@ export class Requester {
 
     sendImplementation(uri: string, line: number, character: number): Promise<Location[]> {
         if (this.analysed) {
-            startWatchdogIfNotRunning();
+            this.watchdog.startWatchdogIfNotRunning();
 
             this.send({
                 command: "implementation",
@@ -224,7 +227,7 @@ export class Requester {
 
     sendTypeDefinition(uri: string, line: number, character: number): Promise<Definition> {
         if (this.analysed) {
-            startWatchdogIfNotRunning();
+            this.watchdog.startWatchdogIfNotRunning();
 
             this.send({
                 command: "type_definition",
@@ -241,7 +244,7 @@ export class Requester {
 
     sendRenameRequest(uri: string, line: number, character: number, newName: string): Promise<WorkspaceEdit> {
         if (this.analysed) {
-            startWatchdogIfNotRunning();
+            this.watchdog.startWatchdogIfNotRunning();
 
             this.send({
                 command: "rename",
@@ -259,7 +262,7 @@ export class Requester {
 
     sendSemanticTokens(uri: string): Promise<SemanticTokens> {
         if (this.analysed) {
-            startWatchdogIfNotRunning();
+            this.watchdog.startWatchdogIfNotRunning();
 
             this.send({
                 command: "semantic_tokens",
@@ -274,7 +277,7 @@ export class Requester {
 
     sendDocumentFormatting(uri: string, source: string, range: Range): Promise<TextEdit[]> {
         if (this.analysed) {
-            startWatchdogIfNotRunning();
+            this.watchdog.startWatchdogIfNotRunning();
 
             this.send({
                 command: "format",
@@ -290,7 +293,7 @@ export class Requester {
 
     sendDocumentRangeFormatting(uri: string, source: string, range: Range): Promise<TextEdit[]> {
         if (this.analysed) {
-            startWatchdogIfNotRunning();
+            this.watchdog.startWatchdogIfNotRunning();
 
             this.send({
                 command: "format_range",
@@ -309,7 +312,7 @@ export class Requester {
     }
 
     sendFullCompileRequest() {
-        startWatchdogIfNotRunning();
+        this.watchdog.startWatchdogIfNotRunning();
 
         this.send({ command: "compile" });
     }
@@ -318,14 +321,14 @@ export class Requester {
     // lull in editing, so the watchdog's forced GC stays off the latency path
     // of interactive requests.
     sendHeapCheckRequest() {
-        startWatchdogIfNotRunning();
+        this.watchdog.startWatchdogIfNotRunning();
 
         this.send({ command: "heap_check" });
     }
 
     sendRestart() {
         if (this.analysed) {
-            startWatchdogIfNotRunning();
+            this.watchdog.startWatchdogIfNotRunning();
 
             this.send({ command: "restart" });
         }

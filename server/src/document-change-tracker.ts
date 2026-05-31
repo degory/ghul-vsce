@@ -6,26 +6,39 @@ import { debounce } from "throttle-debounce";
 import { normalizeFileUri } from "./normalize-file-uri";
 import { EditQueue } from "./edit-queue";
 
-import { reinitialize } from './extension-state'
 import { log } from "console";
 import { minimatch } from 'minimatch';
 import { readFileSync } from "fs";
 
-const debounced_reinitialize = debounce(5000, () => { reinitialize(); } );
+// Minimal contract DocumentChangeTracker needs from its owning workspace.
+// Declared structurally to avoid an import cycle with WorkspaceContext.
+export interface ReinitializableWorkspace {
+    reinitialize(): void;
+}
 
 export class DocumentChangeTracker {
+    workspace: ReinitializableWorkspace;
     edit_queue: EditQueue;
     globs: string[];
     documents: TextDocuments<TextDocument>;
 
+    private debounced_reinitialize: () => void;
+
     constructor(
+        workspace: ReinitializableWorkspace,
         edit_queue: EditQueue,
         globs: string[],
         documents: TextDocuments<TextDocument>
     ) {
+        this.workspace = workspace;
         this.edit_queue = edit_queue;
         this.globs = globs;
         this.documents = documents;
+
+        // Per-instance: with multi-workspace, each workspace runs its own
+        // debounce so a save in one folder cannot rate-limit a save in
+        // another.
+        this.debounced_reinitialize = debounce(5000, () => { this.workspace.reinitialize(); });
     }
 
     onDidChangeWatchedFiles(params: DidChangeWatchedFilesParams) {
@@ -43,17 +56,17 @@ export class DocumentChangeTracker {
             ) {
                 log("project file changed: " + c.uri);
 
-                debounced_reinitialize();
+                this.debounced_reinitialize();
 
                 return;
             } else if(c.uri.endsWith(".block-compiler")) {
                 log("compiler block requested: " + c.uri);
 
-                reinitialize();
+                this.workspace.reinitialize();
             }
 
             let fn = this.tryGetValidSourceFile(c.uri);
-            
+
             if (!fn) {
                 continue;
             }
@@ -94,7 +107,7 @@ export class DocumentChangeTracker {
     }
 
     tryGetValidSourceFile(uri: string) {
-        let parsed_uri = URI.parse(uri); 
+        let parsed_uri = URI.parse(uri);
 
         if (parsed_uri.scheme != "file") {
             return null;

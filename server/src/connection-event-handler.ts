@@ -32,56 +32,38 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import { log } from './log';
 
-import { getGhulConfig, GhulConfig } from './ghul-config';
+import { ExtensionState } from './extension-state';
 
-import { ConfigEventEmitter } from './config-event-emitter';
-
-import { ServerManager } from './server-manager';
-
-import { Requester } from './requester';
-
-import { EditQueue } from './edit-queue';
-import { generateAssembliesJson } from './generate-assemblies-json';
-import { restoreDotNetTools } from './restore-dotnet-tools';
-import { DocumentChangeTracker } from './document-change-tracker';
+import { WorkspaceContext } from './workspace-context';
 
 export class ConnectionEventHandler {
-    connection: Connection; 
-    server_manager: ServerManager;
-    config_event_emitter: ConfigEventEmitter;
-    requester: Requester;
-    edit_queue: EditQueue;
-    config: GhulConfig;
-    workspace_root: string;
-    document_change_tracker: DocumentChangeTracker;
+    extension_state: ExtensionState;
+    connection: Connection;
     documents: TextDocuments<TextDocument>;
 
     constructor(
+        extension_state: ExtensionState,
         connection: Connection,
-        server_manager: ServerManager,
-        config_event_emitter: ConfigEventEmitter,
-        requester: Requester,
-        edit_queue: EditQueue,
         documents: TextDocuments<TextDocument>
     ) {
+        this.extension_state = extension_state;
         this.connection = connection;
-        this.server_manager = server_manager;
-        this.config_event_emitter = config_event_emitter;
-        this.requester = requester;
-        this.edit_queue = edit_queue;
         this.documents = documents;
 
-        connection.onInitialize((params: InitializedParams): InitializeResult => 
+        connection.onInitialize((params: InitializedParams): InitializeResult =>
             this.onInitialize(params));
 
-        connection.onShutdown(() => 
+        connection.onShutdown(() =>
             this.onShutdown());
 
-        connection.onExit(() => 
+        connection.onExit(() =>
             this.onExit());
 
         connection.onDidChangeConfiguration((change: DidChangeConfigurationParams) =>
             this.onDidChangeConfiguration(change));
+
+        connection.onDidChangeWatchedFiles((change: DidChangeWatchedFilesParams) =>
+            this.extension_state.onDidChangeWatchedFiles(change));
 
         connection.onCompletion(
             (textDocumentPosition: CompletionParams): Promise<CompletionItem[]> =>
@@ -98,7 +80,7 @@ export class ConnectionEventHandler {
         connection.onDeclaration(
             (params: TextDocumentPositionParams): Promise<Definition> =>
                 this.onDeclaration(params));
-        
+
         connection.onSignatureHelp(
             (params: TextDocumentPositionParams): Promise<SignatureHelp> =>
                 this.onSignatureHelp(params));
@@ -140,56 +122,23 @@ export class ConnectionEventHandler {
                 this.onSemanticTokens(params));
     }
 
-    initialize() {
-        // generateAssembliesJson writes .assemblies.json; getGhulConfig
-        // reads it to build the -a flags for .analysis.rsp. Must run in
-        // this order — on a fresh checkout the file does not yet exist,
-        // so a reversed order leaves the analyser with no -a flags and
-        // it falls back to a five-assembly default.
-        let problems: string[] = [];
-
-        let tools_problem = restoreDotNetTools(this.workspace_root);
-        if (tools_problem) {
-            problems.push(tools_problem);
-        }
-
-        let assemblies_problem = generateAssembliesJson(this.workspace_root);
-        if (assemblies_problem) {
-            problems.push(assemblies_problem);
-        }
-
-        this.config = getGhulConfig(this.workspace_root);
-        problems.push(...(this.config.problems ?? []));
-
-        // A degraded-but-runnable load: warn so the user knows analysis may be
-        // incomplete. A load with no usable compiler is fatal and reported as
-        // an error by the server manager when it declines to spawn.
-        if (problems.length && this.config.compiler?.length) {
-            this.connection.window?.showWarningMessage(
-                "ghūl language extension: " + problems.join("; ")
-            );
-        }
-
-        // FIXME is there a better way to do this?
-        const workspace_root_munged = this.workspace_root.replace(/\\/g, '/');
-        
-        this.document_change_tracker =
-            new DocumentChangeTracker(
-                this.edit_queue,
-                this.config.source.map(glob => `${workspace_root_munged}/${glob}`),
-                this.documents
-            );
-
-        this.config_event_emitter.configAvailable(this.workspace_root, this.config);
-
-        this.connection.onDidChangeWatchedFiles((change: DidChangeWatchedFilesParams) =>
-            this.document_change_tracker?.onDidChangeWatchedFiles(change));
+    // Routes per-URI requests to the workspace that owns the file. Returns
+    // null when the URI lives outside every registered workspace (or when no
+    // workspace is registered yet); the per-request handlers below treat that
+    // as an empty result.
+    private workspaceForUri(uri: string): WorkspaceContext | null {
+        return this.extension_state.getWorkspaceForUri(uri);
     }
 
     onInitialize(params: any): InitializeResult {
-        this.workspace_root = params.rootPath;
+        // Single-workspace scaffolding: register the legacy rootPath as the
+        // sole workspace. Multi-workspace will read params.workspaceFolders
+        // instead and register one context per folder.
+        const workspace_root: string = params.rootPath;
 
-        this.initialize();
+        const workspace = this.extension_state.registerWorkspace(workspace_root);
+
+        workspace.initialize();
 
         return {
             capabilities: {
@@ -233,12 +182,15 @@ export class ConnectionEventHandler {
     }
 
     onShutdown() {
-	    log("language extension: shutting down...");
-	    this.server_manager.kill();
+        log("language extension: shutting down...");
+
+        for (const workspace of this.extension_state.allWorkspaces()) {
+            workspace.server_manager.kill();
+        }
     }
 
     onExit() {
-	    log("language extension: exit");
+        log("language extension: exit");
     }
 
     onDidChangeConfiguration(_change: DidChangeConfigurationParams) {
@@ -248,56 +200,135 @@ export class ConnectionEventHandler {
     }
 
     onCompletion(textDocumentPosition: CompletionParams): Promise<CompletionItem[]> {
-        if (textDocumentPosition.context.triggerCharacter == '.') {
-            this.edit_queue.sendQueued();
+        const workspace = this.workspaceForUri(textDocumentPosition.textDocument.uri);
+
+        if (!workspace) {
+            return Promise.resolve([]);
         }
 
-        return this.requester.sendCompletion(textDocumentPosition.textDocument.uri, textDocumentPosition.position.line, textDocumentPosition.position.character);
+        if (textDocumentPosition.context.triggerCharacter == '.') {
+            workspace.edit_queue.sendQueued();
+        }
+
+        return workspace.requester.sendCompletion(
+            textDocumentPosition.textDocument.uri,
+            textDocumentPosition.position.line,
+            textDocumentPosition.position.character
+        );
     }
 
     onHover(params: TextDocumentPositionParams): Promise<Hover> {
-        return this.requester.sendHover(params.textDocument.uri, params.position.line, params.position.character);
+        const workspace = this.workspaceForUri(params.textDocument.uri);
+
+        if (!workspace) {
+            return Promise.resolve(null);
+        }
+
+        return workspace.requester.sendHover(params.textDocument.uri, params.position.line, params.position.character);
     }
 
     onDefinition(params: TextDocumentPositionParams): Promise<Definition> {
-        return this.requester.sendDefinition(params.textDocument.uri, params.position.line, params.position.character);
+        const workspace = this.workspaceForUri(params.textDocument.uri);
+
+        if (!workspace) {
+            return Promise.resolve([]);
+        }
+
+        return workspace.requester.sendDefinition(params.textDocument.uri, params.position.line, params.position.character);
     }
 
     onDeclaration(params: TextDocumentPositionParams): Promise<Definition> {
-        return this.requester.sendDeclaration(params.textDocument.uri, params.position.line, params.position.character);
+        const workspace = this.workspaceForUri(params.textDocument.uri);
+
+        if (!workspace) {
+            return Promise.resolve([]);
+        }
+
+        return workspace.requester.sendDeclaration(params.textDocument.uri, params.position.line, params.position.character);
     }
-    
+
     onSignatureHelp(params: TextDocumentPositionParams): Promise<SignatureHelp> {
-        this.edit_queue.sendQueued();
-        
-        return this.requester.sendSignature(params.textDocument.uri, params.position.line, params.position.character);        
+        const workspace = this.workspaceForUri(params.textDocument.uri);
+
+        if (!workspace) {
+            return Promise.resolve(null);
+        }
+
+        workspace.edit_queue.sendQueued();
+
+        return workspace.requester.sendSignature(params.textDocument.uri, params.position.line, params.position.character);
     }
 
     onDocumentSymbol(params: DocumentSymbolParams): Promise<SymbolInformation[]> {
-        return this.requester.sendDocumentSymbol(params.textDocument.uri);
+        const workspace = this.workspaceForUri(params.textDocument.uri);
+
+        if (!workspace) {
+            return Promise.resolve([]);
+        }
+
+        return workspace.requester.sendDocumentSymbol(params.textDocument.uri);
     }
 
+    // Workspace-symbol queries are not URI-scoped. For now route to the
+    // default (first-registered) workspace; multi-workspace will need to fan
+    // out across every workspace and merge the results.
     onWorkspaceSymbol(): Promise<SymbolInformation[]> {
-        return this.requester.sendWorkspaceSymbol();
+        const workspace = this.extension_state.defaultWorkspace();
+
+        if (!workspace) {
+            return Promise.resolve([]);
+        }
+
+        return workspace.requester.sendWorkspaceSymbol();
     }
-    
+
     onReferences(params: ReferenceParams): Promise<Location[]> {
-        return this.requester.sendReferences(params.textDocument.uri, params.position.line, params.position.character);
+        const workspace = this.workspaceForUri(params.textDocument.uri);
+
+        if (!workspace) {
+            return Promise.resolve([]);
+        }
+
+        return workspace.requester.sendReferences(params.textDocument.uri, params.position.line, params.position.character);
     }
 
     onImplementation(params: TextDocumentPositionParams): Promise<Location[]> {
-        return this.requester.sendImplementation(params.textDocument.uri, params.position.line, params.position.character);
+        const workspace = this.workspaceForUri(params.textDocument.uri);
+
+        if (!workspace) {
+            return Promise.resolve([]);
+        }
+
+        return workspace.requester.sendImplementation(params.textDocument.uri, params.position.line, params.position.character);
     }
 
     onTypeDefinition(params: TextDocumentPositionParams): Promise<Definition> {
-        return this.requester.sendTypeDefinition(params.textDocument.uri, params.position.line, params.position.character);
+        const workspace = this.workspaceForUri(params.textDocument.uri);
+
+        if (!workspace) {
+            return Promise.resolve([]);
+        }
+
+        return workspace.requester.sendTypeDefinition(params.textDocument.uri, params.position.line, params.position.character);
     }
 
     onRenameRequest(params: RenameParams): Promise<WorkspaceEdit> {
-        return this.requester.sendRenameRequest(params.textDocument.uri, params.position.line, params.position.character, params.newName);
+        const workspace = this.workspaceForUri(params.textDocument.uri);
+
+        if (!workspace) {
+            return Promise.resolve(null);
+        }
+
+        return workspace.requester.sendRenameRequest(params.textDocument.uri, params.position.line, params.position.character, params.newName);
     }
 
     onDocumentFormatting(params: DocumentFormattingParams): Promise<TextEdit[]> {
+        const workspace = this.workspaceForUri(params.textDocument.uri);
+
+        if (!workspace) {
+            return Promise.resolve([]);
+        }
+
         let document = this.documents.get(params.textDocument.uri);
 
         if (!document) {
@@ -311,7 +342,7 @@ export class ConnectionEventHandler {
             end: { line: document.lineCount + 1, character: 0 }
         };
 
-        return this.requester.sendDocumentFormatting(
+        return workspace.requester.sendDocumentFormatting(
             params.textDocument.uri,
             document.getText(),
             whole_document
@@ -319,14 +350,26 @@ export class ConnectionEventHandler {
     }
 
     onSemanticTokens(params: SemanticTokensParams): Promise<SemanticTokens> {
+        const workspace = this.workspaceForUri(params.textDocument.uri);
+
+        if (!workspace) {
+            return Promise.resolve({ data: [] });
+        }
+
         // Flush queued edits so the analyser's hover map reflects the
         // current document text before we ask for tokens.
-        this.edit_queue.sendQueued();
+        workspace.edit_queue.sendQueued();
 
-        return this.requester.sendSemanticTokens(params.textDocument.uri);
+        return workspace.requester.sendSemanticTokens(params.textDocument.uri);
     }
 
     onDocumentRangeFormatting(params: DocumentRangeFormattingParams): Promise<TextEdit[]> {
+        const workspace = this.workspaceForUri(params.textDocument.uri);
+
+        if (!workspace) {
+            return Promise.resolve([]);
+        }
+
         let document = this.documents.get(params.textDocument.uri);
 
         if (!document) {
@@ -335,7 +378,7 @@ export class ConnectionEventHandler {
 
         // The analyser snaps the requested range out to whole enclosing
         // definitions/statements and replies with the exact span it formatted.
-        return this.requester.sendDocumentRangeFormatting(
+        return workspace.requester.sendDocumentRangeFormatting(
             params.textDocument.uri,
             document.getText(),
             params.range

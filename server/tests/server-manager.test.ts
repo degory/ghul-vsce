@@ -8,9 +8,10 @@ import { ConfigEventEmitter } from '../src/config-event-emitter';
 import { EditQueue } from '../src/edit-queue';
 import { ResponseParser } from '../src/response-parser';
 import { ResponseHandler } from '../src/response-handler';
-import { ExtensionState } from '../src/extension-state';
 import { Watchdog, COLD_START_TIMEOUT_MILLISECONDS } from '../src/watchdog';
 import { GhulConfig } from '../src/ghul-config';
+
+const TEST_WORKSPACE_ROOT = '/test/workspace';
 
 // jest.mock calls are hoisted above the imports so writeFileSync and spawn
 // resolve to the mocks even when imported normally:
@@ -40,6 +41,8 @@ describe('ServerManager (state helpers)', () => {
     let serverEvents: ServerEventEmitter;
     let configEvents: ConfigEventEmitter;
     let connection: any;
+    let watchdog: Watchdog;
+    let responseHandler: ResponseHandler;
 
     beforeEach(() => {
         serverEvents = new ServerEventEmitter();
@@ -54,13 +57,33 @@ describe('ServerManager (state helpers)', () => {
             },
         };
 
+        watchdog = new Watchdog(10000, () => {});
+
+        // start()'s exit handler calls response_handler.resolveAllPendingPromises,
+        // and recoverFromHang calls rejectAllPendingPromises. A stub with those
+        // two methods is enough for every test below.
+        responseHandler = {
+            resolveAllPendingPromises: jest.fn(),
+            rejectAllPendingPromises: jest.fn(),
+        } as unknown as ResponseHandler;
+
         manager = new ServerManager(
             configEvents,
             serverEvents,
             {} as EditQueue,
+            responseHandler,
             {} as ResponseParser,
+            watchdog,
+            TEST_WORKSPACE_ROOT,
             connection,
         );
+    });
+
+    afterEach(() => {
+        // A test that armed the watchdog must not leave it ticking past
+        // teardown; clear it so the timer can't fire into a torn-down test
+        // and crash the worker.
+        watchdog.clearWatchdog();
     });
 
     describe('startListening', () => {
@@ -192,17 +215,6 @@ describe('ServerManager (state helpers)', () => {
             (spawn as jest.Mock).mockClear().mockImplementation(() => makeFakeChild());
             manager.ghul_config = { ...baseConfig };
 
-            // start()'s exit handler calls resolveAllPendingPromises, which
-            // delegates to the ExtensionState singleton's response_handler.
-            // Wire a minimal stub so the handler doesn't throw and obscure
-            // the assertions we actually want to make:
-            const state = ExtensionState.getInstance();
-            state.watchdog = new Watchdog(10000, () => {});
-            state.response_handler = {
-                resolveAllPendingPromises: jest.fn(),
-                rejectAllPendingPromises: jest.fn(),
-            } as unknown as ResponseHandler;
-
             // launch() resets the parser before wiring the replacement's
             // stdout; give it a stub so that call doesn't throw.
             manager.response_parser = {
@@ -212,19 +224,18 @@ describe('ServerManager (state helpers)', () => {
         });
 
         afterEach(() => {
-            // requester.test.ts hits the same hazard: leaving the watchdog
-            // armed can fire after the test ends and crash the worker.
-            ExtensionState.getInstance().watchdog.clearWatchdog();
             jest.clearAllTimers();
             jest.useRealTimers();
         });
 
-        it('writes .analysis.rsp with shell-quoted arguments', () => {
+        it('writes .analysis.rsp inside the workspace root with shell-quoted arguments', () => {
             manager.start();
 
             expect(writeFileSync).toHaveBeenCalledTimes(1);
             const [path, contents] = (writeFileSync as jest.Mock).mock.calls[0];
-            expect(path).toBe('.analysis.rsp');
+            // Per-workspace .analysis.rsp so multiple compilers in the same
+            // host don't stomp on each other:
+            expect(path).toBe(`${TEST_WORKSPACE_ROOT}/.analysis.rsp`);
             // shell-quote joins with spaces; full argument list must round-trip:
             expect(contents).toBe('-a /path/to/A.dll -a /path/to/B.dll -A');
         });
@@ -262,13 +273,16 @@ describe('ServerManager (state helpers)', () => {
             expect(parse(contents)).toEqual(['-a', '/path with spaces/A.dll', '-A']);
         });
 
-        it('spawns the compiler head with the rest of its args plus @.analysis.rsp', () => {
+        it('spawns the compiler head with the rest of its args plus @.analysis.rsp, anchored to the workspace cwd', () => {
             manager.start();
 
             expect(spawn).toHaveBeenCalledTimes(1);
-            const [head, args] = (spawn as jest.Mock).mock.calls[0];
+            const [head, args, options] = (spawn as jest.Mock).mock.calls[0];
             expect(head).toBe('dotnet');
+            // @.analysis.rsp stays workspace-relative — the cwd is what
+            // anchors it to the right per-workspace file:
             expect(args).toEqual(['tool', 'run', 'ghul-compiler', '@.analysis.rsp']);
+            expect(options).toEqual({ cwd: TEST_WORKSPACE_ROOT });
         });
 
         it('emits starting then running, with the spawned child', () => {
@@ -373,13 +387,12 @@ describe('ServerManager (state helpers)', () => {
 
         it('enters watchdog cold start on launch so the replacement\'s cold '
             + 'first compile is not killed', () => {
-            const state = ExtensionState.getInstance();
             // A calibrated steady-state timeout, as the edit queue would leave it.
-            state.watchdog.setTimeout(3676);
+            watchdog.setTimeout(3676);
 
             manager.start();
 
-            expect(state.watchdog.timeout_milliseconds)
+            expect(watchdog.timeout_milliseconds)
                 .toBe(COLD_START_TIMEOUT_MILLISECONDS);
         });
 
