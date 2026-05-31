@@ -9,27 +9,7 @@ import { EditQueue } from '../src/edit-queue';
 
 jest.mock('../src/config-event-emitter');
 
-// describe('ResponseHandler', () => {
-//     it('should be constructable', () => {
-//         let connection = {} as Connection;
-
-//         let response_handler = new ResponseHandler(
-//             connection,
-//             new ProblemStore(),
-//             new ConfigEventEmitter()
-//         );
-
-//         expect(response_handler).toBeInstanceOf(ResponseHandler);
-//     });
-
-//     it('should just work', () => {
-//         // don't care
-
-//         expect(true).toBe(true);
-//     });
-//  });
- 
- describe('ResponseHandler', () => {
+describe('ResponseHandler', () => {
     let connection: Connection;
     let configEventEmitter: ConfigEventEmitter;
     let responseHandler: ResponseHandler;
@@ -56,10 +36,9 @@ jest.mock('../src/config-event-emitter');
             arguments: [],
             want_plaintext_hover: true
         };
-        // configEventEmitter.emit('configAvailable', 'workspace', config);
 
         responseHandler.onConfigAvailable('workspace', config);
-        
+
         expect(responseHandler.want_plaintext_hover).toBe(true);
     });
 
@@ -83,7 +62,6 @@ jest.mock('../src/config-event-emitter');
         expect(responseHandler._symbols_promise_queue.isEmpty()).toBe(true);
         expect(responseHandler._references_promise_queue.isEmpty()).toBe(true);
         expect(responseHandler._implementation_promise_queue.isEmpty()).toBe(true);
-
     });
 
     it('should resolve all pending promises to no result', async () => {
@@ -96,9 +74,9 @@ jest.mock('../src/config-event-emitter');
         let references_promise = responseHandler._references_promise_queue.enqueue();
         let implementation_promise = responseHandler._implementation_promise_queue.enqueue();
         let rename_promise = responseHandler._rename_promise_queue.enqueue();
-        
+
         responseHandler.resolveAllPendingPromises();
-       
+
         expect(await hover_promise).toBe(null);
         expect(await definition_promise).toEqual([]);
         expect(await declaration_promise).toEqual([]);
@@ -136,7 +114,7 @@ jest.mock('../src/config-event-emitter');
             rename_promise
         ]);
 
-        results.forEach(result => { 
+        results.forEach(result => {
             expect(result.status).toBe('rejected');
             if (result.status === 'rejected') {
                 expect(result.reason).toBe(errorMessage);
@@ -157,7 +135,6 @@ jest.mock('../src/config-event-emitter');
     });
 
     it('should start listening on handleListen', () => {
-        // create a mock ServerManager
         responseHandler.server_manager = {
             startListening: () => {}
         } as ServerManager;
@@ -167,123 +144,111 @@ jest.mock('../src/config-event-emitter');
         expect(startListeningSpy).toHaveBeenCalled();
     });
 
-    it('should send diagnostics on handleDiagnostics', () => {
+    it('handleDiagnostics sends one sendDiagnostics call per checked path with its diagnostics', () => {
         responseHandler.connection = {
             sendDiagnostics: () => {}
         } as any;
-
         responseHandler.edit_queue = {
-            onDiagnosticsReceived: () => {}
+            onDiagnosticsReceived: () => {},
+            onFullCompileDone: () => {},
+            onPartialCompileDone: () => {},
         } as any;
 
         const onDiagnosticsReceivedSpy = jest.spyOn(responseHandler.edit_queue, 'onDiagnosticsReceived');
-
         const sendDiagnosticsSpy = jest.spyOn(responseHandler.connection, 'sendDiagnostics');
 
-        /*
-{               uri: fields[0],
-                severity: SeverityMapper.getSeverity(fields[5], "new"),
-                range: {
-                    start: { line: Number(fields[1]) - 1, character: Number(fields[2]) - 1 },
-                    end: { line: Number(fields[3]) - 1, character: Number(fields[4]) - 1 }
-                },
-                message: fields[6],
-                source: 'ghūl'
-            }
-
-        */
-
-        let diagnostics = [
-            ["file://test.ghul", 1, 20, 2, 30, 1, 'Diagnostic 1'],
-            ["file://test.ghul", 1, 20, 2, 30, 2, 'Diagnostic 2'],    
-            ["file://test.ghul", 1, 20, 2, 30, 3, 'Diagnostic 3'],    
-            ["file://test.ghul", 1, 20, 2, 30, 4, 'Diagnostic 4'],    
-        ];
-
-        const diagnosticsLines = diagnostics.map(d => d.join('\t'));
-
-        responseHandler.handleDiagnostics(diagnosticsLines);
+        responseHandler.handleDiagnostics({
+            kind: 'diagnostics',
+            checked_paths: ['file:///test.ghul'],
+            diagnostics: [
+                { path: 'file:///test.ghul', start_line: 1, start_column: 20, end_line: 2, end_column: 30, severity: 1, message: 'Diagnostic 1' },
+                { path: 'file:///test.ghul', start_line: 1, start_column: 20, end_line: 2, end_column: 30, severity: 2, message: 'Diagnostic 2' },
+                { path: 'file:///test.ghul', start_line: 1, start_column: 20, end_line: 2, end_column: 30, severity: 3, message: 'Diagnostic 3' },
+                { path: 'file:///test.ghul', start_line: 1, start_column: 20, end_line: 2, end_column: 30, severity: 4, message: 'Diagnostic 4' },
+            ],
+            phase: 'query',
+            elapsed_ms: 0,
+            compile_needed: false,
+        } as any);
 
         expect(sendDiagnosticsSpy).toHaveBeenCalledWith({
-            uri: 'file://test.ghul/',
+            uri: 'file:///test.ghul',
             diagnostics: [
-                {
-                    severity: 1,
-                    range: {
-                        start: { line: 0, character: 19 },
-                        end: { line: 1, character: 29 }
-                    },
-                    message: 'Diagnostic 1',
-                    source: 'ghūl'
-                },
-                {
-                    severity: 2,
-                    range: {
-                        start: { line: 0, character: 19 },
-                        end: { line: 1, character: 29 }
-                    },
-                    message: 'Diagnostic 2',
-                    source: 'ghūl'
-                },
-                {
-                    severity: 3,
-                    range: {
-                        start: { line: 0, character: 19 },
-                        end: { line: 1, character: 29 }
-                    },
-                    message: 'Diagnostic 3',
-                    source: 'ghūl'
-                },
-                {
-                    severity: 4,
-                    range: {
-                        start: { line: 0, character: 19 },
-                        end: { line: 1, character: 29 }
-                    },
-                    message: 'Diagnostic 4',
-                    source: 'ghūl'
-                }
+                { severity: 1, range: { start: { line: 0, character: 19 }, end: { line: 1, character: 29 } }, message: 'Diagnostic 1', source: 'ghūl' },
+                { severity: 2, range: { start: { line: 0, character: 19 }, end: { line: 1, character: 29 } }, message: 'Diagnostic 2', source: 'ghūl' },
+                { severity: 3, range: { start: { line: 0, character: 19 }, end: { line: 1, character: 29 } }, message: 'Diagnostic 3', source: 'ghūl' },
+                { severity: 4, range: { start: { line: 0, character: 19 }, end: { line: 1, character: 29 } }, message: 'Diagnostic 4', source: 'ghūl' },
             ]
         });
-
         expect(onDiagnosticsReceivedSpy).toHaveBeenCalled();
     });
 
-    it('should call onFullCompileDone on handleFullCompileDone', () => {
+    it('handleDiagnostics with phase=full drives the edit queue via onFullCompileDone', () => {
+        responseHandler.connection = { sendDiagnostics: () => {} } as any;
         responseHandler.edit_queue = {
-            onFullCompileDone: () => {}
+            onDiagnosticsReceived: () => {},
+            onFullCompileDone: () => {},
+            onPartialCompileDone: () => {},
         } as any;
 
-        const onFullCompileDoneSpy = jest.spyOn(responseHandler.edit_queue, 'onFullCompileDone');
+        const fullSpy = jest.spyOn(responseHandler.edit_queue, 'onFullCompileDone');
+        const partialSpy = jest.spyOn(responseHandler.edit_queue, 'onPartialCompileDone');
 
-        responseHandler.handleFullCompileDone(["1000"]);
-        expect(onFullCompileDoneSpy).toHaveBeenCalled();
+        responseHandler.handleDiagnostics({
+            kind: 'diagnostics', checked_paths: [], diagnostics: [],
+            phase: 'full', elapsed_ms: 1000, compile_needed: false,
+        } as any);
+
+        expect(fullSpy).toHaveBeenCalledWith(1000);
+        expect(partialSpy).not.toHaveBeenCalled();
     });
 
-    it('should call onPartialCompileDone on handlePartialCompileDone', () => {
+    it('handleDiagnostics with phase=partial drives the edit queue via onPartialCompileDone', () => {
+        responseHandler.connection = { sendDiagnostics: () => {} } as any;
         responseHandler.edit_queue = {
-            onPartialCompileDone: () => {}
+            onDiagnosticsReceived: () => {},
+            onFullCompileDone: () => {},
+            onPartialCompileDone: () => {},
         } as any;
 
-        const onPartialCompileDoneSpy = jest.spyOn(responseHandler.edit_queue, 'onPartialCompileDone');
+        const fullSpy = jest.spyOn(responseHandler.edit_queue, 'onFullCompileDone');
+        const partialSpy = jest.spyOn(responseHandler.edit_queue, 'onPartialCompileDone');
 
-        responseHandler.handlePartialCompileDone(["1000"]);
-        expect(onPartialCompileDoneSpy).toHaveBeenCalled();
+        responseHandler.handleDiagnostics({
+            kind: 'diagnostics', checked_paths: [], diagnostics: [],
+            phase: 'partial', elapsed_ms: 500, compile_needed: true,
+        } as any);
+
+        expect(partialSpy).toHaveBeenCalledWith(500);
+        expect(fullSpy).not.toHaveBeenCalled();
+    });
+
+    it('handleDiagnostics with phase=query applies diagnostics but does not drive the state machine', () => {
+        responseHandler.connection = { sendDiagnostics: () => {} } as any;
+        responseHandler.edit_queue = {
+            onDiagnosticsReceived: () => {},
+            onFullCompileDone: () => {},
+            onPartialCompileDone: () => {},
+        } as any;
+
+        const fullSpy = jest.spyOn(responseHandler.edit_queue, 'onFullCompileDone');
+        const partialSpy = jest.spyOn(responseHandler.edit_queue, 'onPartialCompileDone');
+
+        responseHandler.handleDiagnostics({
+            kind: 'diagnostics', checked_paths: [], diagnostics: [],
+            phase: 'query', elapsed_ms: 0, compile_needed: false,
+        } as any);
+
+        expect(fullSpy).not.toHaveBeenCalled();
+        expect(partialSpy).not.toHaveBeenCalled();
     });
 
     it('should enqueue and resolve hover promise on expectHover and handleHover', async () => {
         const hoverPromise = responseHandler.expectHover();
-        // const hoverResolveSpy = jest.spyOn(responseHandler._hover_promise_queue, 'resolve');
 
-        const hoverLines = ['Hover content'];
-        responseHandler.handleHover(hoverLines);
+        responseHandler.handleHover({ kind: 'hover', description: 'Hover content' } as any);
 
         const hoverResult = await hoverPromise;
-
-        // expect(hoverResolveSpy).toHaveBeenCalledWith({
-        //     contents: { kind: 'plaintext', value: 'Hover content' }
-        // });
-
         expect(hoverResult).toEqual({
             contents: { language: 'ghul', value: 'Hover content' }
         });
@@ -291,234 +256,146 @@ jest.mock('../src/config-event-emitter');
 
     it('should enqueue and resolve definition promise on expectDefinition and handleDefinition', async () => {
         const definitionPromise = responseHandler.expectDefinition();
-        // const definitionResolveSpy = jest.spyOn(responseHandler._definition_promise_queue, 'resolve');
 
-        const definitionLines = ['file:///path/to/file\t1\t20\t2\t30'];
-        responseHandler.handleDefinition(definitionLines);
+        responseHandler.handleDefinition({
+            locations: [
+                { file: 'file:///path/to/file', start_line: 1, start_column: 20, end_line: 2, end_column: 30 },
+            ],
+        } as any);
 
-        const definitionResult = await definitionPromise;
-
-        // expect(definitionResult).resolves.toEqual({
-        //     uri: 'file:///path/to/file',
-        //     range: {
-        //         start: { line: 0, character: 19 },
-        //         end: { line: 1, character: 30 }
-        //     }
-        // });
-
-        expect(definitionResult).toEqual({
+        // Single location → resolves with the Location directly.
+        expect(await definitionPromise).toEqual({
             uri: 'file:///path/to/file',
             range: {
                 start: { line: 0, character: 19 },
-                end: { line: 1, character: 30 }
-            }
+                // end_column passes through without -1, matching the
+                // protocol's parseLocations end-column handling.
+                end: { line: 1, character: 30 },
+            },
         });
     });
 
     it('should enqueue and resolve declaration promise on expectDeclaration and handleDeclaration', async () => {
         const declarationPromise = responseHandler.expectDeclaration();
-        // const declarationResolveSpy = jest.spyOn(responseHandler._declaration_promise_queue, 'resolve');
 
-        const declarationLines = ['file:///path/to/file\t1\t20\t2\t30'];
-        responseHandler.handleDeclaration(declarationLines);
+        responseHandler.handleDeclaration({
+            locations: [
+                { file: 'file:///path/to/file', start_line: 1, start_column: 20, end_line: 2, end_column: 30 },
+            ],
+        } as any);
 
-        const declarationResult = await declarationPromise;
-
-        // expect(declarationResolveSpy).toHaveBeenCalledWith([
-        //     {
-        //         uri: 'file:///path/to/file',
-        //         range: {
-        //             start: { line: 0, character: 19 },
-        //             end: { line: 1, character: 30 }
-        //         }
-        //     }
-        // ]);
-
-        expect(declarationResult).toEqual([
+        expect(await declarationPromise).toEqual([
             {
                 uri: 'file:///path/to/file',
                 range: {
                     start: { line: 0, character: 19 },
-                    end: { line: 1, character: 30 }
-                }
-            }
+                    end: { line: 1, character: 30 },
+                },
+            },
         ]);
     });
 
     it('should enqueue and resolve completion promise on expectCompletion and handleCompletion', async () => {
         const completionPromise = responseHandler.expectCompletion();
-        // const completionResolveSpy = jest.spyOn(responseHandler._completion_promise_queue, 'resolve');
 
-        const completionLines = ['item1\t1\tDetail 1', 'item2\t2\tDetail 2'];
-        responseHandler.handleCompletion(completionLines);
+        responseHandler.handleCompletion({
+            kind: 'completion',
+            items: [
+                { name: 'item1', kind: 1, description: 'Detail 1' },
+                { name: 'item2', kind: 2, description: 'Detail 2' },
+            ],
+        } as any);
 
-        const completionResult = await completionPromise;
-
-        // expect(completionResolveSpy).toHaveBeenCalledWith([
-        //     {
-        //         label: 'item1',
-        //         kind: 1,
-        //         detail: 'Detail 1'
-        //     },
-        //     {
-        //         label: 'item2',
-        //         kind: 2,
-        //         detail: 'Detail 2'
-        //     }
-        // ]);
-
-        expect(completionResult).toEqual([
-            {
-                label: 'item1',
-                kind: 1,
-                detail: 'Detail 1'
-            },
-            {
-                label: 'item2',
-                kind: 2,
-                detail: 'Detail 2'
-            }
+        expect(await completionPromise).toEqual([
+            { label: 'item1', kind: 1, detail: 'Detail 1' },
+            { label: 'item2', kind: 2, detail: 'Detail 2' },
         ]);
     });
 
     it('should enqueue and resolve signature promise on expectSignature and handleSignature', async () => {
         const signaturePromise = responseHandler.expectSignature();
 
-        const signatureLines = [
-            '1', 
-            '2', 
-            'function1\tf1 param1\tf1 param2\tf1 param3', 
-            'function2\tf2 param1\tf2 param2\tf2 param3'
-        ];
-
-        responseHandler.handleSignature(signatureLines);
-
-        const signatureResult = await signaturePromise;
-
-        expect(signatureResult).toEqual({
+        responseHandler.handleSignature({
+            kind: 'signature',
+            best_signature_index: 1,
+            current_parameter_index: 2,
             signatures: [
-                {
-                    label: 'function1',
-                    parameters: [
-                        { label: 'f1 param1' },
-                        { label: 'f1 param2' },
-                        { label: 'f1 param3' }
-                    ]
-                },
-                {
-                    label: 'function2',
-                    parameters: [
-                        { label: 'f2 param1' },
-                        { label: 'f2 param2' },
-                        { label: 'f2 param3' }
-                    ]
-                }
+                { label: 'function1', parameters: ['f1 param1', 'f1 param2', 'f1 param3'] },
+                { label: 'function2', parameters: ['f2 param1', 'f2 param2', 'f2 param3'] },
+            ],
+        } as any);
+
+        expect(await signaturePromise).toEqual({
+            signatures: [
+                { label: 'function1', parameters: [{ label: 'f1 param1' }, { label: 'f1 param2' }, { label: 'f1 param3' }] },
+                { label: 'function2', parameters: [{ label: 'f2 param1' }, { label: 'f2 param2' }, { label: 'f2 param3' }] },
             ],
             activeSignature: 1,
-            activeParameter: 2
+            activeParameter: 2,
         });
     });
 
     it('should enqueue and resolve symbols promise on expectSymbols and handleSymbols', async () => {
         const symbolsPromise = responseHandler.expectSymbols();
-        // const symbolsResolveSpy = jest.spyOn(responseHandler._symbols_promise_queue, 'resolve');
 
-        const symbolsLines = [ 'file:///path/to/file', 'symbol1\t1\t1\t1\t1\t1\tcontainer1', 'symbol2\t2\t2\t2\t2\t2\tcontainer2'];
-        responseHandler.handleSymbols(symbolsLines);
+        responseHandler.handleSymbols({
+            kind: 'symbols',
+            files: [
+                {
+                    path: 'file:///path/to/file',
+                    symbols: [
+                        { search_description: 'symbol1', kind: 1, start_line: 1, start_column: 1, end_line: 1, end_column: 1, qualifier: 'container1' },
+                        { search_description: 'symbol2', kind: 2, start_line: 2, start_column: 2, end_line: 2, end_column: 2, qualifier: 'container2' },
+                    ],
+                },
+            ],
+        } as any);
 
-        const symbolsResult = await symbolsPromise;
-
-        // expect(symbolsResolveSpy).toHaveBeenCalledWith([
-        //     {
-        //         name: 'symbol1',
-        //         kind: 1,
-        //         location: {
-        //             uri: 'file:///path/to/file',
-        //             range: {
-        //                 start: { line: 0, character: 0 },
-        //                 end: { line: 0, character: 0 }
-        //             }
-        //         },
-        //         containerName: 'container1'
-        //     },
-        //     {
-        //         name: 'symbol2',
-        //         kind: 2,
-        //         location: {
-        //             uri: 'file:///path/to/file',
-        //             range: {
-        //                 start: { line: 1, character: 1 },
-        //                 end: { line: 1, character: 1 }
-        //             }
-        //         },
-        //         containerName: 'container2'
-        //     }
-        // ]);
-
-        expect(symbolsResult).toEqual([
+        expect(await symbolsPromise).toEqual([
             {
-                name: 'symbol1',
-                kind: 1,
+                name: 'symbol1', kind: 1,
                 location: {
                     uri: 'file:///path/to/file',
-                    range: {
-                        start: { line: 0, character: 0 },
-                        end: { line: 0, character: 0 }
-                    }
+                    range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
                 },
-                containerName: 'container1'
+                containerName: 'container1',
             },
             {
-                name: 'symbol2',
-                kind: 2,
+                name: 'symbol2', kind: 2,
                 location: {
                     uri: 'file:///path/to/file',
-                    range: {
-                        start: { line: 1, character: 1 },
-                        end: { line: 1, character: 1 }
-                    }
+                    range: { start: { line: 1, character: 1 }, end: { line: 1, character: 1 } },
                 },
-                containerName: 'container2'
-            }
+                containerName: 'container2',
+            },
         ]);
     });
 
     it('should enqueue and resolve references promise on expectReferences and handleReferences', async () => {
         const referencesPromise = responseHandler.expectReferences();
-        // const referencesResolveSpy = jest.spyOn(responseHandler._references_promise_queue, 'resolve');
 
-        const referencesLines = ['file:///path/to/file\t1\t20\t2\t30'];
-        responseHandler.handleReferences(referencesLines);
+        responseHandler.handleReferences({
+            locations: [
+                { file: 'file:///path/to/file', start_line: 1, start_column: 20, end_line: 2, end_column: 30 },
+            ],
+        } as any);
 
-        const referencesResult = await referencesPromise;
-
-        // expect(referencesResolveSpy).toHaveBeenCalledWith([
-        //     {
-        //         uri: 'file:///path/to/file',
-        //         range: {
-        //             start: { line: 0, character: 19 },
-        //             end: { line: 1, character: 30 }
-        //         }
-        //     }
-        // ]);
-        
-        expect(referencesResult).toEqual([
+        expect(await referencesPromise).toEqual([
             {
                 uri: 'file:///path/to/file',
-                range: {
-                    start: { line: 0, character: 19 },
-                    end: { line: 1, character: 30 }
-                }
-            }
+                range: { start: { line: 0, character: 19 }, end: { line: 1, character: 30 } },
+            },
         ]);
     });
 
-    it('handleImplementation parses location lines like handleReferences', async () => {
+    it('handleImplementation parses locations like handleReferences', async () => {
         const p = responseHandler.expectImplementation();
-        responseHandler.handleImplementation([
-            'file:///a.ghul\t1\t1\t1\t10',
-            'file:///b.ghul\t2\t1\t2\t5',
-        ]);
+        responseHandler.handleImplementation({
+            locations: [
+                { file: 'file:///a.ghul', start_line: 1, start_column: 1, end_line: 1, end_column: 10 },
+                { file: 'file:///b.ghul', start_line: 2, start_column: 1, end_line: 2, end_column: 5 },
+            ],
+        } as any);
 
         await expect(p).resolves.toEqual([
             { uri: 'file:///a.ghul', range: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } } },
@@ -528,11 +405,14 @@ jest.mock('../src/config-event-emitter');
 
     it('handleRenameRequest groups edits by uri', async () => {
         const p = responseHandler.expectRenameRequest();
-        responseHandler.handleRenameRequest([
-            'file:///a.ghul\t1\t1\t1\t5\tnewA1',
-            'file:///a.ghul\t2\t1\t2\t5\tnewA2',
-            'file:///b.ghul\t1\t1\t1\t5\tnewB',
-        ]);
+        responseHandler.handleRenameRequest({
+            kind: 'rename',
+            edits: [
+                { file: 'file:///a.ghul', start_line: 1, start_column: 1, end_line: 1, end_column: 5, new_name: 'newA1' },
+                { file: 'file:///a.ghul', start_line: 2, start_column: 1, end_line: 2, end_column: 5, new_name: 'newA2' },
+                { file: 'file:///b.ghul', start_line: 1, start_column: 1, end_line: 1, end_column: 5, new_name: 'newB' },
+            ],
+        } as any);
 
         const result = await p;
         expect(result.changes!['file:///a.ghul']).toHaveLength(2);
@@ -540,9 +420,9 @@ jest.mock('../src/config-event-emitter');
         expect(result.changes!['file:///b.ghul']![0].newText).toBe('newB');
     });
 
-    it('handleRenameRequest resolves with an empty changes object when given no lines', async () => {
+    it('handleRenameRequest resolves with an empty changes object when given no edits', async () => {
         const p = responseHandler.expectRenameRequest();
-        responseHandler.handleRenameRequest([]);
+        responseHandler.handleRenameRequest({ kind: 'rename', edits: [] } as any);
 
         await expect(p).resolves.toEqual({ changes: {} });
     });
@@ -551,62 +431,64 @@ jest.mock('../src/config-event-emitter');
         responseHandler.want_plaintext_hover = true;
         const p = responseHandler.expectHover();
 
-        responseHandler.handleHover(['some hover text']);
+        responseHandler.handleHover({ kind: 'hover', description: 'some hover text' } as any);
 
         await expect(p).resolves.toEqual({
             contents: { kind: 'plaintext', value: 'some hover text' },
         });
     });
 
-    it('handleHover resolves to null on empty lines', async () => {
+    it('handleHover resolves to null on an empty description', async () => {
         const p = responseHandler.expectHover();
 
-        responseHandler.handleHover([]);
+        responseHandler.handleHover({ kind: 'hover', description: '' } as any);
 
         await expect(p).resolves.toBeNull();
     });
 
-    it('handleDefinition resolves to null when no lines are given', async () => {
+    it('handleHover resolves to null on a null description', async () => {
+        const p = responseHandler.expectHover();
+
+        responseHandler.handleHover({ kind: 'hover', description: null } as any);
+
+        await expect(p).resolves.toBeNull();
+    });
+
+    it('handleDefinition resolves to null when no locations are given', async () => {
         const p = responseHandler.expectDefinition();
 
-        responseHandler.handleDefinition([]);
+        responseHandler.handleDefinition({ locations: [] } as any);
 
         await expect(p).resolves.toBeNull();
     });
 
-    it('handleDeclaration resolves to [] when no lines are given', async () => {
+    it('handleDeclaration resolves to [] when no locations are given', async () => {
         const p = responseHandler.expectDeclaration();
 
-        responseHandler.handleDeclaration([]);
+        responseHandler.handleDeclaration({ locations: [] } as any);
 
         await expect(p).resolves.toEqual([]);
     });
 
-    it('handleCompletion drops lines without enough fields', async () => {
+    it('handleCompletion resolves to [] when items is empty', async () => {
         const p = responseHandler.expectCompletion();
 
-        responseHandler.handleCompletion([
-            'ok-item\t5\tDetail',  // valid
-            'too-few-fields',       // invalid – dropped
-            '',                     // invalid – dropped
-        ]);
+        responseHandler.handleCompletion({ kind: 'completion', items: [] } as any);
 
-        await expect(p).resolves.toEqual([
-            { label: 'ok-item', kind: 5, detail: 'Detail' },
-        ]);
+        await expect(p).resolves.toEqual([]);
     });
 
     it('handleSymbols filters out internal/reflected sentinel uris', async () => {
         const p = responseHandler.expectSymbols();
 
-        responseHandler.handleSymbols([
-            'internal',
-            'symbolA\t1\t1\t1\t1\t1\tcontainer',
-            'reflected',
-            'symbolB\t1\t1\t1\t1\t1\tcontainer',
-            'file:///real.ghul',
-            'symbolC\t1\t1\t1\t1\t1\tcontainer',
-        ]);
+        responseHandler.handleSymbols({
+            kind: 'symbols',
+            files: [
+                { path: 'internal', symbols: [{ search_description: 'symbolA', kind: 1, start_line: 1, start_column: 1, end_line: 1, end_column: 1, qualifier: 'container' }] },
+                { path: 'reflected', symbols: [{ search_description: 'symbolB', kind: 1, start_line: 1, start_column: 1, end_line: 1, end_column: 1, qualifier: 'container' }] },
+                { path: 'file:///real.ghul', symbols: [{ search_description: 'symbolC', kind: 1, start_line: 1, start_column: 1, end_line: 1, end_column: 1, qualifier: 'container' }] },
+            ],
+        } as any);
 
         const result = await p;
         expect(result.find(s => s.location.uri === 'internal')).toBeUndefined();
@@ -617,11 +499,18 @@ jest.mock('../src/config-event-emitter');
     it('handleSymbols filters out entries with negative line/character coordinates', async () => {
         const p = responseHandler.expectSymbols();
 
-        responseHandler.handleSymbols([
-            'file:///a.ghul',
-            'bad\t1\t-1\t1\t1\t1\tcontainer',
-            'good\t1\t1\t1\t1\t1\tcontainer',
-        ]);
+        responseHandler.handleSymbols({
+            kind: 'symbols',
+            files: [
+                {
+                    path: 'file:///a.ghul',
+                    symbols: [
+                        { search_description: 'bad', kind: 1, start_line: 1, start_column: 0, end_line: 1, end_column: 1, qualifier: 'container' },
+                        { search_description: 'good', kind: 1, start_line: 1, start_column: 1, end_line: 1, end_column: 1, qualifier: 'container' },
+                    ],
+                },
+            ],
+        } as any);
 
         const result = await p;
         expect(result.map(s => s.name)).toEqual(['good']);
@@ -630,7 +519,12 @@ jest.mock('../src/config-event-emitter');
     it('handleSignature handles negative active_signature by leaving it undefined', async () => {
         const p = responseHandler.expectSignature();
 
-        responseHandler.handleSignature(['-1', '0', 'fn\tparam']);
+        responseHandler.handleSignature({
+            kind: 'signature',
+            best_signature_index: -1,
+            current_parameter_index: 0,
+            signatures: [{ label: 'fn', parameters: ['param'] }],
+        } as any);
 
         const result = await p;
         expect(result.activeSignature).toBeUndefined();
@@ -638,10 +532,12 @@ jest.mock('../src/config-event-emitter');
         expect(result.signatures).toHaveLength(1);
     });
 
-    it('handleSignature returns an empty signature set when given no lines', async () => {
+    it('handleSignature returns an empty signature set when given no signatures', async () => {
         const p = responseHandler.expectSignature();
 
-        responseHandler.handleSignature([]);
+        responseHandler.handleSignature({
+            kind: 'signature', best_signature_index: 0, current_parameter_index: 0, signatures: [],
+        } as any);
 
         const result = await p;
         expect(result.signatures).toEqual([]);
@@ -669,10 +565,6 @@ jest.mock('../src/config-event-emitter');
     });
 
     it('setServerManager throws on a second assignment', () => {
-        // First assignment is OK; second goes through rejectAllAndThrow.
-        // We rely on a singleton response_handler being present (set up by
-        // an earlier test) so rejectAllAndThrow doesn't NPE before throwing.
-        // setEditQueue follows the same shape.
         const ExtensionState = require('../src/extension-state').ExtensionState;
         ExtensionState.getInstance().response_handler = responseHandler;
 
@@ -691,20 +583,48 @@ jest.mock('../src/config-event-emitter');
     });
 
     it('parseDiagnostics tolerates non-file uri prefixes and adds file://', () => {
-        const result = responseHandler.parseDiagnostics([
-            '/abs/path/x.ghul\t1\t1\t1\t5\t1\tmessage',
-        ]);
+        const result = responseHandler.parseDiagnostics({
+            kind: 'diagnostics',
+            checked_paths: [],
+            diagnostics: [
+                { path: '/abs/path/x.ghul', start_line: 1, start_column: 1, end_line: 1, end_column: 5, severity: 1, message: 'message' },
+            ],
+            phase: 'query', elapsed_ms: 0, compile_needed: false,
+        } as any);
         const uris = Array.from(result.keys());
         expect(uris[0].startsWith('file://')).toBe(true);
     });
 
-    it('parseDiagnostics drops internal and reflected lines', () => {
-        const result = responseHandler.parseDiagnostics([
-            'internal\t1\t1\t1\t5\t1\tmsg',
-            'reflected\t1\t1\t1\t5\t1\tmsg',
-            'file:///real.ghul\t1\t1\t1\t5\t1\tmsg',
-        ]);
+    it('parseDiagnostics drops internal and reflected paths', () => {
+        const result = responseHandler.parseDiagnostics({
+            kind: 'diagnostics',
+            checked_paths: [],
+            diagnostics: [
+                { path: 'internal', start_line: 1, start_column: 1, end_line: 1, end_column: 5, severity: 1, message: 'msg' },
+                { path: 'reflected', start_line: 1, start_column: 1, end_line: 1, end_column: 5, severity: 1, message: 'msg' },
+                { path: 'file:///real.ghul', start_line: 1, start_column: 1, end_line: 1, end_column: 5, severity: 1, message: 'msg' },
+            ],
+            phase: 'query', elapsed_ms: 0, compile_needed: false,
+        } as any);
         const uris = Array.from(result.keys());
         expect(uris).toEqual(['file:///real.ghul']);
+    });
+
+    it('parseDiagnostics seeds an empty entry for every clean checked_paths url', () => {
+        // The diagnostics "clear errors for a clean file" signal is now
+        // explicit: a path that appears in checked_paths but carries no
+        // diagnostic entries should still produce a key in the map with
+        // an empty array, so the client can clear stale squiggles.
+        const result = responseHandler.parseDiagnostics({
+            kind: 'diagnostics',
+            checked_paths: ['file:///clean.ghul', 'file:///dirty.ghul'],
+            diagnostics: [
+                { path: 'file:///dirty.ghul', start_line: 1, start_column: 1, end_line: 1, end_column: 5, severity: 1, message: 'msg' },
+            ],
+            phase: 'full', elapsed_ms: 0, compile_needed: false,
+        } as any);
+
+        expect(result.get('file:///clean.ghul')).toEqual([]);
+        expect(result.get('file:///dirty.ghul')).toHaveLength(1);
     });
 });

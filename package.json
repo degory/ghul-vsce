@@ -1,8 +1,8 @@
 {
   "name": "ghul",
-  "displayName": "gh\u016bl",
-  "description": "gh\u016bl language support",
-  "version": "0.9.0-json-protocol-alpha.1",
+  "displayName": "ghūl",
+  "description": "ghūl language support",
+  "version": "0.9.0-json-protocol-alpha.3",
   "publisher": "degory",
   "license": "GPL-3.0",
   "repository": {
@@ -27,7 +27,7 @@
         "id": "ghul",
         "aliases": [
           "ghul",
-          "gh\u016bl"
+          "ghūl"
         ],
         "extensions": [
           ".ghul"
@@ -50,7 +50,7 @@
     ],
     "problemMatchers": [
       {
-        "name": "gh\u016bl",
+        "name": "ghūl",
         "owner": "ghul",
         "fileLocation": [
           "absolute"
@@ -69,7 +69,7 @@
         ]
       },
       {
-        "name": "gh\u016bl",
+        "name": "ghūl",
         "owner": "ghul",
         "fileLocation": [
           "relative",

@@ -29,11 +29,23 @@ class RecordingResponseHandler {
     expectSymbols() { this.expectations.push('symbols'); return Promise.resolve([]); }
     expectReferences() { this.expectations.push('references'); return Promise.resolve([]); }
     expectImplementation() { this.expectations.push('implementation'); return Promise.resolve([]); }
+    expectTypeDefinition() { this.expectations.push('type_definition'); return Promise.resolve(null); }
     expectRenameRequest() { this.expectations.push('rename'); return Promise.resolve(null); }
+    expectSemanticTokens() { this.expectations.push('semantic_tokens'); return Promise.resolve({ data: [] }); }
 }
 
 function makeRunningChild(stream: CapturingStream): ChildProcess {
     return { pid: 1, stdin: stream } as unknown as ChildProcess;
+}
+
+// Each send call serializes one JSON object on one line.
+// stream.written is an array of write() chunks; the first chunk is the
+// full JSON line including its trailing newline.
+function parseOnlyRequest(stream: CapturingStream): any {
+    expect(stream.written.length).toBeGreaterThan(0);
+    const line = stream.written[0];
+    expect(line.endsWith('\n')).toBe(true);
+    return JSON.parse(line.slice(0, -1));
 }
 
 describe('Requester', () => {
@@ -72,81 +84,113 @@ describe('Requester', () => {
         expect(requester.analysed).toBe(true);
     });
 
-    it('writes the EDIT preamble and per-document body in sendDocuments', () => {
+    it('sendDocuments writes one EDIT JSON line carrying every document', () => {
         requester.sendDocuments([
             { uri: 'file:///a.ghul', source: 'aaa' },
             { uri: 'file:///b.ghul', source: 'bbb' },
         ]);
 
-        // Preamble: #EDIT#\n, each uri on its own line, blank line, then
-        // each body terminated with form-feed:
-        const written = stream.joined();
-        expect(written.startsWith('#EDIT#\n')).toBe(true);
-        expect(written).toContain('file:///a.ghul\n');
-        expect(written).toContain('file:///b.ghul\n');
-        expect(written).toContain('aaa\f');
-        expect(written).toContain('bbb\f');
+        expect(parseOnlyRequest(stream)).toEqual({
+            command: 'edit',
+            files: [
+                { path: 'file:///a.ghul', source: 'aaa' },
+                { path: 'file:///b.ghul', source: 'bbb' },
+            ],
+        });
     });
 
-    it('sendHover writes #HOVER# preamble + 1-based line/character and enqueues a hover promise', async () => {
+    it('sendHover writes a hover JSON line with 1-based line/column and enqueues a hover promise', async () => {
         const promise = requester.sendHover('file:///x.ghul', 0, 5);
 
-        expect(stream.written[0]).toBe('#HOVER#\n');
-        expect(stream.written).toContain('file:///x.ghul\n');
-        expect(stream.written).toContain('1\n'); // line+1
-        expect(stream.written).toContain('6\n'); // character+1
+        expect(parseOnlyRequest(stream)).toEqual({
+            command: 'hover',
+            path: 'file:///x.ghul',
+            line: 1,        // 0-based 0 → 1-based 1
+            column: 6,      // 0-based 5 → 1-based 6
+        });
         expect(response.expectations).toEqual(['hover']);
         await promise;
     });
 
     it.each([
-        ['sendDefinition', '#DEFINITION#\n', 'definition'],
-        ['sendDeclaration', '#DECLARATION#\n', 'declaration'],
-        ['sendCompletion', '#COMPLETE#\n', 'completion'],
-        ['sendSignature', '#SIGNATURE#\n', 'signature'],
-        ['sendReferences', '#REFERENCES#\n', 'references'],
-        ['sendImplementation', '#IMPLEMENTATION#\n', 'implementation'],
-    ])('%s writes its preamble and enqueues the matching expect', async (method, preamble, expectation) => {
+        ['sendDefinition',     'definition',      'definition'],
+        ['sendDeclaration',    'declaration',     'declaration'],
+        ['sendCompletion',     'complete',        'completion'],
+        ['sendSignature',      'signature',       'signature'],
+        ['sendReferences',     'references',      'references'],
+        ['sendImplementation', 'implementation',  'implementation'],
+        ['sendTypeDefinition', 'type_definition', 'type_definition'],
+    ])('%s serializes its command JSON and enqueues the matching expect', async (method, command, expectation) => {
         await (requester as any)[method]('file:///x.ghul', 2, 3);
 
-        expect(stream.written[0]).toBe(preamble);
+        expect(parseOnlyRequest(stream)).toEqual({
+            command,
+            path: 'file:///x.ghul',
+            line: 3,
+            column: 4,
+        });
         expect(response.expectations).toEqual([expectation]);
     });
 
-    it('sendDocumentSymbol writes #SYMBOLS# and the uri', async () => {
+    it('sendDocumentSymbol writes a symbols JSON line with the uri', async () => {
         await requester.sendDocumentSymbol('file:///x.ghul');
 
-        expect(stream.written[0]).toBe('#SYMBOLS#\n');
-        expect(stream.written).toContain('file:///x.ghul\n');
+        expect(parseOnlyRequest(stream)).toEqual({
+            command: 'symbols',
+            path: 'file:///x.ghul',
+        });
         expect(response.expectations).toEqual(['symbols']);
     });
 
-    it('sendWorkspaceSymbol writes #SYMBOLS# with a blank uri line', async () => {
+    it('sendWorkspaceSymbol writes a symbols JSON line with an empty path', async () => {
         await requester.sendWorkspaceSymbol();
 
-        expect(stream.written[0]).toBe('#SYMBOLS#\n');
-        expect(stream.written[1]).toBe('\n');
+        expect(parseOnlyRequest(stream)).toEqual({
+            command: 'symbols',
+            path: '',
+        });
         expect(response.expectations).toEqual(['symbols']);
     });
 
-    it('sendRenameRequest writes #RENAMEREQUEST# and the new name', async () => {
+    it('sendSemanticTokens writes a semantic_tokens JSON line with the uri', async () => {
+        await requester.sendSemanticTokens('file:///x.ghul');
+
+        expect(parseOnlyRequest(stream)).toEqual({
+            command: 'semantic_tokens',
+            path: 'file:///x.ghul',
+        });
+        expect(response.expectations).toEqual(['semantic_tokens']);
+    });
+
+    it('sendRenameRequest writes a rename JSON line with the new name', async () => {
         await requester.sendRenameRequest('file:///x.ghul', 1, 2, 'newName');
 
-        expect(stream.written[0]).toBe('#RENAMEREQUEST#\n');
-        expect(stream.written).toContain('newName\n');
+        expect(parseOnlyRequest(stream)).toEqual({
+            command: 'rename',
+            path: 'file:///x.ghul',
+            line: 2,
+            column: 3,
+            new_name: 'newName',
+        });
         expect(response.expectations).toEqual(['rename']);
     });
 
-    it('sendFullCompileRequest writes #COMPILE#', () => {
+    it('sendFullCompileRequest writes a bare compile JSON line', () => {
         requester.sendFullCompileRequest();
 
-        expect(stream.written).toEqual(['#COMPILE#\n']);
+        expect(parseOnlyRequest(stream)).toEqual({ command: 'compile' });
     });
 
-    it('sendRestart writes #RESTART#', () => {
+    it('sendRestart writes a bare restart JSON line', () => {
         requester.sendRestart();
 
-        expect(stream.written).toEqual(['#RESTART#\n']);
+        expect(parseOnlyRequest(stream)).toEqual({ command: 'restart' });
+    });
+
+    it('sendHeapCheckRequest writes a bare heap_check JSON line', () => {
+        requester.sendHeapCheckRequest();
+
+        expect(parseOnlyRequest(stream)).toEqual({ command: 'heap_check' });
     });
 
     it('send methods return null when analysed is false (compiler not yet ready)', () => {
@@ -161,7 +205,9 @@ describe('Requester', () => {
         expect(requester.sendWorkspaceSymbol()).toBeNull();
         expect(requester.sendReferences('u', 0, 0)).toBeNull();
         expect(requester.sendImplementation('u', 0, 0)).toBeNull();
+        expect(requester.sendTypeDefinition('u', 0, 0)).toBeNull();
         expect(requester.sendRenameRequest('u', 0, 0, 'n')).toBeNull();
+        expect(requester.sendSemanticTokens('u')).toBeNull();
         // No writes should have occurred:
         expect(stream.written).toEqual([]);
     });
