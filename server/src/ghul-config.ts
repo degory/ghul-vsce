@@ -13,6 +13,7 @@ export interface GhulConfig {
 	source: string[],
 	arguments: string[],
 	want_plaintext_hover: boolean,
+	incremental_analysis: boolean,
 	// Human-readable descriptions of anything that went wrong while loading
 	// the configuration — an unreadable project file, malformed JSON, no
 	// compiler found. Empty when the workspace loaded cleanly. Consumers use
@@ -26,6 +27,7 @@ interface GhulConfigJson {
 	source?: string[],
 	other_flags?: string[] | string,
 	want_plaintext_hover?: boolean,
+	incremental_analysis?: boolean,
 	update_compiler_tool?: boolean
 }
 
@@ -259,6 +261,12 @@ export function getGhulConfig(workspace: string): GhulConfig {
 
 	args.push("-A");
 
+	let incremental_analysis = config.incremental_analysis ?? false;
+
+	if (incremental_analysis) {
+		args.push("--incremental-analysis");
+	}
+
 	let source = [...(config.source ?? ["./**/*.ghul"])];
 
     return {
@@ -267,6 +275,7 @@ export function getGhulConfig(workspace: string): GhulConfig {
 		source,
 		arguments: args,
 		want_plaintext_hover: config.want_plaintext_hover ?? false,
+		incremental_analysis,
 		problems
 	};
 }

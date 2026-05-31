@@ -366,6 +366,7 @@ export function parseSemanticTokens(dtos: SemanticTokenDto[]): SemanticTokens {
 
 export class ResponseHandler {
     want_plaintext_hover: boolean;
+    incremental_analysis_requested: boolean = false;
 
     server_manager: ServerManager;
     connection: Connection;
@@ -416,6 +417,7 @@ export class ResponseHandler {
 
     onConfigAvailable(_workspace: string, config: GhulConfig) {
         this.want_plaintext_hover = config.want_plaintext_hover;
+        this.incremental_analysis_requested = config.incremental_analysis;
     }
 
     resolveAllPendingPromises() {
@@ -468,7 +470,20 @@ export class ResponseHandler {
         }
     }
 
-    handleListen() {
+    handleListen(message?: { capabilities?: string[] }) {
+        let capabilities = message?.capabilities ?? [];
+
+        if (
+            this.incremental_analysis_requested &&
+            !capabilities.includes("incremental-analysis")
+        ) {
+            log(
+                "ghul.json sets incremental_analysis but the spawned " +
+                "compiler does not advertise it — running with the " +
+                "feature disabled. Upgrade ghul.compiler to use it."
+            );
+        }
+
         this.server_manager.startListening();
     }
 
