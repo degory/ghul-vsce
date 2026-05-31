@@ -179,3 +179,54 @@ describe('WorkspaceContext.initialize', () => {
         expect(configAvailableSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, config);
     });
 });
+
+describe('WorkspaceContext.looksLikeGhulWorkspace', () => {
+    let tmpDir: string;
+
+    beforeEach(() => {
+        const { mkdtempSync } = jest.requireActual('fs');
+        const { tmpdir } = jest.requireActual('os');
+        const path = jest.requireActual('path');
+        tmpDir = mkdtempSync(path.join(tmpdir(), 'ghul-vsce-looks-like-'));
+    });
+
+    afterEach(() => {
+        const { rmSync } = jest.requireActual('fs');
+        rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('returns false for an empty folder', () => {
+        expect(WorkspaceContext.looksLikeGhulWorkspace(tmpDir)).toBe(false);
+    });
+
+    it('returns false for null or empty workspace root', () => {
+        expect(WorkspaceContext.looksLikeGhulWorkspace(null as any)).toBe(false);
+        expect(WorkspaceContext.looksLikeGhulWorkspace('')).toBe(false);
+    });
+
+    it('returns true when the folder contains a .ghulproj', () => {
+        const { writeFileSync } = jest.requireActual('fs');
+        const path = jest.requireActual('path');
+        writeFileSync(path.join(tmpDir, 'thing.ghulproj'), '<Project />');
+
+        expect(WorkspaceContext.looksLikeGhulWorkspace(tmpDir)).toBe(true);
+    });
+
+    it('returns true when the folder contains a ghul.json', () => {
+        const { writeFileSync } = jest.requireActual('fs');
+        const path = jest.requireActual('path');
+        writeFileSync(path.join(tmpDir, 'ghul.json'), '{}');
+
+        expect(WorkspaceContext.looksLikeGhulWorkspace(tmpDir)).toBe(true);
+    });
+
+    it('returns false when the only .ghul files are sources (no project file)', () => {
+        // A folder of loose .ghul scripts isn't a project we can analyse;
+        // without a .ghulproj or ghul.json there's no compiler config to load.
+        const { writeFileSync } = jest.requireActual('fs');
+        const path = jest.requireActual('path');
+        writeFileSync(path.join(tmpDir, 'main.ghul'), 'class X is si X() is end end');
+
+        expect(WorkspaceContext.looksLikeGhulWorkspace(tmpDir)).toBe(false);
+    });
+});

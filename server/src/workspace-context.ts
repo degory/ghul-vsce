@@ -1,5 +1,7 @@
 import * as path from 'path';
 
+import { globSync } from 'glob';
+
 import { Connection, TextDocuments } from 'vscode-languageserver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
@@ -151,5 +153,28 @@ export class WorkspaceContext {
     // extension host.
     analysisResponseFilePath(): string {
         return path.join(this.workspace_root, '.analysis.rsp');
+    }
+
+    // True when the folder contains at least one .ghulproj or a ghul.json.
+    // Multi-root setups commonly mix ghūl folders with unrelated ones (docs,
+    // sibling JS projects, …); we only spin up a compiler for the folders
+    // that actually have a ghūl project, otherwise every non-ghūl folder
+    // would surface a "no usable ghūl compiler found" error.
+    static looksLikeGhulWorkspace(workspace_root: string): boolean {
+        if (!workspace_root) {
+            return false;
+        }
+
+        const root = workspace_root.replace(/\\/g, '/');
+
+        if (globSync(`${root}/*.ghulproj`).length > 0) {
+            return true;
+        }
+
+        if (globSync(`${root}/ghul.json`).length > 0) {
+            return true;
+        }
+
+        return false;
     }
 }

@@ -54,6 +54,11 @@ function makeMockConnection(): Connection {
         showErrorMessage: jest.fn(),
         showWarningMessage: jest.fn(),
     };
+    // Workspace folder change notifications live on the `workspace` namespace
+    // rather than on the bare Connection object.
+    conn.workspace = {
+        onDidChangeWorkspaceFolders: jest.fn(),
+    };
     return conn as Connection;
 }
 
@@ -118,6 +123,7 @@ describe('ConnectionEventHandler', () => {
             registerWorkspace: jest.fn().mockReturnValue({
                 initialize: jest.fn(),
             }),
+            unregisterWorkspace: jest.fn(),
             allWorkspaces: jest.fn().mockReturnValue([]),
             onDidChangeWatchedFiles: jest.fn(),
         } as unknown as ExtensionState;
@@ -140,14 +146,78 @@ describe('ConnectionEventHandler', () => {
     });
 
     describe('onInitialize', () => {
-        it('registers the workspace from params.rootPath and runs its initialise', () => {
-            const initialize = jest.fn();
-            (extensionState.registerWorkspace as jest.Mock).mockReturnValue({ initialize });
+        let looksLikeSpy: jest.SpyInstance;
 
-            const result = handler.onInitialize({ rootPath: '/path/to/workspace' } as any);
+        beforeEach(() => {
+            // looksLikeGhulWorkspace probes the filesystem for .ghulproj /
+            // ghul.json; the synthetic paths these tests use don't exist on
+            // disk, so spy and decide the answer per test.
+            looksLikeSpy = jest.spyOn(WorkspaceContext, 'looksLikeGhulWorkspace')
+                .mockReturnValue(true);
+        });
 
-            expect(extensionState.registerWorkspace).toHaveBeenCalledWith('/path/to/workspace');
-            expect(initialize).toHaveBeenCalled();
+        afterEach(() => {
+            looksLikeSpy.mockRestore();
+        });
+
+        it('registers one workspace per entry in params.workspaceFolders', () => {
+            const initializeA = jest.fn();
+            const initializeB = jest.fn();
+            (extensionState.registerWorkspace as jest.Mock)
+                .mockReturnValueOnce({ initialize: initializeA })
+                .mockReturnValueOnce({ initialize: initializeB });
+
+            handler.onInitialize({
+                workspaceFolders: [
+                    { uri: 'file:///workspace/a', name: 'a' },
+                    { uri: 'file:///workspace/b', name: 'b' },
+                ],
+            } as any);
+
+            expect(extensionState.registerWorkspace).toHaveBeenCalledTimes(2);
+            expect(extensionState.registerWorkspace).toHaveBeenNthCalledWith(1, '/workspace/a');
+            expect(extensionState.registerWorkspace).toHaveBeenNthCalledWith(2, '/workspace/b');
+            expect(initializeA).toHaveBeenCalled();
+            expect(initializeB).toHaveBeenCalled();
+        });
+
+        it('skips workspace folders that do not look like a ghūl workspace', () => {
+            looksLikeSpy.mockImplementation(root => root === '/workspace/ghul-project');
+
+            handler.onInitialize({
+                workspaceFolders: [
+                    { uri: 'file:///workspace/ghul-project', name: 'ghul-project' },
+                    { uri: 'file:///workspace/just-docs', name: 'just-docs' },
+                ],
+            } as any);
+
+            expect(extensionState.registerWorkspace).toHaveBeenCalledTimes(1);
+            expect(extensionState.registerWorkspace).toHaveBeenCalledWith('/workspace/ghul-project');
+        });
+
+        it('falls back to params.rootUri when workspaceFolders is absent', () => {
+            handler.onInitialize({ rootUri: 'file:///legacy/root' } as any);
+
+            expect(extensionState.registerWorkspace).toHaveBeenCalledWith('/legacy/root');
+        });
+
+        it('falls back to params.rootPath when neither workspaceFolders nor rootUri is set', () => {
+            handler.onInitialize({ rootPath: '/legacy/root' } as any);
+
+            expect(extensionState.registerWorkspace).toHaveBeenCalledWith('/legacy/root');
+        });
+
+        it('registers nothing when the client opens a single file outside any workspace', () => {
+            handler.onInitialize({} as any);
+
+            expect(extensionState.registerWorkspace).not.toHaveBeenCalled();
+        });
+
+        it('advertises full LSP capabilities including workspace folder change notifications', () => {
+            const result = handler.onInitialize({
+                workspaceFolders: [{ uri: 'file:///x', name: 'x' }],
+            } as any);
+
             expect(result.capabilities).toEqual(expect.objectContaining({
                 completionProvider: { triggerCharacters: ['.', ':'], resolveProvider: false },
                 documentSymbolProvider: true,
@@ -167,7 +237,95 @@ describe('ConnectionEventHandler', () => {
                     full: true,
                     range: false,
                 }),
+                workspace: {
+                    workspaceFolders: {
+                        supported: true,
+                        changeNotifications: true,
+                    },
+                },
             }));
+        });
+    });
+
+    describe('onDidChangeWorkspaceFolders', () => {
+        let looksLikeSpy: jest.SpyInstance;
+
+        beforeEach(() => {
+            looksLikeSpy = jest.spyOn(WorkspaceContext, 'looksLikeGhulWorkspace')
+                .mockReturnValue(true);
+        });
+
+        afterEach(() => {
+            looksLikeSpy.mockRestore();
+        });
+
+        it('registers and initialises every added folder that looks ghūl-ish', () => {
+            const initializeA = jest.fn();
+            const initializeB = jest.fn();
+            (extensionState.registerWorkspace as jest.Mock)
+                .mockReturnValueOnce({ initialize: initializeA })
+                .mockReturnValueOnce({ initialize: initializeB });
+
+            handler.onDidChangeWorkspaceFolders({
+                added: [
+                    { uri: 'file:///workspace/new-a', name: 'new-a' },
+                    { uri: 'file:///workspace/new-b', name: 'new-b' },
+                ],
+                removed: [],
+            });
+
+            expect(extensionState.registerWorkspace).toHaveBeenCalledTimes(2);
+            expect(extensionState.registerWorkspace).toHaveBeenNthCalledWith(1, '/workspace/new-a');
+            expect(extensionState.registerWorkspace).toHaveBeenNthCalledWith(2, '/workspace/new-b');
+            expect(initializeA).toHaveBeenCalled();
+            expect(initializeB).toHaveBeenCalled();
+        });
+
+        it('does not register added folders that do not look like a ghūl workspace', () => {
+            looksLikeSpy.mockReturnValue(false);
+
+            handler.onDidChangeWorkspaceFolders({
+                added: [{ uri: 'file:///workspace/docs', name: 'docs' }],
+                removed: [],
+            });
+
+            expect(extensionState.registerWorkspace).not.toHaveBeenCalled();
+        });
+
+        it('unregisters every removed folder', () => {
+            handler.onDidChangeWorkspaceFolders({
+                added: [],
+                removed: [
+                    { uri: 'file:///workspace/gone-a', name: 'gone-a' },
+                    { uri: 'file:///workspace/gone-b', name: 'gone-b' },
+                ],
+            });
+
+            expect(extensionState.unregisterWorkspace).toHaveBeenCalledTimes(2);
+            expect(extensionState.unregisterWorkspace).toHaveBeenCalledWith('/workspace/gone-a');
+            expect(extensionState.unregisterWorkspace).toHaveBeenCalledWith('/workspace/gone-b');
+        });
+
+        it('processes removals before additions so a re-added folder rebuilds cleanly', () => {
+            // VS Code itself can deliver a remove+add for the same folder in
+            // one event (e.g. the user toggles a folder out and back in). The
+            // remove must land first so the second add doesn't no-op against
+            // the stale registration.
+            const order: string[] = [];
+            (extensionState.unregisterWorkspace as jest.Mock).mockImplementation((root: string) => {
+                order.push(`remove:${root}`);
+            });
+            (extensionState.registerWorkspace as jest.Mock).mockImplementation((root: string) => {
+                order.push(`add:${root}`);
+                return { initialize: jest.fn() };
+            });
+
+            handler.onDidChangeWorkspaceFolders({
+                added: [{ uri: 'file:///workspace/x', name: 'x' }],
+                removed: [{ uri: 'file:///workspace/x', name: 'x' }],
+            });
+
+            expect(order).toEqual(['remove:/workspace/x', 'add:/workspace/x']);
         });
     });
 
@@ -391,20 +549,40 @@ describe('ConnectionEventHandler', () => {
     });
 
     describe('workspace-wide requests', () => {
-        it('onWorkspaceSymbol routes to the default workspace', async () => {
-            await handler.onWorkspaceSymbol();
+        it('onWorkspaceSymbol fans out across every workspace and concatenates results', async () => {
+            const symbolsA = [{ name: 'A1' }, { name: 'A2' }];
+            const symbolsB = [{ name: 'B1' }];
 
-            expect(extensionState.defaultWorkspace).toHaveBeenCalled();
-            expect(requester.sendWorkspaceSymbol).toHaveBeenCalled();
+            (extensionState.allWorkspaces as jest.Mock).mockReturnValue([
+                { requester: { sendWorkspaceSymbol: jest.fn().mockResolvedValue(symbolsA) } },
+                { requester: { sendWorkspaceSymbol: jest.fn().mockResolvedValue(symbolsB) } },
+            ]);
+
+            const result = await handler.onWorkspaceSymbol();
+
+            expect(result).toEqual([...symbolsA, ...symbolsB]);
         });
 
         it('onWorkspaceSymbol returns an empty list when no workspace is registered', async () => {
-            (extensionState.defaultWorkspace as jest.Mock).mockReturnValue(null);
+            (extensionState.allWorkspaces as jest.Mock).mockReturnValue([]);
 
             const result = await handler.onWorkspaceSymbol();
 
             expect(result).toEqual([]);
-            expect(requester.sendWorkspaceSymbol).not.toHaveBeenCalled();
+        });
+
+        it('onWorkspaceSymbol tolerates a workspace that returns null or undefined', async () => {
+            // A workspace whose analyser is still warming up returns null
+            // from sendWorkspaceSymbol; one bad response shouldn't drop the
+            // symbols from the rest of the workspaces.
+            (extensionState.allWorkspaces as jest.Mock).mockReturnValue([
+                { requester: { sendWorkspaceSymbol: jest.fn().mockReturnValue(null) } },
+                { requester: { sendWorkspaceSymbol: jest.fn().mockResolvedValue([{ name: 'B' }]) } },
+            ]);
+
+            const result = await handler.onWorkspaceSymbol();
+
+            expect(result).toEqual([{ name: 'B' }]);
         });
     });
 });
