@@ -23,10 +23,6 @@ describe('restoreDotNetTools', () => {
     });
 
     it('runs dotnet tool restore in the workspace directory when the manifest exists', () => {
-        // Without cwd, restore runs against whichever manifest happens to
-        // live in the server process's cwd — fine when there is only one
-        // workspace, but in a multi-root session both workspaces end up
-        // restoring the same first-workspace tools.
         mkdirSync(join(workspace, '.config'));
         writeFileSync(join(workspace, '.config/dotnet-tools.json'), '{"version":1}');
 

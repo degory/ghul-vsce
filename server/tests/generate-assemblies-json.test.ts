@@ -25,11 +25,6 @@ describe('generateAssembliesJson', () => {
     });
 
     it('runs dotnet build in the workspace directory when a .ghulproj is present', () => {
-        // The cwd matters for multi-root: without it the build would target
-        // whichever .ghulproj happens to be in the server process's cwd
-        // (typically the first workspace's) and write .assemblies.json
-        // there too, leaving the second workspace with no -a flags and
-        // hundreds of spurious "unknown type" errors.
         writeFileSync(join(workspace, 'test.ghulproj'), '<Project/>');
 
         generateAssembliesJson(workspace);
