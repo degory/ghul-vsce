@@ -158,14 +158,18 @@ export class ConnectionEventHandler {
         }
 
         // Subscribe to workspace folder change notifications only when the
-        // client supports them. The getter throws if the corresponding client
-        // capability isn't set, so we must check the capability params here
-        // rather than blindly subscribe at construction time.
+        // client supports them. Deferred to onInitialized: the library's
+        // `_notificationIsAutoRegistered` flag is set from our returned
+        // server capabilities, so reading the getter any earlier triggers
+        // a dynamic client/registerCapability call before the client has
+        // accepted our initialize response.
         if (params.capabilities?.workspace?.workspaceFolders) {
-            this.connection.workspace.onDidChangeWorkspaceFolders(
-                (event: WorkspaceFoldersChangeEvent) =>
-                    this.onDidChangeWorkspaceFolders(event)
-            );
+            this.connection.onInitialized(() => {
+                this.connection.workspace.onDidChangeWorkspaceFolders(
+                    (event: WorkspaceFoldersChangeEvent) =>
+                        this.onDidChangeWorkspaceFolders(event)
+                );
+            });
         }
 
         return {
