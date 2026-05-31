@@ -74,6 +74,7 @@ npm-debug.log
 Thumbs.db
 **/node_modules/
 */out/
+*.tsbuildinfo
 client/dist/**/*
 client/src/version.js
 server/src/version.js

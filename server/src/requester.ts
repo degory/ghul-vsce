@@ -27,7 +27,7 @@ const version = require('./version') as string;
 
 export class Requester {
     analysed: boolean;
-    stream: any;    
+    stream: any;
 
     response_handler: ResponseHandler;
 
@@ -43,43 +43,46 @@ export class Requester {
         server_event_emitter.onRunning((child: ChildProcess) => {
             log(`ghūl language extension v${version}: initialized`);
             this.stream = child.stdin;
-        });        
+        });
     }
 
     write(text: String) {
         try {
             this.stream.write(text);
-        } catch(ex) {            
+        } catch(ex) {
             log("caught exception trying to send request data: compiler may have died:" + ex);
             rejectAllAndThrow(ex);
         }
     }
-    
-    sendDocuments(documents: { uri: string, source: string }[]) {        
+
+    // Serialize one request object to a single JSONL line (newline-terminated).
+    // JSON escapes any embedded newlines, so one line is always one message.
+    send(request: object) {
+        this.write(JSON.stringify(request) + '\n');
+    }
+
+    sendDocuments(documents: { uri: string, source: string }[]) {
         startWatchdogIfNotRunning();
 
-        this.write('#EDIT#\n');
-
-        for (let { uri } of documents) {
-            this.write(normalizeFileUri(uri) + '\n');
-        }
-
-        this.write('\n');
-
-        for (let { source } of documents) {
-            this.write(source);
-            this.write('\f');
-        }
+        this.send({
+            command: "edit",
+            files: documents.map(({ uri, source }) => ({
+                path: normalizeFileUri(uri),
+                source: source
+            }))
+        });
     }
 
     sendHover(uri: string, line: number, character: number): Promise<Hover> {
         if (this.analysed) {
             startWatchdogIfNotRunning();
 
-            this.write('#HOVER#\n');
-            this.write(normalizeFileUri(uri) + '\n');
-            this.write((line+1) + '\n');
-            this.write((character+1) + '\n');
+            this.send({
+                command: "hover",
+                path: normalizeFileUri(uri),
+                line: line + 1,
+                column: character + 1
+            });
 
             return this.response_handler.expectHover();
         } else {
@@ -91,10 +94,12 @@ export class Requester {
         if (this.analysed) {
             startWatchdogIfNotRunning();
 
-            this.write('#DEFINITION#\n');
-            this.write(normalizeFileUri(uri) + '\n');
-            this.write((line+1) + '\n');
-            this.write((character+1) + '\n');
+            this.send({
+                command: "definition",
+                path: normalizeFileUri(uri),
+                line: line + 1,
+                column: character + 1
+            });
 
             return this.response_handler.expectDefinition();
         } else {
@@ -106,10 +111,12 @@ export class Requester {
         if (this.analysed) {
             startWatchdogIfNotRunning();
 
-            this.write('#DECLARATION#\n');
-            this.write(normalizeFileUri(uri) + '\n');
-            this.write((line+1) + '\n');
-            this.write((character+1) + '\n');
+            this.send({
+                command: "declaration",
+                path: normalizeFileUri(uri),
+                line: line + 1,
+                column: character + 1
+            });
 
             return this.response_handler.expectDeclaration();
         } else {
@@ -121,40 +128,46 @@ export class Requester {
         if (this.analysed) {
             startWatchdogIfNotRunning();
 
-            this.write("#COMPLETE#\n");
-            this.write(normalizeFileUri(uri) + '\n');
-            this.write((line+1) + '\n');
-            this.write((character+1) + '\n');
+            this.send({
+                command: "complete",
+                path: normalizeFileUri(uri),
+                line: line + 1,
+                column: character + 1
+            });
 
             return this.response_handler.expectCompletion();
         } else {
             return null;
         }
-    }    
+    }
 
     sendSignature(uri: string, line: number, character: number): Promise<SignatureHelp> {
         if (this.analysed) {
             startWatchdogIfNotRunning();
 
-            this.write('#SIGNATURE#\n');
-            this.write(normalizeFileUri(uri) + '\n');
-            this.write((line+1) + '\n');
-            this.write((character+1) + '\n');
+            this.send({
+                command: "signature",
+                path: normalizeFileUri(uri),
+                line: line + 1,
+                column: character + 1
+            });
 
             return this.response_handler.expectSignature();
         } else {
             return null;
         }
     }
-    
+
     sendDocumentSymbol(uri: string): Promise<SymbolInformation[]> {
         if (this.analysed) {
             startWatchdogIfNotRunning();
 
-            this.write('#SYMBOLS#\n');
-            this.write(normalizeFileUri(uri) + '\n');
+            this.send({
+                command: "symbols",
+                path: normalizeFileUri(uri)
+            });
 
-            return this.response_handler.expectSymbols();            
+            return this.response_handler.expectSymbols();
         } else {
             return null;
         }
@@ -164,10 +177,12 @@ export class Requester {
         if (this.analysed) {
             startWatchdogIfNotRunning();
 
-            this.write('#SYMBOLS#\n');
-            this.write('\n');
+            this.send({
+                command: "symbols",
+                path: ""
+            });
 
-            return this.response_handler.expectSymbols();            
+            return this.response_handler.expectSymbols();
         } else {
             return null;
         }
@@ -177,10 +192,12 @@ export class Requester {
         if (this.analysed) {
             startWatchdogIfNotRunning();
 
-            this.write('#REFERENCES#\n');
-            this.write(normalizeFileUri(uri) + '\n');
-            this.write((line+1) + '\n');
-            this.write((character+1) + '\n');
+            this.send({
+                command: "references",
+                path: normalizeFileUri(uri),
+                line: line + 1,
+                column: character + 1
+            });
 
             return this.response_handler.expectReferences();
         } else {
@@ -192,10 +209,12 @@ export class Requester {
         if (this.analysed) {
             startWatchdogIfNotRunning();
 
-            this.write('#IMPLEMENTATION#\n');
-            this.write(normalizeFileUri(uri) + '\n');
-            this.write((line+1) + '\n');
-            this.write((character+1) + '\n');
+            this.send({
+                command: "implementation",
+                path: normalizeFileUri(uri),
+                line: line + 1,
+                column: character + 1
+            });
 
             return this.response_handler.expectImplementation();
         } else {
@@ -207,10 +226,12 @@ export class Requester {
         if (this.analysed) {
             startWatchdogIfNotRunning();
 
-            this.write('#TYPEDEFINITION#\n');
-            this.write(normalizeFileUri(uri) + '\n');
-            this.write((line+1) + '\n');
-            this.write((character+1) + '\n');
+            this.send({
+                command: "type_definition",
+                path: normalizeFileUri(uri),
+                line: line + 1,
+                column: character + 1
+            });
 
             return this.response_handler.expectTypeDefinition();
         } else {
@@ -222,11 +243,13 @@ export class Requester {
         if (this.analysed) {
             startWatchdogIfNotRunning();
 
-            this.write('#RENAMEREQUEST#\n');
-            this.write(normalizeFileUri(uri) + '\n');
-            this.write((line+1) + '\n');
-            this.write((character+1) + '\n');
-            this.write(newName + '\n');
+            this.send({
+                command: "rename",
+                path: normalizeFileUri(uri),
+                line: line + 1,
+                column: character + 1,
+                new_name: newName
+            });
 
             return this.response_handler.expectRenameRequest();
         } else {
@@ -238,8 +261,10 @@ export class Requester {
         if (this.analysed) {
             startWatchdogIfNotRunning();
 
-            this.write('#SEMANTICTOKENS#\n');
-            this.write(normalizeFileUri(uri) + '\n');
+            this.send({
+                command: "semantic_tokens",
+                path: normalizeFileUri(uri)
+            });
 
             return this.response_handler.expectSemanticTokens();
         } else {
@@ -251,10 +276,11 @@ export class Requester {
         if (this.analysed) {
             startWatchdogIfNotRunning();
 
-            this.write('#FORMAT#\n');
-            this.write(normalizeFileUri(uri) + '\n');
-            this.write(source);
-            this.write('\f');
+            this.send({
+                command: "format",
+                path: normalizeFileUri(uri),
+                source: source
+            });
 
             return this.response_handler.expectDocumentFormatting(range);
         } else {
@@ -266,14 +292,15 @@ export class Requester {
         if (this.analysed) {
             startWatchdogIfNotRunning();
 
-            this.write('#FORMATRANGE#\n');
-            this.write(normalizeFileUri(uri) + '\n');
-            this.write((range.start.line + 1) + '\n');
-            this.write((range.start.character + 1) + '\n');
-            this.write((range.end.line + 1) + '\n');
-            this.write((range.end.character + 1) + '\n');
-            this.write(source);
-            this.write('\f');
+            this.send({
+                command: "format_range",
+                path: normalizeFileUri(uri),
+                start_line: range.start.line + 1,
+                start_column: range.start.character + 1,
+                end_line: range.end.line + 1,
+                end_column: range.end.character + 1,
+                source: source
+            });
 
             return this.response_handler.expectDocumentRangeFormatting();
         } else {
@@ -284,7 +311,7 @@ export class Requester {
     sendFullCompileRequest() {
         startWatchdogIfNotRunning();
 
-        this.write('#COMPILE#\n');
+        this.send({ command: "compile" });
     }
 
     // Ask the analyser to sample the heap. The EditQueue sends this during a
@@ -293,14 +320,14 @@ export class Requester {
     sendHeapCheckRequest() {
         startWatchdogIfNotRunning();
 
-        this.write('#HEAPCHECK#\n');
+        this.send({ command: "heap_check" });
     }
 
     sendRestart() {
         if (this.analysed) {
             startWatchdogIfNotRunning();
 
-            this.write('#RESTART#\n');
-        }        
+            this.send({ command: "restart" });
+        }
     }
 }
