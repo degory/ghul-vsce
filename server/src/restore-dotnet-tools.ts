@@ -14,7 +14,7 @@ export function restoreDotNetTools(workspace: string): string | null {
     log("restoring .NET tools...");
 
     try {
-        log(execSync("dotnet tool restore").toString());
+        log(execSync("dotnet tool restore", { cwd: workspace }).toString());
         log("finished restoring .NET tools");
         return null;
     } catch (e) {

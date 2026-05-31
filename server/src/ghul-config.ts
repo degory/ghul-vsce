@@ -203,7 +203,7 @@ export function getGhulConfig(workspace: string): GhulConfig {
 		}
 
 		if (!compiler) {
-			let result = spawnSync("dotnet", ["ghul-compiler"], { encoding: "utf-8" });
+			let result = spawnSync("dotnet", ["ghul-compiler"], { encoding: "utf-8", cwd: workspace });
 
 			if (result.status === 0 && result.stdout.startsWith("ghūl")) {
 				compiler = ["dotnet", "ghul-compiler"];
@@ -213,7 +213,7 @@ export function getGhulConfig(workspace: string): GhulConfig {
 		}
 
 		if (!compiler) {
-			let result = spawnSync("ghul-compiler", { encoding: "utf-8" });
+			let result = spawnSync("ghul-compiler", { encoding: "utf-8", cwd: workspace });
 
 			if (result.status === 0 && result.stdout.startsWith("ghūl")) {
 				compiler = ["ghul-compiler"]
@@ -230,7 +230,7 @@ export function getGhulConfig(workspace: string): GhulConfig {
 	}
 
 	if (config.update_compiler_tool) {
-		let result = spawnSync("dotnet", ["tool", "update", "ghul.compiler", "--local"], { encoding: "utf-8" });
+		let result = spawnSync("dotnet", ["tool", "update", "ghul.compiler", "--local"], { encoding: "utf-8", cwd: workspace });
 
 		log(result.stdout);
 

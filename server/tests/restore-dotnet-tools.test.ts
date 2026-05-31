@@ -22,13 +22,17 @@ describe('restoreDotNetTools', () => {
         try { rmSync(workspace, { recursive: true, force: true }); } catch { /* swallow */ }
     });
 
-    it('runs dotnet tool restore when the manifest exists', () => {
+    it('runs dotnet tool restore in the workspace directory when the manifest exists', () => {
+        // Without cwd, restore runs against whichever manifest happens to
+        // live in the server process's cwd — fine when there is only one
+        // workspace, but in a multi-root session both workspaces end up
+        // restoring the same first-workspace tools.
         mkdirSync(join(workspace, '.config'));
         writeFileSync(join(workspace, '.config/dotnet-tools.json'), '{"version":1}');
 
         restoreDotNetTools(workspace);
 
-        expect(execSync).toHaveBeenCalledWith('dotnet tool restore');
+        expect(execSync).toHaveBeenCalledWith('dotnet tool restore', { cwd: workspace });
     });
 
     it('does nothing when the manifest is missing', () => {
