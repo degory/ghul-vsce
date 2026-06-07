@@ -3,6 +3,7 @@ import {
     CompletionItem,
     CompletionItemKind,
     Definition,
+    InsertTextFormat,
     SemanticTokens,
     SemanticTokensLegend,
     SignatureHelp,
@@ -66,6 +67,7 @@ interface CompletionItemDto {
     name: string;
     kind: number;
     description: string;
+    insert_text?: string;
 }
 
 interface SignatureDto {
@@ -602,11 +604,18 @@ export class ResponseHandler {
             let results: CompletionItem[] = [];
 
             for (let item of response.items ?? []) {
-                results.push({
+                let completion: CompletionItem = {
                     label: item.name,
                     kind: <CompletionItemKind>item.kind,
                     detail: item.description
-                });
+                };
+
+                if (item.insert_text) {
+                    completion.insertText = item.insert_text;
+                    completion.insertTextFormat = InsertTextFormat.Snippet;
+                }
+
+                results.push(completion);
             }
 
             resolve(results)
