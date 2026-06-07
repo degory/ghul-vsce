@@ -14,8 +14,7 @@
     "vscode": "^1.85.0"
   },
   "categories": [
-    "Programming Languages",
-    "Snippets"
+    "Programming Languages"
   ],
   "activationEvents": [
     "workspaceContains:**/*.ghul"
@@ -40,12 +39,6 @@
         "language": "ghul",
         "scopeName": "source.ghul",
         "path": "./syntaxes/ghul.tmLanguage.json"
-      }
-    ],
-    "snippets": [
-      {
-        "language": "ghul",
-        "path": "./snippets/ghul.json"
       }
     ],
     "problemMatchers": [
