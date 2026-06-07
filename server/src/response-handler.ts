@@ -67,7 +67,7 @@ interface CompletionItemDto {
     name: string;
     kind: number;
     description: string;
-    insert_text: string;
+    insert_text?: string;
 }
 
 interface SignatureDto {
