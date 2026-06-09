@@ -99,7 +99,7 @@ At least one section; any can be omitted.
 - **Minor (X.Y.0).** New features that gracefully no-op on older compilers, new settings, new commands. Additive only.
 - **Patch (X.Y.Z).** Bug fixes. Dependency updates. Internal refactors, tests, CI.
 
-Mechanism: default is patch. A non-patch release is cut by **raising the `VERSION` file** in the PR (code-owned via `.github/CODEOWNERS` — requires the code owner's approval). `#minor`/`#major` markers in the PR body are no-ops; don't add them. A `workflow_dispatch` `version` input overrides outright (emergencies only).
+Mechanism: default is patch. A non-patch release is cut by **raising the `VERSION` file** in the PR. `#minor`/`#major` markers in the PR body are no-ops; don't add them. A `workflow_dispatch` `version` input overrides outright (emergencies only).
 
 Flag when:
 
