@@ -539,7 +539,7 @@ describe('ResponseHandler', () => {
         expect(result.map(s => s.name).sort()).toEqual(['symbolC']);
     });
 
-    it('handleSymbols filters out entries with negative line/character coordinates', async () => {
+    it('handleSymbols clamps entries with end_column 0 (compiler EOF span) to a valid range', async () => {
         const p = responseHandler.expectSymbols();
 
         responseHandler.handleSymbols({
@@ -548,15 +548,18 @@ describe('ResponseHandler', () => {
                 {
                     path: 'file:///a.ghul',
                     symbols: [
-                        { search_description: 'bad', kind: 1, start_line: 1, start_column: 0, end_line: 1, end_column: 1, qualifier: 'container' },
-                        { search_description: 'good', kind: 1, start_line: 1, start_column: 1, end_line: 1, end_column: 1, qualifier: 'container' },
+                        { search_description: 'trailing_semicolon', kind: 1, start_line: 7, start_column: 1, end_line: 8, end_column: 0, qualifier: 'container' },
+                        { search_description: 'normal', kind: 1, start_line: 1, start_column: 1, end_line: 1, end_column: 6, qualifier: 'container' },
                     ],
                 },
             ],
         } as any);
 
         const result = await p;
-        expect(result.map(s => s.name)).toEqual(['good']);
+        expect(result.map(s => s.name).sort()).toEqual(['normal', 'trailing_semicolon']);
+
+        const clamped = result.find(s => s.name === 'trailing_semicolon')!;
+        expect(clamped.location.range.end).toEqual({ line: 7, character: 0 });
     });
 
     it('handleSignature handles negative active_signature by leaving it undefined', async () => {
