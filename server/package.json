@@ -19,7 +19,7 @@
     "glob": "^13.0.6",
     "minimatch": "^10.2.5",
     "recursive-readdir": "^2.2.3",
-    "shell-quote": "^1.8.3",
+    "shell-quote": "^1.8.4",
     "throttle-debounce": "^5.0.2",
     "typescript-definition-of-eventemitter-with-keyof": "git+https://github.com/kimamula/TypeScript-definition-of-EventEmitter-with-keyof.git",
     "vscode-languageserver": "^9.0.1",
