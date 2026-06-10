@@ -693,12 +693,12 @@ export class ResponseHandler {
                             uri: uri,
                             range: {
                                 start: {
-                                    line: dto.start_line - 1,
-                                    character: dto.start_column - 1
+                                    line: Math.max(0, dto.start_line - 1),
+                                    character: Math.max(0, dto.start_column - 1)
                                 },
                                 end: {
-                                    line: dto.end_line - 1,
-                                    character: dto.end_column - 1
+                                    line: Math.max(0, dto.end_line - 1),
+                                    character: Math.max(0, dto.end_column - 1)
                                 }
                             }
                         },
@@ -707,13 +707,6 @@ export class ResponseHandler {
 
                     if (symbol.location.uri == "internal" || symbol.location.uri == "reflected") {
                         log("oops: unexpected internal/reflected uri in symbols response: " + symbol.location.uri);
-                        continue;
-                    }
-
-                    if (symbol.location.range.start.line < 0 || symbol.location.range.start.character < 0 ||
-                        symbol.location.range.end.line < 0 || symbol.location.range.end.character < 0)
-                    {
-                        log("oops: unexpected negative line/character in symbols response: " + JSON.stringify(symbol.location.range));
                         continue;
                     }
 
