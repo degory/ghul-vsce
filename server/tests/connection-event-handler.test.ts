@@ -42,6 +42,7 @@ const hooks = [
     'onRenameRequest',
     'onDocumentFormatting',
     'onDocumentRangeFormatting',
+    'onCodeAction',
 ] as const;
 
 function makeMockConnection(): Connection {

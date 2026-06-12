@@ -1,5 +1,9 @@
 
 import {
+    CodeAction,
+    CodeActionKind,
+    CodeActionParams,
+    Command,
     DidChangeConfigurationParams,
     DidChangeWatchedFilesParams,
     WorkspaceFoldersChangeEvent,
@@ -37,6 +41,8 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { log } from './log';
 
 import { ExtensionState } from './extension-state';
+
+import { SuppressCodeActionProvider } from './suppress-code-action-provider';
 
 import { WorkspaceContext } from './workspace-context';
 
@@ -129,7 +135,13 @@ export class ConnectionEventHandler {
         connection.languages.semanticTokens.on(
             (params: SemanticTokensParams): Promise<SemanticTokens> =>
                 this.onSemanticTokens(params));
+
+        connection.onCodeAction(
+            (params: CodeActionParams): (Command | CodeAction)[] =>
+                this.onCodeAction(params));
     }
+
+    private suppress_code_action_provider: SuppressCodeActionProvider = new SuppressCodeActionProvider();
 
     // Routes per-URI requests to the workspace that owns the file. Returns
     // null when the URI lives outside every registered workspace (or when no
@@ -208,6 +220,12 @@ export class ConnectionEventHandler {
                     legend: SEMANTIC_TOKENS_LEGEND,
                     full: true,
                     range: false,
+                },
+                codeActionProvider: {
+                    // Quick-fixes for diagnostics. Today the only kind we
+                    // produce is "Suppress with @suppress(\"<code>\")" for
+                    // warnings the compiler raised with a suppressable code.
+                    codeActionKinds: [CodeActionKind.QuickFix],
                 },
                 workspace: {
                     workspaceFolders: {
@@ -464,6 +482,26 @@ export class ConnectionEventHandler {
             params.textDocument.uri,
             document.getText(),
             whole_document
+        );
+    }
+
+    onCodeAction(params: CodeActionParams): (Command | CodeAction)[] {
+        const diagnostics = params.context?.diagnostics ?? [];
+
+        if (diagnostics.length === 0) {
+            return [];
+        }
+
+        const document = this.documents.get(params.textDocument.uri);
+
+        if (!document) {
+            return [];
+        }
+
+        return this.suppress_code_action_provider.provide(
+            document,
+            params.textDocument.uri,
+            diagnostics
         );
     }
 
