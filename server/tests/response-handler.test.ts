@@ -650,6 +650,21 @@ describe('ResponseHandler', () => {
         expect(uris).toEqual(['file:///real.ghul']);
     });
 
+    it('parseDiagnostics carries a code through to Diagnostic.code when present', () => {
+        const result = responseHandler.parseDiagnostics({
+            kind: 'diagnostics',
+            checked_paths: [],
+            diagnostics: [
+                { path: 'file:///a.ghul', start_line: 1, start_column: 1, end_line: 1, end_column: 5, severity: 2, message: 'msg', code: 'non-exception-throw' },
+                { path: 'file:///b.ghul', start_line: 1, start_column: 1, end_line: 1, end_column: 5, severity: 1, message: 'msg' },
+            ],
+            phase: 'full', elapsed_ms: 0, compile_needed: false,
+        } as any);
+
+        expect(result.get('file:///a.ghul')![0].code).toBe('non-exception-throw');
+        expect(result.get('file:///b.ghul')![0].code).toBeUndefined();
+    });
+
     it('parseDiagnostics seeds an empty entry for every clean checked_paths url', () => {
         // The diagnostics "clear errors for a clean file" signal is now
         // explicit: a path that appears in checked_paths but carries no

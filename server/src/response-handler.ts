@@ -44,6 +44,11 @@ interface DiagnosticDto {
     end_column: number;
     severity: number;
     message: string;
+    // Suppressable identifier slug ("non-exception-throw", "hides-inherited",
+    // ...). Present iff the compiler raised this diagnostic with a code; the
+    // code-action provider treats its presence as the marker that an
+    // `@suppress("<code>")` quick-fix should be offered.
+    code?: string;
 }
 
 interface LocationDto {
@@ -953,6 +958,10 @@ export class ResponseHandler {
                 message: dto.message,
                 source: 'ghūl'
             };
+
+            if (dto.code) {
+                problem.code = dto.code;
+            }
 
             problems.get(uri).push(problem);
         }
