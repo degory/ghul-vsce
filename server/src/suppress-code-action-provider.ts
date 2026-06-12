@@ -18,20 +18,10 @@ interface InsertionSite {
     label: string;
 }
 
-// Produces a "Suppress with @suppress" quick-fix for every coded diagnostic in a
-// range. Scope candidates come from walking up the document looking for lines
-// at strictly less indentation than the diagnostic's start line — the first
-// step-out is the enclosing block, the next is the enclosing method (or class
-// / namespace for diagnostics raised outside any method).
-//
 // The compiler attaches `@suppress("code")` to the next definition or
-// statement, so dropping the pragma at the discovered indent level lands on
-// the right scope as long as the source is sensibly indented; the user can
-// move the pragma by hand if they want a different scope.
+// statement, so the pragma must land at the start of the line that opens
+// the scope to suppress.
 export class SuppressCodeActionProvider {
-    // VS Code identifies quick-fixes by kind for the lightbulb / Ctrl+. menu.
-    // The flat 'quickfix' kind keeps the action visible by default; suppress
-    // actions are not auto-applied since they don't fix the underlying code.
     static readonly KIND: string = CodeActionKind.QuickFix;
 
     private static readonly SCOPE_LABELS: string[] = [
