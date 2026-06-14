@@ -105,7 +105,7 @@
 				},
 				{
 					"name": "storage.modifier.ghul",
-					"match": "(\\b(?<!\\`)(static|public|protected|private|field|let|mut|rec|out|@)\\b)|(\\b_(?=[A-Za-z]))"
+					"match": "(\\b(?<!\\`)(static|public|protected|private|field|let|mut|rec|out|init|@)\\b)|(\\b_(?=[A-Za-z]))"
 				},
 				{
 					"name": "keyword.operator.ghul",
@@ -113,7 +113,7 @@
 				},
 				{
 					"name": "keyword.other.ghul",
-					"match": "\\b(?<!\\`)(new|cast|isa|typeof|namespace|class|struct|union|trait|enum|use|innate|is|si|optional)\\b"
+					"match": "\\b(?<!\\`)(new|cast|isa|typeof|namespace|class|struct|union|trait|enum|use|innate|is|si|val|lav|optional)\\b"
 				},
 				{
 					"name": "entity.name.type.ghul",
@@ -129,7 +129,7 @@
 				},
 				{
 					"name": "entity.name.type.ghul",
-					"match": "\\b(?<!\\`)(void|object|string|ref|ptr|bool|byte|ubyte|short|ushort|int|uint|long|ulong|word|uword|single|double|char)\\b"
+					"match": "\\b(?<!\\`)(void|object|string|ref|ptr|bool|byte|ubyte|short|ushort|int|uint|long|ulong|word|uword|single|double|decimal|char)\\b"
 				},
 				{
 					"name": "entity.name.ghul variable.other.ghul",
