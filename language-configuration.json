@@ -30,9 +30,9 @@
         ["/*", "*/"]
     ],
     "indentationRules": {
-        "increaseIndentPattern": 
-            "(\\bis\\b$|\\bthen\\b$|\\bdo\\b$|^\\s+try$|^\\s+catch\\s|^\\s+finally$|^\\s+else$|^\\s+case\\s|^\\s+when\\s.*:$|^\\s+default$)",
+        "increaseIndentPattern":
+            "(\\bis\\b$|\\bthen\\b$|\\bdo\\b$|\\bval\\b$|^\\s+try$|^\\s+catch\\s|^\\s+finally$|^\\s+else$|^\\s+case\\s|^\\s+when\\s.*\\bthen\\b$)",
         "decreaseIndentPattern":
-            "(^\\s+si$|^\\s+fi$|^\\sod$|^\\syrt$|^\\s+else$|^\\scatch\\s|^\\s+elif\\s|^\\s+when\\s|^\\s+default$|^\\s+esac$)"
+            "(^\\s+si$|^\\s+fi$|^\\s+od$|^\\s+yrt$|^\\s+lav\\b|^\\s+else$|^\\s+catch\\s|^\\s+elif\\s|^\\s+when\\s|^\\s+esac$)"
     }
 }
