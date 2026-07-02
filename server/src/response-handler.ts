@@ -255,6 +255,7 @@ export const SEMANTIC_TOKEN_TYPES: string[] = [
 export const SEMANTIC_TOKEN_MODIFIERS: string[] = [
     'static',
     'readonly',
+    'modification',
 ];
 
 export const SEMANTIC_TOKENS_LEGEND: SemanticTokensLegend = {
