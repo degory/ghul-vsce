@@ -522,6 +522,19 @@ describe('ResponseHandler', () => {
         await expect(p).resolves.toBeNull();
     });
 
+    it('handleHover falls back to description when the analyser omits signature', async () => {
+        const p = responseHandler.expectHover();
+
+        responseHandler.handleHover({
+            kind: 'hover',
+            description: 'Foo.bar: int',
+        } as any);
+
+        await expect(p).resolves.toEqual({
+            contents: { kind: 'markdown', value: '```ghul\nFoo.bar: int\n```' },
+        });
+    });
+
     it('handleDefinition resolves to null when no locations are given', async () => {
         const p = responseHandler.expectDefinition();
 
