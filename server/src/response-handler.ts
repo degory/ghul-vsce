@@ -294,6 +294,7 @@ export const SEMANTIC_TOKEN_TYPES: string[] = [
     'variable',
     'parameter',
     'operator',
+    'modifier',
 ];
 
 // LSP semantic-token modifier names. Encoded as a bitset (bit i set

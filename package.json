@@ -55,6 +55,14 @@
         ]
       }
     },
+    "semanticTokenScopes": [
+      {
+        "language": "ghul",
+        "scopes": {
+          "modifier": ["storage.modifier.ghul"]
+        }
+      }
+    ],
     "problemMatchers": [
       {
         "name": "ghūl",
