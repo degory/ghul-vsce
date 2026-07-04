@@ -42,6 +42,8 @@ import { log } from './log';
 
 import { ExtensionState } from './extension-state';
 
+import { RemoveRedundantOperatorCodeActionProvider } from './remove-redundant-operator-code-action-provider';
+
 import { SuppressCodeActionProvider } from './suppress-code-action-provider';
 
 import { WorkspaceContext } from './workspace-context';
@@ -141,6 +143,7 @@ export class ConnectionEventHandler {
                 this.onCodeAction(params));
     }
 
+    private remove_redundant_operator_code_action_provider: RemoveRedundantOperatorCodeActionProvider = new RemoveRedundantOperatorCodeActionProvider();
     private suppress_code_action_provider: SuppressCodeActionProvider = new SuppressCodeActionProvider();
 
     // Routes per-URI requests to the workspace that owns the file. Returns
@@ -498,11 +501,21 @@ export class ConnectionEventHandler {
             return [];
         }
 
-        return this.suppress_code_action_provider.provide(
-            document,
-            params.textDocument.uri,
-            diagnostics
-        );
+        // Removal fixes come first so the direct resolution of the
+        // warning is the top (and preferred) quick fix, ahead of the
+        // suppression options.
+        return [
+            ...this.remove_redundant_operator_code_action_provider.provide(
+                document,
+                params.textDocument.uri,
+                diagnostics
+            ),
+            ...this.suppress_code_action_provider.provide(
+                document,
+                params.textDocument.uri,
+                diagnostics
+            ),
+        ];
     }
 
     onSemanticTokens(params: SemanticTokensParams): Promise<SemanticTokens> {
