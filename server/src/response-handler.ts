@@ -33,8 +33,24 @@ import { GhulConfig } from './ghul-config';
 
 // ---- wire DTOs (one JSON object per line; snake_case fields) -------------
 //
-// These mirror the compiler-side DTOs in src/analysis/protocol/responses.ghul.
+// These mirror the compiler-side DTOs in analysis-protocol/src/responses.ghul.
 // Coordinates are 1-based on the wire; the handlers convert to LSP's 0-based.
+
+interface FixEditDto {
+    start_line: number;
+    start_column: number;
+    end_line: number;
+    end_column: number;
+    // Expected current text of the range; null/absent skips the check.
+    replaces?: string | null;
+    new_text: string;
+}
+
+interface QuickFixDto {
+    title: string;
+    is_preferred: boolean;
+    edits: FixEditDto[];
+}
 
 interface DiagnosticDto {
     path: string;
@@ -45,10 +61,12 @@ interface DiagnosticDto {
     severity: number;
     message: string;
     // Suppressable identifier slug ("non-exception-throw", "hides-inherited",
-    // ...). Present iff the compiler raised this diagnostic with a code; the
-    // code-action provider treats its presence as the marker that an
-    // `@suppress("<code>")` quick-fix should be offered.
+    // ...). Present iff the compiler raised this diagnostic with a code.
     code?: string;
+    // Ready-to-apply quick fixes, in presentation order. The compiler is
+    // the sole author of fixes; they are stashed into Diagnostic.data and
+    // round-trip through the client to the code-action provider.
+    fixes?: QuickFixDto[] | null;
 }
 
 interface LocationDto {
@@ -990,6 +1008,23 @@ export class ResponseHandler {
 
             if (dto.code) {
                 problem.code = dto.code;
+            }
+
+            if (dto.fixes && dto.fixes.length > 0) {
+                problem.data = {
+                    fixes: dto.fixes.map(fix => ({
+                        title: fix.title,
+                        isPreferred: fix.is_preferred,
+                        edits: fix.edits.map(edit => ({
+                            range: {
+                                start: { line: edit.start_line - 1, character: edit.start_column - 1 },
+                                end: { line: edit.end_line - 1, character: edit.end_column - 1 }
+                            },
+                            replaces: edit.replaces ?? null,
+                            newText: edit.new_text
+                        }))
+                    }))
+                };
             }
 
             problems.get(uri).push(problem);

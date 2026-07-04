@@ -42,9 +42,7 @@ import { log } from './log';
 
 import { ExtensionState } from './extension-state';
 
-import { RemoveRedundantOperatorCodeActionProvider } from './remove-redundant-operator-code-action-provider';
-
-import { SuppressCodeActionProvider } from './suppress-code-action-provider';
+import { CompilerQuickFixProvider } from './compiler-quick-fix-provider';
 
 import { WorkspaceContext } from './workspace-context';
 
@@ -143,8 +141,7 @@ export class ConnectionEventHandler {
                 this.onCodeAction(params));
     }
 
-    private remove_redundant_operator_code_action_provider: RemoveRedundantOperatorCodeActionProvider = new RemoveRedundantOperatorCodeActionProvider();
-    private suppress_code_action_provider: SuppressCodeActionProvider = new SuppressCodeActionProvider();
+    private compiler_quick_fix_provider: CompilerQuickFixProvider = new CompilerQuickFixProvider();
 
     // Routes per-URI requests to the workspace that owns the file. Returns
     // null when the URI lives outside every registered workspace (or when no
@@ -225,9 +222,9 @@ export class ConnectionEventHandler {
                     range: false,
                 },
                 codeActionProvider: {
-                    // Quick-fixes for diagnostics. Today the only kind we
-                    // produce is "Suppress with @suppress(\"<code>\")" for
-                    // warnings the compiler raised with a suppressable code.
+                    // Quick-fixes for diagnostics, authored by the compiler
+                    // and carried with each diagnostic over the analysis
+                    // protocol.
                     codeActionKinds: [CodeActionKind.QuickFix],
                 },
                 workspace: {
@@ -501,21 +498,14 @@ export class ConnectionEventHandler {
             return [];
         }
 
-        // Removal fixes come first so the direct resolution of the
-        // warning is the top (and preferred) quick fix, ahead of the
-        // suppression options.
-        return [
-            ...this.remove_redundant_operator_code_action_provider.provide(
-                document,
-                params.textDocument.uri,
-                diagnostics
-            ),
-            ...this.suppress_code_action_provider.provide(
-                document,
-                params.textDocument.uri,
-                diagnostics
-            ),
-        ];
+        // Every quick fix arrives fully formed from the compiler with its
+        // diagnostic; the provider just validates and applies. Wire order
+        // is presentation order (removal fix first, then suppressions).
+        return this.compiler_quick_fix_provider.provide(
+            document,
+            params.textDocument.uri,
+            diagnostics
+        );
     }
 
     onSemanticTokens(params: SemanticTokensParams): Promise<SemanticTokens> {
