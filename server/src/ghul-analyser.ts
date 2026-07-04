@@ -85,6 +85,16 @@ export class GhulAnalyser {
             }
         });
 
+        // Declare which of this project's files are open before the first
+        // edit, so the analyser scopes editor-only hints from the very first
+        // compile. The intersection of the project's files with the open
+        // buffers is exactly this workspace's open files.
+        let open_uris = documents
+            .map(document => document.uri)
+            .filter(uri => open_source_by_uri.has(normalizeFileUri(uri)));
+
+        this.edit_queue.sendOpenFiles(open_uris);
+
         this.edit_queue.start(documents);
     }
 }

@@ -72,6 +72,11 @@ export class ExtensionState {
             workspace?.edit_queue.queueEdit(change);
         });
 
+        // Open-set membership changes only on open/close, not on every
+        // keystroke — so track those events rather than content changes.
+        this.documents.onDidOpen(() => this.broadcastOpenFiles());
+        this.documents.onDidClose(() => this.broadcastOpenFiles());
+
         this.connection_event_handler = new ConnectionEventHandler(
             this,
             this.connection,
@@ -112,6 +117,30 @@ export class ExtensionState {
 
     public allWorkspaces(): WorkspaceContext[] {
         return Array.from(this.workspaces.values());
+    }
+
+    // Recompute each workspace's open-file set from the currently-open
+    // documents and push it to that workspace's analyser. Every workspace is
+    // told — even to an empty set — so a workspace whose last open file just
+    // closed clears its scope. Per-URI demux mirrors onDidChangeContent.
+    private broadcastOpenFiles() {
+        const uris_by_workspace = new Map<WorkspaceContext, string[]>();
+
+        for (const document of this.documents.all()) {
+            const workspace = this.getWorkspaceForUri(document.uri);
+
+            if (!workspace) {
+                continue;
+            }
+
+            const uris = uris_by_workspace.get(workspace) ?? [];
+            uris.push(document.uri);
+            uris_by_workspace.set(workspace, uris);
+        }
+
+        for (const workspace of this.allWorkspaces()) {
+            workspace.edit_queue.sendOpenFiles(uris_by_workspace.get(workspace) ?? []);
+        }
     }
 
     // For requests that aren't tied to a specific URI (workspace/symbol,

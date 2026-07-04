@@ -14,6 +14,10 @@ import { GhulConfig } from '../src/ghul-config';
 
 class RecordingEditQueue {
     started: Array<{ uri: string; source: string }[]> = [];
+    open_files: string[][] = [];
+    sendOpenFiles(uris: string[]) {
+        this.open_files.push(uris);
+    }
     start(documents: { uri: string; source: string }[]) {
         this.started.push(documents);
     }
