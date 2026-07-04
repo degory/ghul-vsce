@@ -115,7 +115,14 @@ interface DiagnosticsResponse {
 
 interface HoverResponse {
     kind: "hover";
-    description: string | null;
+    signature: string | null;
+    // Human-readable classifier ("instance method", "local variable", …);
+    // null when the symbol has none. Renders outside the fenced code block.
+    kind_label: string | null;
+    // Pre-split combined form the wire carried before signature/kind_label
+    // existed. A newer analyser still emits it so this fallback covers a
+    // fresh extension paired with an older compiler.
+    description?: string | null;
 }
 
 interface SemanticTokensResponse {
@@ -543,21 +550,41 @@ export class ResponseHandler {
         let {resolve} = this._hover_promise_queue.dequeueAlways();
 
         try {
-            let description = response.description;
-
-            if (description != null && description.length > 0) {
-                if (this.want_plaintext_hover) {
-                    resolve({
-                        contents: { kind: "plaintext", value: description }
-                    });
-                } else {
-                    resolve({
-                        contents: { language: "ghul", value: description }
-                    });
-                }
-            } else {
-                resolve(null);
+            // Fall back to the pre-split `description` field when talking to
+            // an older analyser that hasn't started emitting `signature`.
+            let signature = response.signature;
+            if (signature == null || signature.length == 0) {
+                signature = response.description ?? null;
             }
+
+            if (signature == null || signature.length == 0) {
+                resolve(null);
+                return;
+            }
+
+            if (this.want_plaintext_hover) {
+                // Legacy plaintext path: joins the two fields back into
+                // the pre-split description form.
+                let plain = response.kind_label
+                    ? `${signature} // ${response.kind_label}`
+                    : signature;
+                resolve({
+                    contents: { kind: "plaintext", value: plain }
+                });
+                return;
+            }
+
+            // Markdown path: fenced `ghul` code block for the signature so
+            // the tmLanguage grammar highlights it, then the classifier as
+            // an italic line beneath the block.
+            const parts: string[] = ["```ghul", signature, "```"];
+            if (response.kind_label) {
+                parts.push("");
+                parts.push(`_${response.kind_label}_`);
+            }
+            resolve({
+                contents: { kind: "markdown", value: parts.join("\n") }
+            });
         } catch(e) {
             log("hover caught:", e);
             resolve(null);

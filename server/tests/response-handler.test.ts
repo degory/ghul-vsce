@@ -289,11 +289,32 @@ describe('ResponseHandler', () => {
     it('should enqueue and resolve hover promise on expectHover and handleHover', async () => {
         const hoverPromise = responseHandler.expectHover();
 
-        responseHandler.handleHover({ kind: 'hover', description: 'Hover content' } as any);
+        responseHandler.handleHover({
+            kind: 'hover',
+            signature: 'Foo.bar: int',
+            kind_label: 'instance property',
+        } as any);
 
         const hoverResult = await hoverPromise;
         expect(hoverResult).toEqual({
-            contents: { language: 'ghul', value: 'Hover content' }
+            contents: {
+                kind: 'markdown',
+                value: '```ghul\nFoo.bar: int\n```\n\n_instance property_',
+            },
+        });
+    });
+
+    it('handleHover omits the classifier line when kind_label is null', async () => {
+        const p = responseHandler.expectHover();
+
+        responseHandler.handleHover({
+            kind: 'hover',
+            signature: 'class Foo',
+            kind_label: null,
+        } as any);
+
+        await expect(p).resolves.toEqual({
+            contents: { kind: 'markdown', value: '```ghul\nclass Foo\n```' },
         });
     });
 
@@ -474,17 +495,21 @@ describe('ResponseHandler', () => {
         responseHandler.want_plaintext_hover = true;
         const p = responseHandler.expectHover();
 
-        responseHandler.handleHover({ kind: 'hover', description: 'some hover text' } as any);
+        responseHandler.handleHover({
+            kind: 'hover',
+            signature: 'some hover text',
+            kind_label: 'local variable',
+        } as any);
 
         await expect(p).resolves.toEqual({
-            contents: { kind: 'plaintext', value: 'some hover text' },
+            contents: { kind: 'plaintext', value: 'some hover text // local variable' },
         });
     });
 
-    it('handleHover resolves to null on an empty description', async () => {
+    it('handleHover resolves to null on an empty signature', async () => {
         const p = responseHandler.expectHover();
 
-        responseHandler.handleHover({ kind: 'hover', description: '' } as any);
+        responseHandler.handleHover({ kind: 'hover', signature: '', kind_label: null } as any);
 
         await expect(p).resolves.toBeNull();
     });
@@ -495,6 +520,19 @@ describe('ResponseHandler', () => {
         responseHandler.handleHover({ kind: 'hover', description: null } as any);
 
         await expect(p).resolves.toBeNull();
+    });
+
+    it('handleHover falls back to description when the analyser omits signature', async () => {
+        const p = responseHandler.expectHover();
+
+        responseHandler.handleHover({
+            kind: 'hover',
+            description: 'Foo.bar: int',
+        } as any);
+
+        await expect(p).resolves.toEqual({
+            contents: { kind: 'markdown', value: '```ghul\nFoo.bar: int\n```' },
+        });
     });
 
     it('handleDefinition resolves to null when no locations are given', async () => {
