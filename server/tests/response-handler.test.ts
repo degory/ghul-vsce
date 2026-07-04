@@ -703,6 +703,57 @@ describe('ResponseHandler', () => {
         expect(result.get('file:///b.ghul')![0].code).toBeUndefined();
     });
 
+    it('parseDiagnostics converts wire fixes into LSP-shaped Diagnostic.data', () => {
+        const result = responseHandler.parseDiagnostics({
+            kind: 'diagnostics',
+            checked_paths: [],
+            diagnostics: [
+                {
+                    path: 'file:///a.ghul', start_line: 3, start_column: 9, end_line: 3, end_column: 11,
+                    severity: 2, message: "'!' is redundant here", code: 'redundant-unwrap',
+                    fixes: [
+                        {
+                            title: "Remove redundant '!'",
+                            is_preferred: true,
+                            edits: [
+                                { start_line: 3, start_column: 10, end_line: 3, end_column: 11, replaces: '!', new_text: '' },
+                            ],
+                        },
+                        {
+                            title: 'Suppress here: @suppress("redundant-unwrap")',
+                            is_preferred: false,
+                            edits: [
+                                { start_line: 3, start_column: 1, end_line: 3, end_column: 1, new_text: '        @suppress("redundant-unwrap")\n' },
+                            ],
+                        },
+                    ],
+                },
+                { path: 'file:///b.ghul', start_line: 1, start_column: 1, end_line: 1, end_column: 5, severity: 1, message: 'msg' },
+            ],
+            phase: 'full', elapsed_ms: 0, compile_needed: false,
+        } as any);
+
+        const data = result.get('file:///a.ghul')![0].data as any;
+
+        expect(data.fixes).toHaveLength(2);
+        expect(data.fixes[0]).toEqual({
+            title: "Remove redundant '!'",
+            isPreferred: true,
+            edits: [
+                {
+                    range: { start: { line: 2, character: 9 }, end: { line: 2, character: 10 } },
+                    replaces: '!',
+                    newText: '',
+                },
+            ],
+        });
+        expect(data.fixes[1].isPreferred).toBe(false);
+        expect(data.fixes[1].edits[0].replaces).toBeNull();
+        expect(data.fixes[1].edits[0].range.start).toEqual({ line: 2, character: 0 });
+
+        expect(result.get('file:///b.ghul')![0].data).toBeUndefined();
+    });
+
     it('parseDiagnostics seeds an empty entry for every clean checked_paths url', () => {
         // The diagnostics "clear errors for a clean file" signal is now
         // explicit: a path that appears in checked_paths but carries no
