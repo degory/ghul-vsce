@@ -98,6 +98,10 @@ export class EditQueue {
         this.requester.sendDocuments(documents);
     }
 
+    sendOpenFiles(uris: string[]) {
+        this.requester.sendOpenFiles(uris);
+    }
+
     queueEdit3(uri: string, version: number, text: string) {
         if (version == null || version < 0) {
             version = this.fake_version--;

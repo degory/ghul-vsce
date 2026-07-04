@@ -76,6 +76,22 @@ export class Requester {
         });
     }
 
+    // Declare the client's currently-open files. Fire-and-forget: the analyser
+    // records the set and only produces editor-only hints (invisible for a file
+    // the user is not viewing) for these paths. There is no response frame, so
+    // this must not arm the watchdog. Dropped silently before the child is
+    // running — the cold-start analyse re-sends the set once it is.
+    sendOpenFiles(uris: string[]) {
+        if (!this.stream) {
+            return;
+        }
+
+        this.send({
+            command: "set_open_files",
+            paths: uris.map(uri => normalizeFileUri(uri))
+        });
+    }
+
     sendHover(uri: string, line: number, character: number): Promise<Hover> {
         if (this.analysed) {
             this.watchdog.startWatchdogIfNotRunning();
