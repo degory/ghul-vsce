@@ -536,8 +536,8 @@ export class ConnectionEventHandler {
             return Promise.resolve([]);
         }
 
-        // Flush queued edits so the analyser has walked the current text
-        // before we read the inlays it recorded during the last compile.
+        // Flush queued edits so the analyser's inlay data reflects the
+        // current document text before we ask for hints.
         workspace.edit_queue.sendQueued();
 
         return workspace.requester.sendInlayHints(params.textDocument.uri);
