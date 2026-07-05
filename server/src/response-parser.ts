@@ -127,6 +127,10 @@ export class ResponseParser {
             this.response_handler.handleSemanticTokens(message);
             break;
 
+        case "inlay_hints":
+            this.response_handler.handleInlayHints(message);
+            break;
+
         default:
             // not a known kind, but compiler presumably still alive
             this.response_handler.handleUnexpected();

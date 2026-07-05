@@ -3,6 +3,7 @@ import {
     Definition,
     Hover,
     SemanticTokens,
+    InlayHint,
     SignatureHelp,
     SymbolInformation,
     Location,
@@ -288,6 +289,21 @@ export class Requester {
             return this.response_handler.expectSemanticTokens();
         } else {
             return null;
+        }
+    }
+
+    sendInlayHints(uri: string): Promise<InlayHint[]> {
+        if (this.analysed) {
+            this.watchdog.startWatchdogIfNotRunning();
+
+            this.send({
+                command: "inlay_hints",
+                path: normalizeFileUri(uri)
+            });
+
+            return this.response_handler.expectInlayHints();
+        } else {
+            return Promise.resolve([]);
         }
     }
 

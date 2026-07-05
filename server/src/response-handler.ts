@@ -6,6 +6,10 @@ import {
     InsertTextFormat,
     SemanticTokens,
     SemanticTokensLegend,
+    InlayHint,
+    InlayHintKind,
+    Position,
+    MarkupKind,
     SignatureHelp,
     SymbolKind,
     Hover,
@@ -146,6 +150,19 @@ interface HoverResponse {
 interface SemanticTokensResponse {
     kind: "semantic_tokens";
     tokens: SemanticTokenDto[];
+}
+
+interface InlayHintDto {
+    line: number;
+    column: number;
+    label: string;
+    detail: string;
+    code: string;
+}
+
+interface InlayHintsResponse {
+    kind: "inlay_hints";
+    hints: InlayHintDto[];
 }
 
 interface LocationsResponse {
@@ -396,6 +413,44 @@ export function parseSemanticTokens(dtos: SemanticTokenDto[]): SemanticTokens {
     return { data };
 }
 
+// Convert the compiler's inlay-hint DTOs (1-based line/column, terse
+// label, tooltip detail, slug code) into LSP `InlayHint[]` at 0-based
+// positions. Every narrowing inlay is treated as an LSP `Type` inlay so
+// VS Code renders the label as inline ghost text; the detail becomes a
+// markdown tooltip visible on hover.
+export function parseInlayHints(dtos: InlayHintDto[]): InlayHint[] {
+    const hints: InlayHint[] = [];
+
+    for (const dto of dtos ?? []) {
+        if (!dto) {
+            continue;
+        }
+
+        const line = dto.line;
+        const column = dto.column;
+
+        if (!Number.isFinite(line) || !Number.isFinite(column)) {
+            continue;
+        }
+
+        const position = Position.create(line - 1, column - 1);
+
+        const hint: InlayHint = {
+            position,
+            label: dto.label ?? '',
+            kind: InlayHintKind.Type,
+        };
+
+        if (dto.detail && dto.detail.length > 0) {
+            hint.tooltip = { kind: MarkupKind.Markdown, value: dto.detail };
+        }
+
+        hints.push(hint);
+    }
+
+    return hints;
+}
+
 export class ResponseHandler {
     want_plaintext_hover: boolean;
     incremental_analysis_requested: boolean = false;
@@ -417,6 +472,7 @@ export class ResponseHandler {
     _formatting_promise_queue: PromiseQueue<TextEdit[]>;
     _range_formatting_promise_queue: PromiseQueue<TextEdit[]>;
     _semantic_tokens_promise_queue: PromiseQueue<SemanticTokens>;
+    _inlay_hints_promise_queue: PromiseQueue<InlayHint[]>;
 
     // The full-document range to replace, one per pending format request,
     // paired FIFO with _formatting_promise_queue.
@@ -445,6 +501,7 @@ export class ResponseHandler {
         this._formatting_promise_queue = new PromiseQueue<TextEdit[]>("FORMAT");
         this._range_formatting_promise_queue = new PromiseQueue<TextEdit[]>("FORMATRANGE");
         this._semantic_tokens_promise_queue = new PromiseQueue<SemanticTokens>("SEMANTICTOKENS");
+        this._inlay_hints_promise_queue = new PromiseQueue<InlayHint[]>("INLAYHINTS");
     }
 
     onConfigAvailable(_workspace: string, config: GhulConfig) {
@@ -466,6 +523,7 @@ export class ResponseHandler {
         this._formatting_promise_queue.resolveAll([]);
         this._range_formatting_promise_queue.resolveAll([]);
         this._semantic_tokens_promise_queue.resolveAll({ data: [] });
+        this._inlay_hints_promise_queue.resolveAll([]);
         this._formatting_ranges = [];
     }
 
@@ -483,6 +541,7 @@ export class ResponseHandler {
         this._formatting_promise_queue.rejectAll(message);
         this._range_formatting_promise_queue.rejectAll(message);
         this._semantic_tokens_promise_queue.rejectAll(message);
+        this._inlay_hints_promise_queue.rejectAll(message);
         this._formatting_ranges = [];
     }
 
@@ -942,6 +1001,21 @@ export class ResponseHandler {
         } catch(e) {
             log("semantic tokens caught:" + e);
             resolve({ data: [] });
+        }
+    }
+
+    expectInlayHints(): Promise<InlayHint[]> {
+        return this._inlay_hints_promise_queue.enqueue();
+    }
+
+    handleInlayHints(response: InlayHintsResponse) {
+        let {resolve} = this._inlay_hints_promise_queue.dequeueAlways();
+
+        try {
+            resolve(parseInlayHints(response.hints));
+        } catch(e) {
+            log("inlay hints caught:" + e);
+            resolve([]);
         }
     }
 
