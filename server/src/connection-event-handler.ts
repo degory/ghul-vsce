@@ -16,6 +16,8 @@ import {
     TextDocumentPositionParams,
     SemanticTokens,
     SemanticTokensParams,
+    InlayHint,
+    InlayHintParams,
     SignatureHelp,
     CompletionParams,
     DocumentSymbolParams,
@@ -136,6 +138,10 @@ export class ConnectionEventHandler {
             (params: SemanticTokensParams): Promise<SemanticTokens> =>
                 this.onSemanticTokens(params));
 
+        connection.languages.inlayHint.on(
+            (params: InlayHintParams): Promise<InlayHint[]> =>
+                this.onInlayHint(params));
+
         connection.onCodeAction(
             (params: CodeActionParams): (Command | CodeAction)[] =>
                 this.onCodeAction(params));
@@ -221,6 +227,7 @@ export class ConnectionEventHandler {
                     full: true,
                     range: false,
                 },
+                inlayHintProvider: true,
                 codeActionProvider: {
                     // Quick-fixes for diagnostics, authored by the compiler
                     // and carried with each diagnostic over the analysis
@@ -520,6 +527,20 @@ export class ConnectionEventHandler {
         workspace.edit_queue.sendQueued();
 
         return workspace.requester.sendSemanticTokens(params.textDocument.uri);
+    }
+
+    onInlayHint(params: InlayHintParams): Promise<InlayHint[]> {
+        const workspace = this.workspaceForUri(params.textDocument.uri);
+
+        if (!workspace) {
+            return Promise.resolve([]);
+        }
+
+        // Flush queued edits so the analyser's inlay data reflects the
+        // current document text before we ask for hints.
+        workspace.edit_queue.sendQueued();
+
+        return workspace.requester.sendInlayHints(params.textDocument.uri);
     }
 
     onDocumentRangeFormatting(params: DocumentRangeFormattingParams): Promise<TextEdit[]> {
