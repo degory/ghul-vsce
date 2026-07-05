@@ -51,7 +51,10 @@ function makeMockConnection(): Connection {
         conn[h] = jest.fn();
     }
     conn.onInitialized = jest.fn();
-    conn.languages = { semanticTokens: { on: jest.fn() } };
+    conn.languages = {
+        semanticTokens: { on: jest.fn() },
+        inlayHint: { on: jest.fn() },
+    };
     conn.window = {
         showErrorMessage: jest.fn(),
         showWarningMessage: jest.fn(),
@@ -272,6 +275,7 @@ describe('ConnectionEventHandler', () => {
                     full: true,
                     range: false,
                 }),
+                inlayHintProvider: true,
                 workspace: {
                     workspaceFolders: {
                         supported: true,
