@@ -413,11 +413,6 @@ export function parseSemanticTokens(dtos: SemanticTokenDto[]): SemanticTokens {
     return { data };
 }
 
-// Convert the compiler's inlay-hint DTOs (1-based line/column, terse
-// label, tooltip detail, slug code) into LSP `InlayHint[]` at 0-based
-// positions. Every narrowing inlay is treated as an LSP `Type` inlay so
-// VS Code renders the label as inline ghost text; the detail becomes a
-// markdown tooltip visible on hover.
 export function parseInlayHints(dtos: InlayHintDto[]): InlayHint[] {
     const hints: InlayHint[] = [];
 
