@@ -413,7 +413,7 @@ export function parseSemanticTokens(dtos: SemanticTokenDto[]): SemanticTokens {
     return { data };
 }
 
-export function parseInlayHints(dtos: InlayHintDto[]): InlayHint[] {
+export function parseInlayHints(dtos: InlayHintDto[], wantPlaintext: boolean = false): InlayHint[] {
     const hints: InlayHint[] = [];
 
     for (const dto of dtos ?? []) {
@@ -437,7 +437,13 @@ export function parseInlayHints(dtos: InlayHintDto[]): InlayHint[] {
         };
 
         if (dto.detail && dto.detail.length > 0) {
-            hint.tooltip = { kind: MarkupKind.Markdown, value: dto.detail };
+            // The detail is presentation-neutral ghul (sigil-prefixed narrowed
+            // types). Fence it as a ghul code block so the tmLanguage grammar
+            // highlights the types and preserves the per-edge line breaks,
+            // matching the signature hover; plaintext clients get it verbatim.
+            hint.tooltip = wantPlaintext
+                ? { kind: MarkupKind.PlainText, value: dto.detail }
+                : { kind: MarkupKind.Markdown, value: ["```ghul", dto.detail, "```"].join("\n") };
         }
 
         hints.push(hint);
@@ -1007,7 +1013,7 @@ export class ResponseHandler {
         let {resolve} = this._inlay_hints_promise_queue.dequeueAlways();
 
         try {
-            resolve(parseInlayHints(response.hints));
+            resolve(parseInlayHints(response.hints, this.want_plaintext_hover));
         } catch(e) {
             log("inlay hints caught:" + e);
             resolve([]);
