@@ -437,13 +437,10 @@ export function parseInlayHints(dtos: InlayHintDto[], wantPlaintext: boolean = f
         };
 
         if (dto.detail && dto.detail.length > 0) {
-            // The detail is presentation-neutral: a ghul code body, then an
-            // optional prose note after the first blank line (the reason a
-            // narrowing was dropped). Fence the body so the tmLanguage grammar
-            // highlights the types and preserves the per-line sigils, and keep
-            // the note as plain prose outside the fence — matching the
-            // signature hover's code-block-then-classifier shape. Plaintext
-            // clients get the whole thing verbatim.
+            // The detail is a ghul code body, then an optional prose note
+            // after the first blank line (a kill hint's reason). Fence the
+            // body; keep the note as prose outside the fence. Plaintext
+            // clients get it verbatim.
             if (wantPlaintext) {
                 hint.tooltip = { kind: MarkupKind.PlainText, value: dto.detail };
             } else {
