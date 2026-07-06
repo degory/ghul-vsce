@@ -437,13 +437,25 @@ export function parseInlayHints(dtos: InlayHintDto[], wantPlaintext: boolean = f
         };
 
         if (dto.detail && dto.detail.length > 0) {
-            // The detail is presentation-neutral ghul (sigil-prefixed narrowed
-            // types). Fence it as a ghul code block so the tmLanguage grammar
-            // highlights the types and preserves the per-edge line breaks,
-            // matching the signature hover; plaintext clients get it verbatim.
-            hint.tooltip = wantPlaintext
-                ? { kind: MarkupKind.PlainText, value: dto.detail }
-                : { kind: MarkupKind.Markdown, value: ["```ghul", dto.detail, "```"].join("\n") };
+            // The detail is presentation-neutral: a ghul code body, then an
+            // optional prose note after the first blank line (the reason a
+            // narrowing was dropped). Fence the body so the tmLanguage grammar
+            // highlights the types and preserves the per-line sigils, and keep
+            // the note as plain prose outside the fence — matching the
+            // signature hover's code-block-then-classifier shape. Plaintext
+            // clients get the whole thing verbatim.
+            if (wantPlaintext) {
+                hint.tooltip = { kind: MarkupKind.PlainText, value: dto.detail };
+            } else {
+                const separator = dto.detail.indexOf('\n\n');
+                const body = separator >= 0 ? dto.detail.slice(0, separator) : dto.detail;
+                const note = separator >= 0 ? dto.detail.slice(separator + 2) : '';
+                const fenced = ["```ghul", body, "```"].join("\n");
+                hint.tooltip = {
+                    kind: MarkupKind.Markdown,
+                    value: note ? fenced + "\n\n" + note : fenced,
+                };
+            }
         }
 
         hints.push(hint);
