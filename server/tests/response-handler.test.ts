@@ -1,7 +1,7 @@
 export {}
 
 import { Connection } from 'vscode-languageserver';
-import { ResponseHandler } from '../src/response-handler';
+import { ResponseHandler, parseInlayHints } from '../src/response-handler';
 import { ConfigEventEmitter } from '../src/config-event-emitter';
 import { GhulConfig } from '../src/ghul-config';
 import { ServerManager } from '../src/server-manager';
@@ -770,5 +770,50 @@ describe('ResponseHandler', () => {
 
         expect(result.get('file:///clean.ghul')).toEqual([]);
         expect(result.get('file:///dirty.ghul')).toHaveLength(1);
+    });
+});
+
+describe('parseInlayHints', () => {
+    it('converts a 1-based hint to a 0-based position with a fenced ghul tooltip', () => {
+        const hints = parseInlayHints([
+            { line: 3, column: 5, label: '▶', detail: '▶ Cat', code: 'narrowing-presence' },
+        ]);
+
+        expect(hints).toEqual([
+            {
+                position: { line: 2, character: 4 },
+                label: '▶',
+                kind: 1, // InlayHintKind.Type
+                tooltip: { kind: 'markdown', value: '```ghul\n▶ Cat\n```' },
+            },
+        ]);
+    });
+
+    it('preserves the per-edge line breaks of a merged pair inside the fence', () => {
+        const [hint] = parseInlayHints([
+            { line: 1, column: 1, label: '▶', detail: '▶ CONS[int]\n▷ NIL', code: 'narrowing-isa' },
+        ]);
+
+        expect(hint.tooltip).toEqual({
+            kind: 'markdown',
+            value: '```ghul\n▶ CONS[int]\n▷ NIL\n```',
+        });
+    });
+
+    it('emits a plaintext tooltip verbatim when the client wants plaintext', () => {
+        const [hint] = parseInlayHints(
+            [{ line: 1, column: 1, label: '▶', detail: '▶ CONS[int]\n▷ NIL', code: 'narrowing-isa' }],
+            true,
+        );
+
+        expect(hint.tooltip).toEqual({ kind: 'plaintext', value: '▶ CONS[int]\n▷ NIL' });
+    });
+
+    it('omits the tooltip when there is no detail', () => {
+        const [hint] = parseInlayHints([
+            { line: 1, column: 1, label: '▶', detail: '', code: 'narrowing-presence' },
+        ]);
+
+        expect(hint.tooltip).toBeUndefined();
     });
 });
