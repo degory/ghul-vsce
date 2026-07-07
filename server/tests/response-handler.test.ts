@@ -376,6 +376,28 @@ describe('ResponseHandler', () => {
         ]);
     });
 
+    it('handleCompletion surfaces kind_label as italic documentation, and omits it when absent', async () => {
+        const completionPromise = responseHandler.expectCompletion();
+
+        responseHandler.handleCompletion({
+            kind: 'completion',
+            items: [
+                { name: 'meth', kind: 2, description: 'FOO.meth() -> void', kind_label: 'pure method' },
+                { name: 'plain', kind: 1, description: 'x: int' },
+            ],
+        } as any);
+
+        expect(await completionPromise).toEqual([
+            {
+                label: 'meth',
+                kind: 2,
+                detail: 'FOO.meth() -> void',
+                documentation: { kind: 'markdown', value: '_pure method_' },
+            },
+            { label: 'plain', kind: 1, detail: 'x: int' },
+        ]);
+    });
+
     it('should enqueue and resolve signature promise on expectSignature and handleSignature', async () => {
         const signaturePromise = responseHandler.expectSignature();
 
