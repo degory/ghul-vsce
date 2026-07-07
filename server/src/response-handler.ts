@@ -93,7 +93,11 @@ interface SemanticTokenDto {
 interface CompletionItemDto {
     name: string;
     kind: number;
+    // The formatted declaration head. On an older analyser this still carries
+    // the combined `head // kind` form; a current one sends the pure head and
+    // the classifier separately in `kind_label`.
     description: string;
+    kind_label?: string | null;
     insert_text?: string;
 }
 
@@ -730,6 +734,13 @@ export class ResponseHandler {
                     kind: <CompletionItemKind>item.kind,
                     detail: item.description
                 };
+
+                if (item.kind_label) {
+                    completion.documentation = {
+                        kind: MarkupKind.Markdown,
+                        value: `_${item.kind_label}_`
+                    };
+                }
 
                 if (item.insert_text) {
                     completion.insertText = item.insert_text;
