@@ -776,44 +776,63 @@ describe('ResponseHandler', () => {
 describe('parseInlayHints', () => {
     it('converts a 1-based hint to a 0-based position with a fenced ghul tooltip', () => {
         const hints = parseInlayHints([
-            { line: 3, column: 5, label: '▶', detail: '▶ Cat', code: 'narrowing-presence' },
+            { line: 3, column: 5, label: '▸', detail: '▸ Cat', code: 'narrowing-presence' },
         ]);
 
         expect(hints).toEqual([
             {
                 position: { line: 2, character: 4 },
-                label: '▶',
+                label: '▸',
                 kind: 1, // InlayHintKind.Type
-                tooltip: { kind: 'markdown', value: '```ghul\n▶ Cat\n```' },
+                tooltip: { kind: 'markdown', value: '```ghul\n▸ Cat\n```' },
             },
         ]);
     });
 
     it('preserves the per-edge line breaks of a merged pair inside the fence', () => {
         const [hint] = parseInlayHints([
-            { line: 1, column: 1, label: '▶', detail: '▶ CONS[int]\n▷ NIL', code: 'narrowing-isa' },
+            { line: 1, column: 1, label: '▸', detail: '▸ CONS[int]\n▹ NIL', code: 'narrowing-isa' },
         ]);
 
         expect(hint.tooltip).toEqual({
             kind: 'markdown',
-            value: '```ghul\n▶ CONS[int]\n▷ NIL\n```',
+            value: '```ghul\n▸ CONS[int]\n▹ NIL\n```',
         });
     });
 
     it('emits a plaintext tooltip verbatim when the client wants plaintext', () => {
         const [hint] = parseInlayHints(
-            [{ line: 1, column: 1, label: '▶', detail: '▶ CONS[int]\n▷ NIL', code: 'narrowing-isa' }],
+            [{ line: 1, column: 1, label: '▸', detail: '▸ CONS[int]\n▹ NIL', code: 'narrowing-isa' }],
             true,
         );
 
-        expect(hint.tooltip).toEqual({ kind: 'plaintext', value: '▶ CONS[int]\n▷ NIL' });
+        expect(hint.tooltip).toEqual({ kind: 'plaintext', value: '▸ CONS[int]\n▹ NIL' });
     });
 
     it('omits the tooltip when there is no detail', () => {
         const [hint] = parseInlayHints([
-            { line: 1, column: 1, label: '▶', detail: '', code: 'narrowing-presence' },
+            { line: 1, column: 1, label: '▸', detail: '', code: 'narrowing-presence' },
         ]);
 
         expect(hint.tooltip).toBeUndefined();
+    });
+
+    it('splits a kill hint into a fenced body and a prose reason', () => {
+        const [hint] = parseInlayHints([
+            { line: 4, column: 2, label: '◂', detail: 'v\n    ◂ Animal\n\na call here may change it', code: 'narrowing-killed' },
+        ]);
+
+        expect(hint.tooltip).toEqual({
+            kind: 'markdown',
+            value: '```ghul\nv\n    ◂ Animal\n```\n\na call here may change it',
+        });
+    });
+
+    it('fences the whole detail when there is no blank-line separated note', () => {
+        const [hint] = parseInlayHints([
+            { line: 1, column: 1, label: '▸', detail: '▸ Cat', code: 'narrowing-presence' },
+        ]);
+
+        expect(hint.tooltip).toEqual({ kind: 'markdown', value: '```ghul\n▸ Cat\n```' });
     });
 });
