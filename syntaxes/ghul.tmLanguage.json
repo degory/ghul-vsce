@@ -6,6 +6,18 @@
 	},
 	"patterns": [
 		{
+			"match": "^(►)",
+			"captures": {
+				"1": { "name": "markup.inserted.narrowing-taken.ghul" }
+			}
+		},
+		{
+			"match": "^(>)",
+			"captures": {
+				"1": { "name": "markup.deleted.narrowing-else.ghul" }
+			}
+		},
+		{
 			"name": "comment.ghul",
 			"match": "//.*$"
 		},
