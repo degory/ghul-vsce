@@ -41,6 +41,20 @@
         "path": "./syntaxes/ghul.tmLanguage.json"
       }
     ],
+    "configurationDefaults": {
+      "editor.tokenColorCustomizations": {
+        "textMateRules": [
+          {
+            "scope": "markup.inserted.narrowing-taken.ghul",
+            "settings": { "foreground": "#3FB950" }
+          },
+          {
+            "scope": "markup.deleted.narrowing-else.ghul",
+            "settings": { "foreground": "#F85149" }
+          }
+        ]
+      }
+    },
     "problemMatchers": [
       {
         "name": "ghūl",
