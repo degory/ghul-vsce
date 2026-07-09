@@ -124,8 +124,25 @@
 					"match": "(!|\\$|%|\\^|&|\\*|-|\\+|=|\\||~|#|\\\\|<|>|\\.|\\?|\\/|\\*)+"
 				},
 				{
+					"comment": "impl header: `impl <Interface> for <Target>` up to the body `is`. The `impl` keyword and the `for` linking interface to target are declaration keywords, not control flow; the block ends before `is` so the body colours normally, and at a blank line so an unfinished header cannot scope the rest of the file.",
+					"begin": "\\b(?<!\\`)(impl)\\b",
+					"end": "\\b(?<!\\`)(?=is\\b)|(?=^\\s*$)",
+					"beginCaptures": {
+						"1": { "name": "keyword.other.ghul" }
+					},
+					"patterns": [
+						{
+							"name": "keyword.other.ghul",
+							"match": "\\b(?<!\\`)(for)\\b"
+						},
+						{
+							"include": "#other"
+						}
+					]
+				},
+				{
 					"name": "keyword.other.ghul",
-					"match": "\\b(?<!\\`)(new|cast|isa|typeof|namespace|class|struct|union|trait|enum|use|innate|is|si|val|lav|optional)\\b"
+					"match": "\\b(?<!\\`)(new|cast|isa|typeof|namespace|class|struct|union|trait|enum|partial|use|innate|is|si|val|lav|optional)\\b"
 				},
 				{
 					"name": "entity.name.type.ghul",
