@@ -118,6 +118,20 @@ describe('parseSemanticTokens', () => {
         ]);
     });
 
+    it('encodes a modifier token (the leading underscore of a non-public member)', () => {
+        // The compiler splits `_count` into a single-char `modifier` token on
+        // the `_` and a `property` token on the rest.
+        const result = parseSemanticTokens([
+            tok(5, 9, 5, 9, 'modifier'),
+            tok(5, 10, 5, 14, 'property'),
+        ]);
+
+        expect(result.data).toEqual([
+            4, 8, 1, typeIndex('modifier'), 0,
+            0, 1, 5, typeIndex('property'), 0,
+        ]);
+    });
+
     it('skips rows whose tokenType is not in the legend', () => {
         const result = parseSemanticTokens([
             tok(1, 1, 1, 5, 'notAKind'),
