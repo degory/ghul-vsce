@@ -124,7 +124,7 @@
 					"match": "(!|\\$|%|\\^|&|\\*|-|\\+|=|\\||~|#|\\\\|<|>|\\.|\\?|\\/|\\*)+"
 				},
 				{
-					"comment": "impl header: `impl <Interface> for <Target>` up to the body `is`. The `impl` keyword and the `for` linking interface to target are declaration keywords, not control flow; the block ends before `is` so the body colours normally, and at a blank line so an unfinished header cannot scope the rest of the file.",
+					"comment": "impl header scope - ends on lookahead for `is`, or at a blank line so an unfinished header doesn't consume the rest of the file.",
 					"begin": "\\b(?<!\\`)(impl)\\b",
 					"end": "\\b(?<!\\`)(?=is\\b)|(?=^\\s*$)",
 					"beginCaptures": {
