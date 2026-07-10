@@ -223,6 +223,29 @@ describe('getGhulConfig', () => {
         expect(cfg.source).toEqual(['src/**/*.ghul']);
     });
 
+    it('forwards unconditioned <GhulOptions> additively and skips Condition-guarded ones', () => {
+        const workspace = ws();
+        const proj = `<?xml version="1.0"?>
+<Project Sdk="Ghul.Sdk">
+    <PropertyGroup>
+        <GhulCompiler>ghul-compiler --underscore-access legacy</GhulCompiler>
+    </PropertyGroup>
+    <ItemGroup>
+        <GhulSources Include="src/**/*.ghul" />
+        <GhulOptions Include="--warn-as-hint presence-test-non-optional" />
+        <GhulOptions Include="--define release" Condition="'$(CI)' != ''" />
+    </ItemGroup>
+</Project>`;
+        writeFileSync(join(workspace, 'test.ghulproj'), proj);
+
+        const cfg = getGhulConfig(workspace);
+        // <GhulCompiler> flags stay on `compiler`; the unconditioned
+        // <GhulOptions> land additively on `arguments` (ahead of -A); the
+        // Condition-guarded --define release is skipped.
+        expect(cfg.compiler).toEqual(['ghul-compiler', '--underscore-access', 'legacy']);
+        expect(cfg.arguments).toEqual(['--warn-as-hint', 'presence-test-non-optional', '-A']);
+    });
+
     it('ignores .ghulproj contents when multiple are present', () => {
         const workspace = ws();
         const proj = `<?xml version="1.0"?>

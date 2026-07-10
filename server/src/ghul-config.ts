@@ -59,6 +59,12 @@ interface GhulProjectXml {
 					"$": {
 						"Include": string
 					}
+				}[],
+				GhulOptions: {
+					"$": {
+						"Include": string,
+						"Condition"?: string
+					}
 				}[]
 			}
 		]
@@ -162,6 +168,29 @@ export function getGhulConfig(workspace: string): GhulConfig {
 							);
 					} else if(config.source) {
 						config.source = config.source.map(directory => directory + "/**/*.ghul");
+					}
+
+					// Forward unconditioned <GhulOptions Include="…" /> so the
+					// analyser tracks the command-line build (e.g. warning
+					// downgrades like --warn-as-hint). These are additive to
+					// other_flags and the <GhulCompiler> flags. Condition-guarded
+					// options (e.g. CI-only --define) are skipped so the analyser
+					// matches a local build rather than a CI build.
+					if (projectXml.Project.ItemGroup) {
+						projectXml.Project.ItemGroup
+							.filter(ig => ig.GhulOptions)
+							.map(ig => ig.GhulOptions)
+
+							.forEach(item => {
+								item
+									.filter(option => option["$"]?.Include && !option["$"]?.Condition)
+									.map(option => option["$"].Include)
+
+									.forEach(include => {
+										args.push(...parse(include).map(e => e.toString()));
+									})
+								}
+							);
 					}
 				} else {
 					let problem = `could not parse ghūl project file ${ghulProjFileName}` +
