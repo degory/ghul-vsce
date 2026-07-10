@@ -171,11 +171,9 @@ export function getGhulConfig(workspace: string): GhulConfig {
 					}
 
 					// Forward unconditioned <GhulOptions Include="…" /> so the
-					// analyser tracks the command-line build (e.g. warning
-					// downgrades like --warn-as-hint). These are additive to
-					// other_flags and the <GhulCompiler> flags. Condition-guarded
-					// options (e.g. CI-only --define) are skipped so the analyser
-					// matches a local build rather than a CI build.
+					// analyser tracks the command-line build (e.g. --warn-as-hint).
+					// Condition-guarded options (e.g. CI-only --define) are skipped
+					// so the analyser matches a local build rather than a CI build.
 					if (projectXml.Project.ItemGroup) {
 						projectXml.Project.ItemGroup
 							.filter(ig => ig.GhulOptions)
