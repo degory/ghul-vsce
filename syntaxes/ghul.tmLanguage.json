@@ -124,8 +124,25 @@
 					"match": "(!|\\$|%|\\^|&|\\*|-|\\+|=|\\||~|#|\\\\|<|>|\\.|\\?|\\/|\\*)+"
 				},
 				{
+					"comment": "impl header scope - ends on lookahead for `is`, or at a blank line so an unfinished header doesn't consume the rest of the file.",
+					"begin": "\\b(?<!\\`)(impl)\\b",
+					"end": "\\b(?<!\\`)(?=is\\b)|(?=^\\s*$)",
+					"beginCaptures": {
+						"1": { "name": "keyword.other.ghul" }
+					},
+					"patterns": [
+						{
+							"name": "keyword.other.ghul",
+							"match": "\\b(?<!\\`)(for)\\b"
+						},
+						{
+							"include": "#other"
+						}
+					]
+				},
+				{
 					"name": "keyword.other.ghul",
-					"match": "\\b(?<!\\`)(new|cast|isa|typeof|namespace|class|struct|union|trait|enum|use|innate|is|si|val|lav|optional)\\b"
+					"match": "\\b(?<!\\`)(new|cast|isa|typeof|namespace|class|struct|union|trait|enum|partial|use|innate|is|si|val|lav|optional)\\b"
 				},
 				{
 					"name": "entity.name.type.ghul",
