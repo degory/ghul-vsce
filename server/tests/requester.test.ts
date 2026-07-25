@@ -70,6 +70,11 @@ describe('Requester', () => {
         // onRunning is wired in the constructor; fire it now so the stream
         // is in place for write tests:
         events.running(makeRunningChild(stream));
+
+        // The write-behaviour tests below exercise a ready analyser: mark it
+        // analysed, as a completed compile round-trip would. The lifecycle
+        // itself (default false, gated senders) is covered by its own tests.
+        requester.analysed = true;
     });
 
     afterEach(() => {
@@ -78,10 +83,25 @@ describe('Requester', () => {
         watchdog.clearWatchdog();
     });
 
-    it('returns null from send methods before analysed becomes true (set via constructor default)', () => {
-        // Constructor sets analysed = true, so this baseline check
-        // documents that callers can rely on a non-null return after init:
+    it('starts un-analysed: a fresh Requester holds queries until a compile completes', () => {
+        // A fresh compiler child has no project state, so the constructor
+        // default is false; the edit queue flips it true when a compile
+        // round-trip completes.
+        const fresh = new Requester(
+            new ServerEventEmitter(),
+            response as unknown as ResponseHandler,
+            watchdog
+        );
+
+        expect(fresh.analysed).toBe(false);
+    });
+
+    it('a spawn (onStarting) resets analysed to false so queries wait for the new child', () => {
         expect(requester.analysed).toBe(true);
+
+        events.starting();
+
+        expect(requester.analysed).toBe(false);
     });
 
     it('sendDocuments writes one EDIT JSON line carrying every document', () => {
