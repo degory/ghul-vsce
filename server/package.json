@@ -32,18 +32,22 @@
     "compile": "installServerIntoExtension ../client ./package.json ./tsconfig.json && tsc -p .",
     "watch": "installServerIntoExtension ../client ./package.json ./tsconfig.json && tsc -w -p .",
     "webpack": "webpack --mode production",
-    "test": "jest",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "test": "npm run typecheck && jest",
     "test:watch": "jest --watch"
   },
   "devDependencies": {
+    "@babel/core": "^8.0.1",
+    "@babel/preset-env": "^8.0.2",
+    "@babel/preset-typescript": "^8.0.1",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.10.0",
     "@types/shell-quote": "^1.7.5",
     "@types/throttle-debounce": "^5.0.2",
     "@types/xml2js": "^0.4.14",
+    "babel-jest": "^30.4.1",
     "jest": "^30.4.2",
     "merge-options": "^3.0.4",
-    "ts-jest": "^29.4.9",
     "ts-loader": "^9.5.7",
     "typescript": "^5.9.3",
     "webpack": "^5.106.2",
@@ -59,9 +63,19 @@
     ],
     "transform": {
       "^.+\\.ts$": [
-        "ts-jest",
+        "babel-jest",
         {
-          "tsconfig": "tsconfig.jest.json"
+          "presets": [
+            [
+              "@babel/preset-env",
+              {
+                "targets": {
+                  "node": "current"
+                }
+              }
+            ],
+            "@babel/preset-typescript"
+          ]
         }
       ]
     },
