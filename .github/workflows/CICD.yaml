@@ -35,7 +35,7 @@ jobs:
       contents: read
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
       with:
         fetch-depth: '0'
 
@@ -61,11 +61,11 @@ jobs:
 
     steps:
     - name: Setup NodeJS
-      uses: actions/setup-node@v6
+      uses: actions/setup-node@v7
       with:
         node-version: 'lts/*'
 
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
 
     - name: Install dependencies
       run: npm install
@@ -97,7 +97,7 @@ jobs:
       id-token: write
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 1
 
@@ -133,11 +133,11 @@ jobs:
     if: ${{ github.event_name == 'pull_request' }}
     steps:
     - name: Setup NodeJS
-      uses: actions/setup-node@v6
+      uses: actions/setup-node@v7
       with:
         node-version: 'lts/*'
 
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
 
     - name: Install dependencies
       run: npm install
@@ -170,11 +170,11 @@ jobs:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     steps:
     - name: Setup NodeJS
-      uses: actions/setup-node@v6
+      uses: actions/setup-node@v7
       with:
         node-version: 'lts/*'
 
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
 
     - name: Install dependencies
       run: npm install
@@ -213,7 +213,7 @@ jobs:
       contents: 'write'
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
 
     - name: Create changelog
       run: git log -1 --format="%s%n%n%b%n%n" >changelog.txt
