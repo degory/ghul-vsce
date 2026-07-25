@@ -12,6 +12,9 @@
 		"rootDir": ".",
 		"outDir": "out",
 		"lib": [ "es5" ],
+		"types": [
+			"node"
+		],
 		"sourceMap": true
 	},
 	"exclude": [
