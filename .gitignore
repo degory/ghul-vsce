@@ -80,3 +80,5 @@ client/src/version.js
 server/src/version.js
 server/coverage/
 server/coverage/**/*
+language-server/LICENSE
+*.tgz
