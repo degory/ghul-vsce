@@ -13,6 +13,10 @@ class RecordingRequester {
     sendFullCompileRequestCalls = 0;
     sendHeapCheckRequestCalls = 0;
 
+    // Mirrors the real Requester field the queue flips once a compile
+    // round-trip completes; starts false as on a fresh compiler child.
+    analysed = false;
+
     sendDocuments(documents: { uri: string; source: string }[]) {
         this.sendDocumentsCalls.push(documents);
     }
@@ -177,6 +181,16 @@ describe('EditQueue', () => {
             queue.onPartialCompileDone(200);
             expect(queue.edit_timeout).toBe(300); // 200 * 1.5
         });
+
+        it('marks the requester analysed so queries can be answered', () => {
+            queue.reset();
+            queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+            expect(recorder.analysed).toBe(false);
+
+            queue.onPartialCompileDone(50);
+
+            expect(recorder.analysed).toBe(true);
+        });
     });
 
     describe('onFullCompileDone', () => {
@@ -204,6 +218,17 @@ describe('EditQueue', () => {
 
             queue.onFullCompileDone(100); // would set full_build_timeout = 150
             expect(queue.full_build_timeout).toBe(queue.edit_timeout);
+        });
+
+        it('marks the requester analysed so queries can be answered', () => {
+            queue.reset();
+            queue.forceScheduleFullCompile();
+            jest.advanceTimersByTime(EditQueue.FULL_BUILD_EDIT_TIMEOUT);
+            expect(recorder.analysed).toBe(false);
+
+            queue.onFullCompileDone(100);
+
+            expect(recorder.analysed).toBe(true);
         });
     });
 
