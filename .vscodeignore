@@ -16,3 +16,5 @@ client/**
 server/**
 !server/out/server.js
 
+
+language-server/**

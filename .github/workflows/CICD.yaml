@@ -75,6 +75,7 @@ jobs:
         npm version --no-git-tag-version --allow-same-version ${{ needs.version.outputs.package }}
         pushd server ; npm version --no-git-tag-version --allow-same-version ${{ needs.version.outputs.package }} ; popd
         pushd client ; npm version --no-git-tag-version --allow-same-version ${{ needs.version.outputs.package }} ; popd
+        pushd language-server ; npm version --no-git-tag-version --allow-same-version ${{ needs.version.outputs.package }} ; popd
 
     - name: Run tests
       run: npm test
@@ -147,9 +148,13 @@ jobs:
         npm version --no-git-tag-version --allow-same-version ${{ needs.version.outputs.package }}
         pushd server ; npm version --no-git-tag-version --allow-same-version ${{ needs.version.outputs.package }} ; popd
         pushd client ; npm version --no-git-tag-version --allow-same-version ${{ needs.version.outputs.package }} ; popd
+        pushd language-server ; npm version --no-git-tag-version --allow-same-version ${{ needs.version.outputs.package }} ; popd
 
     - name: Build VSCE package
       run: npx @vscode/vsce package
+
+    - name: Build standalone language server package
+      run: npm run package:language-server
 
     - name: Upload beta VSCE package artifact to GitHub
       uses: actions/upload-artifact@v7
@@ -157,6 +162,13 @@ jobs:
       with:
         name: vsce-package
         path: ghul-${{ needs.version.outputs.package }}.vsix
+
+    - name: Upload beta language server package artifact to GitHub
+      uses: actions/upload-artifact@v7
+      if: ${{ always() }}
+      with:
+        name: language-server-package
+        path: ghul-language-server-${{ needs.version.outputs.package }}.tgz
 
   publish_release_package:
     needs: [version, unit_tests]
@@ -168,6 +180,13 @@ jobs:
 
     # if push and branch is main
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+    # Read at step level to gate the npm publish: the npm registry is
+    # optional, and until a token is configured the rest of the release
+    # still has to go out.
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
     steps:
     - name: Setup NodeJS
       uses: actions/setup-node@v7
@@ -184,9 +203,13 @@ jobs:
         npm version --no-git-tag-version --allow-same-version ${{ needs.version.outputs.package }}
         pushd server ; npm version --no-git-tag-version --allow-same-version ${{ needs.version.outputs.package }} ; popd
         pushd client ; npm version --no-git-tag-version --allow-same-version ${{ needs.version.outputs.package }} ; popd
+        pushd language-server ; npm version --no-git-tag-version --allow-same-version ${{ needs.version.outputs.package }} ; popd
 
     - name: Build VSCE package
       run: npx @vscode/vsce package
+
+    - name: Build standalone language server package
+      run: npm run package:language-server
 
     - name: Upload release VSCE package artifact to GitHub
       uses: actions/upload-artifact@v7
@@ -195,11 +218,28 @@ jobs:
         name: vsce-package
         path: ghul-${{ needs.version.outputs.package }}.vsix
 
+    - name: Upload release language server package artifact to GitHub
+      uses: actions/upload-artifact@v7
+      if: ${{ always() }}
+      with:
+        name: language-server-package
+        path: ghul-language-server-${{ needs.version.outputs.package }}.tgz
+
     - name: VSCE publish
       run: npx @vscode/vsce publish -p ${{ secrets.VSCE_PAT }}
 
     - name: Open VSX publish
       run: npx ovsx publish "ghul-${{ needs.version.outputs.package }}.vsix" -p ${{ secrets.OPEN_VSX_PAT }}
+
+    - name: npm publish
+      if: ${{ env.NPM_TOKEN != '' }}
+      run: |
+        npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
+        npm publish --access public "ghul-language-server-${{ needs.version.outputs.package }}.tgz"
+
+    - name: Skipping npm publish
+      if: ${{ env.NPM_TOKEN == '' }}
+      run: echo "NPM_TOKEN is not configured: the language server was not published to npm"
 
   create_release:
     needs: [version, unit_tests, publish_release_package]
@@ -223,11 +263,17 @@ jobs:
       with:
         name: vsce-package
 
-    - name: Create release and upload VSIX
+    - name: Download release language server package artifact from GitHub
+      uses: actions/download-artifact@v8
+      with:
+        name: language-server-package
+
+    - name: Create release and upload packages
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         gh release create "${{ needs.version.outputs.tag }}" \
           --title "${{ needs.version.outputs.tag }}" \
           --notes-file changelog.txt \
-          "ghul-${{ needs.version.outputs.package }}.vsix"
+          "ghul-${{ needs.version.outputs.package }}.vsix" \
+          "ghul-language-server-${{ needs.version.outputs.package }}.tgz"

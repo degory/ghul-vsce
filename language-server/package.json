@@ -1,0 +1,29 @@
+{
+  "name": "ghul-language-server",
+  "displayName": "ghūl language server",
+  "description": "Language server for the ghūl programming language, for any LSP-capable editor",
+  "version": "0.0.0",
+  "author": "degory",
+  "license": "GPL-3.0",
+  "homepage": "https://ghul.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/degory/ghul-vsce.git"
+  },
+  "keywords": [
+    "ghul",
+    "language-server",
+    "lsp"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "ghul-language-server": "./bin/ghul-language-server.js"
+  },
+  "files": [
+    "bin/",
+    "out/",
+    "README.md"
+  ]
+}
