@@ -34,7 +34,9 @@ describe('ResponseHandler', () => {
             compiler: [''],
             source: [],
             arguments: [],
-            want_plaintext_hover: true
+            want_plaintext_hover: true,
+            incremental_analysis: false,
+            problems: [],
         };
 
         responseHandler.onConfigAvailable('workspace', config);

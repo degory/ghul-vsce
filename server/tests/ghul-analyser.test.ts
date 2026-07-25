@@ -61,6 +61,8 @@ describe('GhulAnalyser', () => {
             source: ['x'],
             arguments: [],
             want_plaintext_hover: false,
+            incremental_analysis: false,
+            problems: [],
         };
         configEvents.configAvailable(workspace, config);
 
@@ -90,6 +92,8 @@ describe('GhulAnalyser', () => {
             source: [`${workspace}/**/*.ghul`],
             arguments: [],
             want_plaintext_hover: false,
+            incremental_analysis: false,
+            problems: [],
         });
 
         serverEvents.listening();
@@ -121,6 +125,8 @@ describe('GhulAnalyser', () => {
             source: [`${workspace}/**/*.ghul`],
             arguments: [],
             want_plaintext_hover: false,
+            incremental_analysis: false,
+            problems: [],
         });
 
         serverEvents.listening();
@@ -159,6 +165,8 @@ describe('GhulAnalyser', () => {
                     source: ['src/**/*.ghul'],
                     arguments: [],
                     want_plaintext_hover: false,
+                    incremental_analysis: false,
+                    problems: [],
                 });
 
                 serverEvents.listening();
@@ -190,6 +198,8 @@ describe('GhulAnalyser', () => {
             source: [`${workspace}/no-matches/**/*.ghul`],
             arguments: [],
             want_plaintext_hover: false,
+            incremental_analysis: false,
+            problems: [],
         });
 
         serverEvents.listening();

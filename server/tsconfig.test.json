@@ -1,11 +1,13 @@
 {
     "extends": "./tsconfig.json",
     "compilerOptions": {
-        "module": "CommonJS",
-        "outDir": "./dist",
-        "noEmit": false,
+        "noEmit": true,
         "isolatedModules": true,
-        "esModuleInterop": true
+        "esModuleInterop": true,
+        "types": [
+            "node",
+            "jest"
+        ]
     },
     "include": [
         "src/**/*",

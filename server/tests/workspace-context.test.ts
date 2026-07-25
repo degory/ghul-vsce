@@ -1,5 +1,3 @@
-import { EventEmitter } from 'events';
-
 import { Connection, TextDocuments } from 'vscode-languageserver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
@@ -19,10 +17,15 @@ jest.mock('fs', () => ({
 }));
 
 jest.mock('child_process', () => {
-    const fakeChild: any = new EventEmitter();
+    // Required inside the factory rather than taken from the import above:
+    // jest.mock is hoisted above the imports, so the import is not yet
+    // initialised when this runs.
+    const { EventEmitter: MockEventEmitter } = require('events');
+
+    const fakeChild: any = new MockEventEmitter();
     fakeChild.pid = 1234;
-    fakeChild.stdout = new EventEmitter();
-    fakeChild.stderr = new EventEmitter();
+    fakeChild.stdout = new MockEventEmitter();
+    fakeChild.stderr = new MockEventEmitter();
     fakeChild.kill = jest.fn();
     return {
         ...jest.requireActual('child_process'),
@@ -50,7 +53,7 @@ function makeMockConnection(): Connection {
 
 function makeMockDocuments(): TextDocuments<TextDocument> {
     return {
-        all: () => [],
+        all: (): TextDocument[] => [],
     } as unknown as TextDocuments<TextDocument>;
 }
 
