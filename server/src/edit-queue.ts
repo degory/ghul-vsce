@@ -189,6 +189,10 @@ export class EditQueue {
             return;
         }
 
+        // The analyser has compiled the project at least once, so queries
+        // can now be answered against real state.
+        this.requester.analysed = true;
+
         if (milliseconds) {
             this.edit_timeout = milliseconds * 1.5;
 
@@ -221,6 +225,8 @@ export class EditQueue {
             log("edit queue: on full compile done: unexpected queue state: " + QueueState[this.state]);
             return;
         }
+
+        this.requester.analysed = true;
 
         if (milliseconds) {
             this.full_build_timeout = milliseconds * 1.5;

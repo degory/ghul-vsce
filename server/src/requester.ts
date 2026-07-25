@@ -27,6 +27,12 @@ import { Watchdog } from './watchdog';
 const version = require('./version') as string;
 
 export class Requester {
+    // True once the compiler has analysed the project at least once since it
+    // (re)started. Queries sent before that would reach an analyser with no
+    // source files registered: it can't answer them usefully, and the
+    // query-driven recompile of an empty project corrupts its reflected-type
+    // state. Every query sender below checks this and returns null instead.
+    // The edit queue sets it when a compile round-trip completes.
     analysed: boolean;
     stream: any;
 
@@ -42,7 +48,13 @@ export class Requester {
     ) {
         this.response_handler = response_handler;
         this.watchdog = watchdog;
-        this.analysed = true;
+        this.analysed = false;
+
+        server_event_emitter.onStarting(() => {
+            // A fresh compiler child starts with no project state; hold
+            // queries until its first compile completes.
+            this.analysed = false;
+        });
 
         server_event_emitter.onRunning((child: ChildProcess) => {
             log(`ghūl language extension v${version}: initialized`);
