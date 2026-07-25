@@ -99,11 +99,11 @@
     "test": "echo \"No tests yet...\""
   },
   "dependencies": {
-    "@types/vscode": "^1.85.0",
-    "vscode-languageclient": "^9.0.1"
+    "vscode-languageclient": "^10.1.0"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
+    "@types/vscode": "^1.91.0",
     "ts-loader": "^9.5.7",
     "typescript": "^6.0.3",
     "webpack": "^5.106.2",
