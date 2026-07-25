@@ -1,12 +1,13 @@
 {
 	"compilerOptions": {
+		"strict": false,
 		"noUnusedLocals": true,
 		"noUnusedParameters": true,
 		"noImplicitAny": true,
 		"noImplicitReturns": true,		
 		"target": "es6",
-		"module": "commonjs",
-		"moduleResolution": "node",
+		"module": "node16",
+		"moduleResolution": "node16",
 		"skipLibCheck": true,
 		"rootDir": ".",
 		"outDir": "out",
