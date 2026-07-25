@@ -5,6 +5,7 @@ import {
     CodeActionParams,
     Command,
     DidChangeConfigurationParams,
+    DidChangeWatchedFilesNotification,
     DidChangeWatchedFilesParams,
     WorkspaceFoldersChangeEvent,
     Definition,
@@ -47,6 +48,24 @@ import { ExtensionState } from './extension-state';
 import { CompilerQuickFixProvider } from './compiler-quick-fix-provider';
 
 import { WorkspaceContext } from './workspace-context';
+
+// Files whose changes affect analysis but which the editor does not
+// necessarily have open: the project files and build properties that define
+// the source set and compiler options, the source files themselves (a file
+// can be created, renamed or deleted outside the editor), and the marker
+// that suspends the compiler.
+//
+// The server asks the client to watch these rather than relying on the
+// client to know which patterns matter, so every LSP client watches the
+// same set.
+export const WATCHED_FILE_GLOBS = [
+    '**/*.ghul',
+    '**/*.ghulproj',
+    '**/Directory.Build.props',
+    '**/Directory.Packages.props',
+    '**/dotnet-tools.json',
+    '**/.block-compiler',
+];
 
 export class ConnectionEventHandler {
     extension_state: ExtensionState;
@@ -175,18 +194,34 @@ export class ConnectionEventHandler {
             workspace.initialize();
         }
 
-        // Subscribe to workspace folder change notifications only when the
-        // client supports them. Deferred to onInitialized: the library's
-        // `_notificationIsAutoRegistered` flag is set from our returned
-        // server capabilities, so reading the getter any earlier triggers
-        // a dynamic client/registerCapability call before the client has
-        // accepted our initialize response.
-        if (params.capabilities?.workspace?.workspaceFolders) {
+        const wants_folder_events = !!params.capabilities?.workspace?.workspaceFolders;
+
+        const can_register_watchers =
+            !!params.capabilities?.workspace?.didChangeWatchedFiles?.dynamicRegistration;
+
+        // Both subscriptions are deferred to onInitialized, and both go
+        // through one handler because registering onInitialized twice would
+        // replace the first callback rather than add to it.
+        //
+        // Deferral matters for the folder subscription in particular: the
+        // library's `_notificationIsAutoRegistered` flag is set from our
+        // returned server capabilities, so reading the getter any earlier
+        // triggers a dynamic client/registerCapability call before the
+        // client has accepted our initialize response.
+        if (wants_folder_events || can_register_watchers) {
             this.connection.onInitialized(() => {
-                this.connection.workspace.onDidChangeWorkspaceFolders(
-                    (event: WorkspaceFoldersChangeEvent) =>
-                        this.onDidChangeWorkspaceFolders(event)
-                );
+                if (wants_folder_events) {
+                    this.connection.workspace.onDidChangeWorkspaceFolders(
+                        (event: WorkspaceFoldersChangeEvent) =>
+                            this.onDidChangeWorkspaceFolders(event)
+                    );
+                }
+
+                if (can_register_watchers) {
+                    this.connection.client.register(DidChangeWatchedFilesNotification.type, {
+                        watchers: WATCHED_FILE_GLOBS.map(globPattern => ({ globPattern })),
+                    });
+                }
             });
         }
 

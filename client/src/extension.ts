@@ -3,7 +3,7 @@
 import { log } from 'console';
 import * as path from 'path';
 
-import { workspace, ExtensionContext } from 'vscode';
+import { ExtensionContext } from 'vscode';
 import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient/node';
 
 export function activate(context: ExtensionContext) {
@@ -26,17 +26,11 @@ export function activate(context: ExtensionContext) {
 	let clientOptions: LanguageClientOptions = {
 		// Register the server for ghul source files
 		documentSelector: [{scheme: 'file', language: 'ghul'}],
-		synchronize: {
-			// Notify the server about file changes to '.ghul' and '.ghulproj' files contain in the workspace
-			fileEvents: [
-				workspace.createFileSystemWatcher('**/.block-compiler'),
-				workspace.createFileSystemWatcher('**/*.ghulproj'),
-				workspace.createFileSystemWatcher('**/Directory.Build.props'),
-				workspace.createFileSystemWatcher('**/Directory.Packages.props'),
-				workspace.createFileSystemWatcher('**/dotnet-tools.json'),
-				workspace.createFileSystemWatcher('**/*.ghul'),
-			]
-		}
+
+		// File watching is not configured here: the server registers the
+		// patterns it cares about itself, via workspace/didChangeWatchedFiles,
+		// so that every client watches the same set. Declaring them here too
+		// would deliver each change twice.
 	}
 	
 	// Create the language client and start the client.

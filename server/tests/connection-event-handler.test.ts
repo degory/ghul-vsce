@@ -1,6 +1,7 @@
 import {
     CompletionParams,
     Connection,
+    DidChangeWatchedFilesNotification,
     DocumentSymbolParams,
     ReferenceParams,
     TextDocumentPositionParams,
@@ -63,6 +64,9 @@ function makeMockConnection(): Connection {
     // rather than on the bare Connection object.
     conn.workspace = {
         onDidChangeWorkspaceFolders: jest.fn(),
+    };
+    conn.client = {
+        register: jest.fn(),
     };
     return conn as Connection;
 }
@@ -249,6 +253,67 @@ describe('ConnectionEventHandler', () => {
 
             expect((connection as any).onInitialized).not.toHaveBeenCalled();
             expect((connection as any).workspace.onDidChangeWorkspaceFolders).not.toHaveBeenCalled();
+        });
+
+        it('registers file watchers for the project and source patterns once initialized', () => {
+            handler.onInitialize({
+                capabilities: {
+                    workspace: { didChangeWatchedFiles: { dynamicRegistration: true } },
+                },
+                workspaceFolders: [{ uri: 'file:///x', name: 'x' }],
+            } as any);
+
+            expect((connection as any).client.register).not.toHaveBeenCalled();
+
+            (connection as any).onInitialized.mock.calls[0][0]();
+
+            expect((connection as any).client.register).toHaveBeenCalledWith(
+                DidChangeWatchedFilesNotification.type,
+                {
+                    watchers: [
+                        { globPattern: '**/*.ghul' },
+                        { globPattern: '**/*.ghulproj' },
+                        { globPattern: '**/Directory.Build.props' },
+                        { globPattern: '**/Directory.Packages.props' },
+                        { globPattern: '**/dotnet-tools.json' },
+                        { globPattern: '**/.block-compiler' },
+                    ],
+                },
+            );
+        });
+
+        it('does not register file watchers when the client cannot register dynamically', () => {
+            handler.onInitialize({
+                capabilities: { workspace: { workspaceFolders: true } },
+                workspaceFolders: [{ uri: 'file:///x', name: 'x' }],
+            } as any);
+
+            (connection as any).onInitialized.mock.calls[0][0]();
+
+            expect((connection as any).client.register).not.toHaveBeenCalled();
+            expect((connection as any).workspace.onDidChangeWorkspaceFolders).toHaveBeenCalled();
+        });
+
+        it('subscribes to both folder changes and watched files from one onInitialized handler', () => {
+            // Registering onInitialized twice would replace the first
+            // callback, so a client supporting both features must still get
+            // both subscriptions.
+            handler.onInitialize({
+                capabilities: {
+                    workspace: {
+                        workspaceFolders: true,
+                        didChangeWatchedFiles: { dynamicRegistration: true },
+                    },
+                },
+                workspaceFolders: [{ uri: 'file:///x', name: 'x' }],
+            } as any);
+
+            expect((connection as any).onInitialized).toHaveBeenCalledTimes(1);
+
+            (connection as any).onInitialized.mock.calls[0][0]();
+
+            expect((connection as any).workspace.onDidChangeWorkspaceFolders).toHaveBeenCalled();
+            expect((connection as any).client.register).toHaveBeenCalled();
         });
 
         it('advertises full LSP capabilities including workspace folder change notifications', () => {
