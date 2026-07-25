@@ -239,7 +239,8 @@ jobs:
 
     - name: Skipping npm publish
       if: ${{ env.NPM_TOKEN == '' }}
-      run: echo "NPM_TOKEN is not configured: the language server was not published to npm"
+      run: |
+        echo "NPM_TOKEN is not configured, so the language server was not published to npm"
 
   create_release:
     needs: [version, unit_tests, publish_release_package]
