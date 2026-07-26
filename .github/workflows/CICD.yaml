@@ -102,8 +102,6 @@ jobs:
 
         Read this file first:
         1. .github/claude-review.md — what this repo is, and what to watch for in it
-
-        Post findings only to GitHub per the brief. Do not put review text in chat messages.
     secrets:
       claude-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       gh-app-private-key: ${{ secrets.GHUL_REVIEWER_PRIVATE_KEY }}
