@@ -2,7 +2,7 @@ import * as path from 'path';
 
 import { readdirSync } from 'fs';
 
-import { Connection, TextDocuments } from 'vscode-languageserver';
+import { Connection, Disposable, DidChangeWatchedFilesNotification, TextDocuments } from 'vscode-languageserver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import { ConfigEventEmitter } from './config-event-emitter';
@@ -45,6 +45,8 @@ export class WorkspaceContext {
     private documents: TextDocuments<TextDocument>;
 
     private reference_build_attempted: boolean = false;
+
+    private missing_assembly_watch: Promise<Disposable> | null = null;
 
     constructor(
         workspace_root: string,
@@ -151,8 +153,11 @@ export class WorkspaceContext {
             this,
             this.edit_queue,
             this.config.source.map(glob => `${workspace_root_munged}/${glob}`),
-            this.documents
+            this.documents,
+            this.config.missing_assemblies
         );
+
+        this.watchMissingAssemblies();
 
         this.config_event_emitter.configAvailable(this.workspace_root, this.config);
 
@@ -184,6 +189,29 @@ export class WorkspaceContext {
 
         buildReferencedAssemblies(this.workspace_root)
             .then(() => this.initialize());
+    }
+
+    // Backstop for the assemblies arriving by some other route than the build
+    // above — the user building from a terminal, a sibling tool, a git
+    // operation that restores them. Watches exactly the paths that are absent,
+    // so once they are all present nothing is registered and an ordinary
+    // rebuild during editing cannot trigger anything.
+    private watchMissingAssemblies() {
+        this.missing_assembly_watch?.then(watch => watch.dispose());
+        this.missing_assembly_watch = null;
+
+        if (!this.config.missing_assemblies.length || !this.connection?.client?.register) {
+            return;
+        }
+
+        this.missing_assembly_watch = this.connection.client.register(
+            DidChangeWatchedFilesNotification.type,
+            {
+                watchers: this.config.missing_assemblies.map(
+                    globPattern => ({ globPattern: globPattern.replace(/\\/g, '/') })
+                ),
+            }
+        );
     }
 
     // The set of file globs (already absolutised under workspace_root) that
