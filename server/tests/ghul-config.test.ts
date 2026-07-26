@@ -177,16 +177,43 @@ describe('getGhulConfig', () => {
     it('appends -a entries from .assemblies.json', () => {
         const workspace = ws();
         writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['src'] });
-        writeJson(workspace, '.assemblies.json', {
-            assemblies: ['/path/to/A.dll', '/path/to/B.dll'],
-        });
+
+        const a = join(workspace, 'A.dll');
+        const b = join(workspace, 'B.dll');
+
+        writeFileSync(a, '');
+        writeFileSync(b, '');
+
+        writeJson(workspace, '.assemblies.json', { assemblies: [a, b] });
 
         const cfg = getGhulConfig(workspace);
         expect(cfg.arguments).toEqual([
-            '-a', '/path/to/A.dll',
-            '-a', '/path/to/B.dll',
+            '-a', a,
+            '-a', b,
             '-A',
         ]);
+        expect(cfg.missing_assemblies).toEqual([]);
+    });
+
+    it('withholds -a entries for assemblies that do not exist yet', () => {
+        // The output of a referenced project is named in .assemblies.json
+        // before anything builds it. The analyser reads every -a path eagerly
+        // and dies on the first one it cannot open, so an absent assembly has
+        // to be left out and reported instead.
+        const workspace = ws();
+        writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['src'] });
+
+        const present = join(workspace, 'Present.dll');
+
+        writeFileSync(present, '');
+
+        const absent = join(workspace, 'bin', 'Absent.dll');
+
+        writeJson(workspace, '.assemblies.json', { assemblies: [present, absent] });
+
+        const cfg = getGhulConfig(workspace);
+        expect(cfg.arguments).toEqual(['-a', present, '-A']);
+        expect(cfg.missing_assemblies).toEqual([absent]);
     });
 
     it('produces just ["-A"] when no .assemblies.json is present (bug-trigger for #69)', () => {

@@ -36,6 +36,7 @@ describe('ResponseHandler', () => {
             arguments: [],
             want_plaintext_hover: true,
             incremental_analysis: false,
+            missing_assemblies: [],
             problems: [],
         };
 

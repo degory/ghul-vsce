@@ -10,7 +10,7 @@ describe('ConfigEventEmitter', () => {
 
     it('should emit config-available event', () => {
         const workspace = 'workspace';
-        const config: GhulConfig = { block: false, compiler: [''], source: [], arguments: [], want_plaintext_hover: true, incremental_analysis: false, problems: [] };
+        const config: GhulConfig = { block: false, compiler: [''], source: [], arguments: [], want_plaintext_hover: true, incremental_analysis: false, missing_assemblies: [], problems: [] };
         const handler = jest.fn();
 
         configEventEmitter.onConfigAvailable(handler);

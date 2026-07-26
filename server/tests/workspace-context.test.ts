@@ -91,6 +91,7 @@ describe('WorkspaceContext.initialize', () => {
             source: ['test.ghul'],
             arguments: [],
             want_plaintext_hover: false,
+            missing_assemblies: [],
             problems: [],
         } as GhulConfig);
 
@@ -118,6 +119,7 @@ describe('WorkspaceContext.initialize', () => {
             source: ['test.ghul'],
             arguments: [],
             want_plaintext_hover: false,
+            missing_assemblies: [],
             problems: ['could not load .assemblies.json: unexpected token'],
         } as GhulConfig);
 
@@ -136,6 +138,7 @@ describe('WorkspaceContext.initialize', () => {
             source: ['test.ghul'],
             arguments: [],
             want_plaintext_hover: false,
+            missing_assemblies: [],
             problems: [],
         } as GhulConfig);
 
@@ -152,6 +155,7 @@ describe('WorkspaceContext.initialize', () => {
             source: ['./src/**/*.ghul', './lib/**/*.ghul'],
             arguments: [],
             want_plaintext_hover: false,
+            missing_assemblies: [],
             problems: [],
         } as GhulConfig);
 
@@ -171,6 +175,7 @@ describe('WorkspaceContext.initialize', () => {
             source: ['test.ghul'],
             arguments: [],
             want_plaintext_hover: false,
+            missing_assemblies: [],
             problems: [],
         } as GhulConfig;
         jest.spyOn(GetGhulConfig, 'getGhulConfig').mockReturnValue(config);
