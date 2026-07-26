@@ -81,47 +81,32 @@ jobs:
       run: npm test
 
   code_review:
-    needs: [version, unit_tests]
-    name: Claude code review
-
-    timeout-minutes: 15
-
-    runs-on: ubuntu-latest
-
+    name: Code review
     if: ${{ github.event_name == 'pull_request' }}
-
-    continue-on-error: true
-
     permissions:
       contents: read
       pull-requests: write
-      id-token: write
+    concurrency:
+      group: claude-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    uses: degory/ghul-code-review/.github/workflows/review.yml@v2
+    with:
+      model: ${{ vars.CLAUDE_REVIEW_MODEL || 'claude-opus-5' }}
+      idle-timeout-seconds: ${{ fromJSON(vars.CLAUDE_REVIEW_IDLE_TIMEOUT_SECONDS || '90') }}
+      max-attempts: ${{ fromJSON(vars.CLAUDE_REVIEW_MAX_ATTEMPTS || '3') }}
+      gh-app-id: ${{ vars.GHUL_REVIEWER_APP_ID }}
+      prompt: |
+        Review pull request #${{ github.event.pull_request.number }} on ${{ github.repository }}.
 
-    steps:
-    - uses: actions/checkout@v7
-      with:
-        fetch-depth: 1
+        You run in parallel with CI. Whether the TypeScript compiles, the unit tests pass, and the beta package builds is gated by CI before merge — that's not your job. Trust the diff as written.
 
-    - uses: anthropics/claude-code-action@v1
-      with:
-        claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-        allowed_bots: "*"
-        prompt: |
-          Review pull request #${{ github.event.pull_request.number }} on ${{ github.repository }}.
+        Read this file first:
+        1. .github/claude-review.md — how to operate, severity bar, what to flag
 
-          CI has already passed for this commit — TypeScript compiles, unit tests pass, the beta package builds. Don't second-guess validity.
-
-          Read this file first:
-          1. .github/claude-review.md — how to operate, severity bar, what to flag
-
-          The PR branch is already checked out. Useful commands:
-          - `gh pr diff ${{ github.event.pull_request.number }}` — the diff
-          - `gh pr view ${{ github.event.pull_request.number }} --json title,body` — PR title and description
-
-          Post findings only to GitHub per the brief. Do not put review text in chat messages.
-        claude_args: |
-          --model claude-sonnet-4-6
-          --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr review:*),Read,Glob,Grep"
+        Post findings only to GitHub per the brief. Do not put review text in chat messages.
+    secrets:
+      claude-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      gh-app-private-key: ${{ secrets.GHUL_REVIEWER_PRIVATE_KEY }}
 
   upload_beta_package:
     needs: [version, unit_tests]
