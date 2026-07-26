@@ -1,6 +1,8 @@
 import { ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 
+import { CancellationTokenSource } from 'vscode-languageserver';
+
 import { Requester } from '../src/requester';
 import { ResponseHandler } from '../src/response-handler';
 import { ServerEventEmitter } from '../src/server-event-emitter';
@@ -281,6 +283,42 @@ describe('Requester', () => {
 
             await expect(hover).resolves.toBeNull();
             expect(stream.written).toEqual([]);
+        });
+
+        it('drops a held query the client has withdrawn', async () => {
+            // The pointer moved off the hover, the completion was dismissed:
+            // sending it when the analyser comes up would spend a round trip
+            // on an answer nobody reads.
+            const source = new CancellationTokenSource();
+
+            const hover = requester.sendHover(URI, 0, 0, source.token);
+
+            source.cancel();
+
+            await expect(hover).resolves.toBeNull();
+
+            requester.analysed = true;
+
+            expect(stream.written).toEqual([]);
+        });
+
+        it('still sends held queries the client has not withdrawn', async () => {
+            const cancelled = new CancellationTokenSource();
+            const live = new CancellationTokenSource();
+
+            const dropped = requester.sendHover(URI, 0, 0, cancelled.token);
+            const kept = requester.sendDefinition(URI, 0, 0, live.token);
+
+            cancelled.cancel();
+
+            await expect(dropped).resolves.toBeNull();
+
+            requester.analysed = true;
+
+            await kept;
+
+            expect(stream.written.map(line => JSON.parse(line.slice(0, -1)).command))
+                .toEqual(['definition']);
         });
     });
 });

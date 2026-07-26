@@ -9,7 +9,8 @@ import {
     Location,
     WorkspaceEdit,
     TextEdit,
-    Range
+    Range,
+    CancellationToken
 } from 'vscode-languageserver';
 
 import { log } from './log';
@@ -92,7 +93,11 @@ export class Requester {
     // Bounded, because the analyser might never arrive — a compiler that
     // cannot start, or one the watchdog is still recovering. Falling back to
     // the empty answer then is no worse than giving it immediately.
-    private whenAnalysed<T>(send: () => Promise<T>, fallback: T = null): Promise<T> {
+    private whenAnalysed<T>(
+        send: () => Promise<T>,
+        fallback: T = null,
+        token?: CancellationToken
+    ): Promise<T> {
         if (this.analysed) {
             this.watchdog.startWatchdogIfNotRunning();
 
@@ -100,13 +105,31 @@ export class Requester {
         }
 
         return new Promise<T>(resolve => {
-            const timer = setTimeout(() => {
+            const drop = () => {
                 this.analysed_waiters = this.analysed_waiters.filter(w => w !== waiter);
+
+                clearTimeout(timer);
+            };
+
+            const timer = setTimeout(() => {
+                drop();
 
                 log("query timed out waiting for the analyser to become ready");
 
                 resolve(fallback);
             }, ANALYSED_WAIT_TIMEOUT_MS);
+
+            // The client withdraws a query as soon as it stops wanting the
+            // answer — a hover the pointer has moved off, a completion the
+            // user dismissed. Sending it when the analyser eventually comes up
+            // would spend a round trip on an answer nobody reads, and every
+            // such query released at once lands exactly when the analyser is
+            // busiest with its first compile.
+            token?.onCancellationRequested(() => {
+                drop();
+
+                resolve(fallback);
+            });
 
             const waiter = () => {
                 clearTimeout(timer);
@@ -176,7 +199,7 @@ export class Requester {
         });
     }
 
-    sendHover(uri: string, line: number, character: number): Promise<Hover> {
+    sendHover(uri: string, line: number, character: number, token?: CancellationToken): Promise<Hover> {
         return this.whenAnalysed(() => {
             this.send({
                 command: "hover",
@@ -186,10 +209,10 @@ export class Requester {
             });
 
             return this.response_handler.expectHover();
-        });
+        }, null, token);
     }
 
-    sendDefinition(uri: string, line: number, character: number): Promise<Definition> {
+    sendDefinition(uri: string, line: number, character: number, token?: CancellationToken): Promise<Definition> {
         return this.whenAnalysed(() => {
             this.send({
                 command: "definition",
@@ -199,10 +222,10 @@ export class Requester {
             });
 
             return this.response_handler.expectDefinition();
-        });
+        }, null, token);
     }
 
-    sendDeclaration(uri: string, line: number, character: number): Promise<Definition> {
+    sendDeclaration(uri: string, line: number, character: number, token?: CancellationToken): Promise<Definition> {
         return this.whenAnalysed(() => {
             this.send({
                 command: "declaration",
@@ -212,10 +235,10 @@ export class Requester {
             });
 
             return this.response_handler.expectDeclaration();
-        });
+        }, null, token);
     }
 
-    sendCompletion(uri: string, line: number, character: number): Promise<CompletionItem[]> {
+    sendCompletion(uri: string, line: number, character: number, token?: CancellationToken): Promise<CompletionItem[]> {
         return this.whenAnalysed(() => {
             this.send({
                 command: "complete",
@@ -225,10 +248,10 @@ export class Requester {
             });
 
             return this.response_handler.expectCompletion();
-        });
+        }, null, token);
     }
 
-    sendSignature(uri: string, line: number, character: number): Promise<SignatureHelp> {
+    sendSignature(uri: string, line: number, character: number, token?: CancellationToken): Promise<SignatureHelp> {
         return this.whenAnalysed(() => {
             this.send({
                 command: "signature",
@@ -238,10 +261,10 @@ export class Requester {
             });
 
             return this.response_handler.expectSignature();
-        });
+        }, null, token);
     }
 
-    sendDocumentSymbol(uri: string): Promise<SymbolInformation[]> {
+    sendDocumentSymbol(uri: string, token?: CancellationToken): Promise<SymbolInformation[]> {
         return this.whenAnalysed(() => {
             this.send({
                 command: "symbols",
@@ -249,10 +272,10 @@ export class Requester {
             });
 
             return this.response_handler.expectSymbols();
-        });
+        }, null, token);
     }
 
-    sendWorkspaceSymbol(): Promise<SymbolInformation[]> {
+    sendWorkspaceSymbol(token?: CancellationToken): Promise<SymbolInformation[]> {
         return this.whenAnalysed(() => {
             this.send({
                 command: "symbols",
@@ -260,10 +283,10 @@ export class Requester {
             });
 
             return this.response_handler.expectSymbols();
-        });
+        }, null, token);
     }
 
-    sendReferences(uri: string, line: number, character: number): Promise<Location[]> {
+    sendReferences(uri: string, line: number, character: number, token?: CancellationToken): Promise<Location[]> {
         return this.whenAnalysed(() => {
             this.send({
                 command: "references",
@@ -273,10 +296,10 @@ export class Requester {
             });
 
             return this.response_handler.expectReferences();
-        });
+        }, null, token);
     }
 
-    sendImplementation(uri: string, line: number, character: number): Promise<Location[]> {
+    sendImplementation(uri: string, line: number, character: number, token?: CancellationToken): Promise<Location[]> {
         return this.whenAnalysed(() => {
             this.send({
                 command: "implementation",
@@ -286,10 +309,10 @@ export class Requester {
             });
 
             return this.response_handler.expectImplementation();
-        });
+        }, null, token);
     }
 
-    sendTypeDefinition(uri: string, line: number, character: number): Promise<Definition> {
+    sendTypeDefinition(uri: string, line: number, character: number, token?: CancellationToken): Promise<Definition> {
         return this.whenAnalysed(() => {
             this.send({
                 command: "type_definition",
@@ -299,7 +322,7 @@ export class Requester {
             });
 
             return this.response_handler.expectTypeDefinition();
-        });
+        }, null, token);
     }
 
     sendRenameRequest(uri: string, line: number, character: number, newName: string): Promise<WorkspaceEdit> {
@@ -316,7 +339,7 @@ export class Requester {
         });
     }
 
-    sendSemanticTokens(uri: string): Promise<SemanticTokens> {
+    sendSemanticTokens(uri: string, token?: CancellationToken): Promise<SemanticTokens> {
         return this.whenAnalysed(() => {
             this.send({
                 command: "semantic_tokens",
@@ -324,10 +347,10 @@ export class Requester {
             });
 
             return this.response_handler.expectSemanticTokens();
-        });
+        }, null, token);
     }
 
-    sendInlayHints(uri: string): Promise<InlayHint[]> {
+    sendInlayHints(uri: string, token?: CancellationToken): Promise<InlayHint[]> {
         return this.whenAnalysed(() => {
             this.send({
                 command: "inlay_hints",
@@ -335,7 +358,7 @@ export class Requester {
             });
 
             return this.response_handler.expectInlayHints();
-        }, []);
+        }, [], token);
     }
 
     sendDocumentFormatting(uri: string, source: string, range: Range): Promise<TextEdit[]> {
