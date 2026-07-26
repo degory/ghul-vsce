@@ -33,7 +33,6 @@
     "watch": "installServerIntoExtension ../client ./package.json ./tsconfig.json && tsc -w -p .",
     "webpack": "webpack --mode production",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
-    "test": "npm run typecheck && jest",
     "test:watch": "jest --watch"
   },
   "devDependencies": {
