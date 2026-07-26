@@ -37,6 +37,7 @@ Instructions for the reviewer invoked from the `code_review` job in `.github/wor
 
   One finding per `comments[]` entry, anchored to the line it concerns. Use `body` only for commentary that genuinely spans the whole diff. `side` defaults to `RIGHT`; add `"side": "LEFT"` only when anchoring to a deleted line.
 
+- **Every `comments[]` entry must anchor to a line that appears in this PR's diff.** The endpoint rejects the whole POST with a 422 if any single entry falls outside the diff hunks, discarding every other finding with it. When a finding concerns code the diff doesn't touch, put it in `body` instead of anchoring it.
 - **Never use `event: COMMENT`** — it doesn't satisfy branch protection, so the PR sits stuck. **Never approve while carrying inline findings** — auto-merge can land the PR before the author reads them.
 - **There is no "non-blocking" verdict.** If a finding is worth saying out loud, it's worth blocking on. If it isn't worth blocking, stay silent. Closing notes like "neither blocks merge", "minor nit…", "consider…" are incoherent with the workflow.
 - `/tmp` is not writeable; write `review.json` into the working directory.
