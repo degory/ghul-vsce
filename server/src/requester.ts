@@ -26,14 +26,34 @@ import { Watchdog } from './watchdog';
 
 const version = require('./version') as string;
 
+// Long enough to cover a cold start on a machine that has to fetch and JIT the
+// compiler first, short enough that a query against a compiler which will
+// never answer does not hang indefinitely.
+const ANALYSED_WAIT_TIMEOUT_MS = 60000;
+
 export class Requester {
     // True once the compiler has analysed the project at least once since it
     // (re)started. Queries sent before that would reach an analyser with no
     // source files registered: it can't answer them usefully, and the
     // query-driven recompile of an empty project corrupts its reflected-type
-    // state. Every query sender below checks this and returns null instead.
-    // The edit queue sets it when a compile round-trip completes.
-    analysed: boolean;
+    // state. Every query sender below goes through whenAnalysed, which holds
+    // the query until this turns true. The edit queue sets it when a compile
+    // round-trip completes.
+    get analysed(): boolean {
+        return this._analysed;
+    }
+
+    set analysed(value: boolean) {
+        this._analysed = value;
+
+        if (value) {
+            this.releaseAnalysedWaiters();
+        }
+    }
+
+    private _analysed: boolean;
+    private analysed_waiters: (() => void)[] = [];
+
     stream: any;
 
     response_handler: ResponseHandler;
@@ -60,6 +80,57 @@ export class Requester {
             log(`ghūl language extension v${version}: initialized`);
             this.stream = child.stdin;
         });
+    }
+
+    // Hold a query that arrived before the analyser could answer it until it
+    // can, rather than answering it with nothing. An empty answer is
+    // indistinguishable from a real one: the client caches it and does not ask
+    // again until the document changes, so a hover tried once during start-up
+    // stays blank long after the analyser is ready, and reads as a feature
+    // that does not work.
+    //
+    // Bounded, because the analyser might never arrive — a compiler that
+    // cannot start, or one the watchdog is still recovering. Falling back to
+    // the empty answer then is no worse than giving it immediately.
+    private whenAnalysed<T>(send: () => Promise<T>, fallback: T = null): Promise<T> {
+        if (this.analysed) {
+            this.watchdog.startWatchdogIfNotRunning();
+
+            return send();
+        }
+
+        return new Promise<T>(resolve => {
+            const timer = setTimeout(() => {
+                this.analysed_waiters = this.analysed_waiters.filter(w => w !== waiter);
+
+                log("query timed out waiting for the analyser to become ready");
+
+                resolve(fallback);
+            }, ANALYSED_WAIT_TIMEOUT_MS);
+
+            const waiter = () => {
+                clearTimeout(timer);
+
+                this.watchdog.startWatchdogIfNotRunning();
+
+                resolve(send());
+            };
+
+            this.analysed_waiters.push(waiter);
+        });
+    }
+
+    // Release everything waiting on the analyser. Called when the first
+    // compile lands; the send and the matching expect stay adjacent within
+    // each waiter, so the response handler's queues keep their pairing.
+    private releaseAnalysedWaiters() {
+        const waiters = this.analysed_waiters;
+
+        this.analysed_waiters = [];
+
+        for (const waiter of waiters) {
+            waiter();
+        }
     }
 
     write(text: String) {
@@ -106,9 +177,7 @@ export class Requester {
     }
 
     sendHover(uri: string, line: number, character: number): Promise<Hover> {
-        if (this.analysed) {
-            this.watchdog.startWatchdogIfNotRunning();
-
+        return this.whenAnalysed(() => {
             this.send({
                 command: "hover",
                 path: normalizeFileUri(uri),
@@ -117,15 +186,11 @@ export class Requester {
             });
 
             return this.response_handler.expectHover();
-        } else {
-            return null;
-        }
+        });
     }
 
     sendDefinition(uri: string, line: number, character: number): Promise<Definition> {
-        if (this.analysed) {
-            this.watchdog.startWatchdogIfNotRunning();
-
+        return this.whenAnalysed(() => {
             this.send({
                 command: "definition",
                 path: normalizeFileUri(uri),
@@ -134,15 +199,11 @@ export class Requester {
             });
 
             return this.response_handler.expectDefinition();
-        } else {
-            return null;
-        }
+        });
     }
 
     sendDeclaration(uri: string, line: number, character: number): Promise<Definition> {
-        if (this.analysed) {
-            this.watchdog.startWatchdogIfNotRunning();
-
+        return this.whenAnalysed(() => {
             this.send({
                 command: "declaration",
                 path: normalizeFileUri(uri),
@@ -151,15 +212,11 @@ export class Requester {
             });
 
             return this.response_handler.expectDeclaration();
-        } else {
-            return null;
-        }
+        });
     }
 
     sendCompletion(uri: string, line: number, character: number): Promise<CompletionItem[]> {
-        if (this.analysed) {
-            this.watchdog.startWatchdogIfNotRunning();
-
+        return this.whenAnalysed(() => {
             this.send({
                 command: "complete",
                 path: normalizeFileUri(uri),
@@ -168,15 +225,11 @@ export class Requester {
             });
 
             return this.response_handler.expectCompletion();
-        } else {
-            return null;
-        }
+        });
     }
 
     sendSignature(uri: string, line: number, character: number): Promise<SignatureHelp> {
-        if (this.analysed) {
-            this.watchdog.startWatchdogIfNotRunning();
-
+        return this.whenAnalysed(() => {
             this.send({
                 command: "signature",
                 path: normalizeFileUri(uri),
@@ -185,45 +238,33 @@ export class Requester {
             });
 
             return this.response_handler.expectSignature();
-        } else {
-            return null;
-        }
+        });
     }
 
     sendDocumentSymbol(uri: string): Promise<SymbolInformation[]> {
-        if (this.analysed) {
-            this.watchdog.startWatchdogIfNotRunning();
-
+        return this.whenAnalysed(() => {
             this.send({
                 command: "symbols",
                 path: normalizeFileUri(uri)
             });
 
             return this.response_handler.expectSymbols();
-        } else {
-            return null;
-        }
+        });
     }
 
     sendWorkspaceSymbol(): Promise<SymbolInformation[]> {
-        if (this.analysed) {
-            this.watchdog.startWatchdogIfNotRunning();
-
+        return this.whenAnalysed(() => {
             this.send({
                 command: "symbols",
                 path: ""
             });
 
             return this.response_handler.expectSymbols();
-        } else {
-            return null;
-        }
+        });
     }
 
     sendReferences(uri: string, line: number, character: number): Promise<Location[]> {
-        if (this.analysed) {
-            this.watchdog.startWatchdogIfNotRunning();
-
+        return this.whenAnalysed(() => {
             this.send({
                 command: "references",
                 path: normalizeFileUri(uri),
@@ -232,15 +273,11 @@ export class Requester {
             });
 
             return this.response_handler.expectReferences();
-        } else {
-            return null;
-        }
+        });
     }
 
     sendImplementation(uri: string, line: number, character: number): Promise<Location[]> {
-        if (this.analysed) {
-            this.watchdog.startWatchdogIfNotRunning();
-
+        return this.whenAnalysed(() => {
             this.send({
                 command: "implementation",
                 path: normalizeFileUri(uri),
@@ -249,15 +286,11 @@ export class Requester {
             });
 
             return this.response_handler.expectImplementation();
-        } else {
-            return null;
-        }
+        });
     }
 
     sendTypeDefinition(uri: string, line: number, character: number): Promise<Definition> {
-        if (this.analysed) {
-            this.watchdog.startWatchdogIfNotRunning();
-
+        return this.whenAnalysed(() => {
             this.send({
                 command: "type_definition",
                 path: normalizeFileUri(uri),
@@ -266,15 +299,11 @@ export class Requester {
             });
 
             return this.response_handler.expectTypeDefinition();
-        } else {
-            return null;
-        }
+        });
     }
 
     sendRenameRequest(uri: string, line: number, character: number, newName: string): Promise<WorkspaceEdit> {
-        if (this.analysed) {
-            this.watchdog.startWatchdogIfNotRunning();
-
+        return this.whenAnalysed(() => {
             this.send({
                 command: "rename",
                 path: normalizeFileUri(uri),
@@ -284,45 +313,33 @@ export class Requester {
             });
 
             return this.response_handler.expectRenameRequest();
-        } else {
-            return null;
-        }
+        });
     }
 
     sendSemanticTokens(uri: string): Promise<SemanticTokens> {
-        if (this.analysed) {
-            this.watchdog.startWatchdogIfNotRunning();
-
+        return this.whenAnalysed(() => {
             this.send({
                 command: "semantic_tokens",
                 path: normalizeFileUri(uri)
             });
 
             return this.response_handler.expectSemanticTokens();
-        } else {
-            return null;
-        }
+        });
     }
 
     sendInlayHints(uri: string): Promise<InlayHint[]> {
-        if (this.analysed) {
-            this.watchdog.startWatchdogIfNotRunning();
-
+        return this.whenAnalysed(() => {
             this.send({
                 command: "inlay_hints",
                 path: normalizeFileUri(uri)
             });
 
             return this.response_handler.expectInlayHints();
-        } else {
-            return Promise.resolve([]);
-        }
+        }, []);
     }
 
     sendDocumentFormatting(uri: string, source: string, range: Range): Promise<TextEdit[]> {
-        if (this.analysed) {
-            this.watchdog.startWatchdogIfNotRunning();
-
+        return this.whenAnalysed(() => {
             this.send({
                 command: "format",
                 path: normalizeFileUri(uri),
@@ -330,15 +347,11 @@ export class Requester {
             });
 
             return this.response_handler.expectDocumentFormatting(range);
-        } else {
-            return null;
-        }
+        });
     }
 
     sendDocumentRangeFormatting(uri: string, source: string, range: Range): Promise<TextEdit[]> {
-        if (this.analysed) {
-            this.watchdog.startWatchdogIfNotRunning();
-
+        return this.whenAnalysed(() => {
             this.send({
                 command: "format_range",
                 path: normalizeFileUri(uri),
@@ -350,9 +363,7 @@ export class Requester {
             });
 
             return this.response_handler.expectDocumentRangeFormatting();
-        } else {
-            return null;
-        }
+        });
     }
 
     sendFullCompileRequest() {
