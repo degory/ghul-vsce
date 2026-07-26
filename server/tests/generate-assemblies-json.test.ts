@@ -31,7 +31,7 @@ describe('generateAssembliesJson', () => {
 
         expect(execSync).toHaveBeenCalledTimes(1);
         expect(execSync).toHaveBeenCalledWith(
-            'dotnet build -verbosity:minimal -t:GenerateAssembliesJson',
+            'dotnet build -verbosity:minimal -t:GenerateAssembliesJson -p:BuildProjectReferences=false',
             { cwd: workspace }
         );
     });

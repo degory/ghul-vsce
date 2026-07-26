@@ -18,7 +18,7 @@ import { Watchdog } from './watchdog';
 
 import { getGhulConfig, GhulConfig } from './ghul-config';
 import { restoreDotNetTools } from './restore-dotnet-tools';
-import { generateAssembliesJson } from './generate-assemblies-json';
+import { generateAssembliesJson, buildReferencedAssemblies } from './generate-assemblies-json';
 
 // All compiler-facing state for a single workspace folder: one compiler child,
 // its watchdog, its edit queue and the response handler that fans replies back
@@ -43,6 +43,8 @@ export class WorkspaceContext {
 
     private connection: Connection;
     private documents: TextDocuments<TextDocument>;
+
+    private reference_build_attempted: boolean = false;
 
     constructor(
         workspace_root: string,
@@ -135,10 +137,35 @@ export class WorkspaceContext {
         );
 
         this.config_event_emitter.configAvailable(this.workspace_root, this.config);
+
+        this.buildMissingAssemblies();
     }
 
     reinitialize() {
+        // An external change — a project file, the tool manifest — can add or
+        // remove references, so whatever was concluded about the previous
+        // reference set no longer binds.
+        this.reference_build_attempted = false;
+
         this.initialize();
+    }
+
+    // Referenced projects are not built while resolving their output paths, so
+    // on a tree that has never been built those outputs are absent and the
+    // analyser starts without them. Build them now, off the critical path, and
+    // re-read the configuration once they exist.
+    //
+    // Attempted at most once per reference set: a build that fails, or that
+    // leaves an output still missing, must not re-trigger itself.
+    private buildMissingAssemblies() {
+        if (!this.config.missing_assemblies.length || this.reference_build_attempted) {
+            return;
+        }
+
+        this.reference_build_attempted = true;
+
+        buildReferencedAssemblies(this.workspace_root)
+            .then(() => this.initialize());
     }
 
     // The set of file globs (already absolutised under workspace_root) that
