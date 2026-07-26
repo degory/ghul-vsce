@@ -1,13 +1,13 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { execSync } from 'child_process';
+import { execFile } from 'child_process';
 
 import { restoreDotNetTools } from '../src/restore-dotnet-tools';
 
 jest.mock('child_process', () => ({
     ...jest.requireActual('child_process'),
-    execSync: jest.fn(() => Buffer.from('')),
+    execFile: jest.fn((_command, _args, _options, callback) => callback(null, '', '')),
 }));
 
 describe('restoreDotNetTools', () => {
@@ -15,25 +15,41 @@ describe('restoreDotNetTools', () => {
 
     beforeEach(() => {
         workspace = mkdtempSync(join(tmpdir(), 'ghul-vsce-tools-'));
-        (execSync as jest.Mock).mockClear();
+        (execFile as unknown as jest.Mock).mockClear();
     });
 
     afterEach(() => {
         try { rmSync(workspace, { recursive: true, force: true }); } catch { /* swallow */ }
     });
 
-    it('runs dotnet tool restore in the workspace directory when the manifest exists', () => {
+    it('runs dotnet tool restore in the workspace directory when the manifest exists', async () => {
         mkdirSync(join(workspace, '.config'));
         writeFileSync(join(workspace, '.config/dotnet-tools.json'), '{"version":1}');
 
-        restoreDotNetTools(workspace);
+        await expect(restoreDotNetTools(workspace)).resolves.toBeNull();
 
-        expect(execSync).toHaveBeenCalledWith('dotnet tool restore', { cwd: workspace });
+        expect(execFile).toHaveBeenCalledWith(
+            'dotnet',
+            ['tool', 'restore'],
+            { cwd: workspace },
+            expect.any(Function)
+        );
     });
 
-    it('does nothing when the manifest is missing', () => {
-        restoreDotNetTools(workspace);
+    it('does nothing when the manifest is missing', async () => {
+        await expect(restoreDotNetTools(workspace)).resolves.toBeNull();
 
-        expect(execSync).not.toHaveBeenCalled();
+        expect(execFile).not.toHaveBeenCalled();
+    });
+
+    it('reports a failing restore rather than rejecting', async () => {
+        mkdirSync(join(workspace, '.config'));
+        writeFileSync(join(workspace, '.config/dotnet-tools.json'), '{"version":1}');
+
+        (execFile as unknown as jest.Mock).mockImplementationOnce(
+            (_command, _args, _options, callback) => callback(new Error('no such tool'), '', '')
+        );
+
+        await expect(restoreDotNetTools(workspace)).resolves.toContain('no such tool');
     });
 });

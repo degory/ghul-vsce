@@ -191,7 +191,10 @@ export class ConnectionEventHandler {
 
             const workspace = this.extension_state.registerWorkspace(root);
 
-            workspace.initialize();
+            // Deliberately not awaited: the client sends us nothing — not even
+            // the open documents — until it has this response, so setup has to
+            // proceed alongside it rather than in front of it.
+            workspace.initializeDetached();
         }
 
         const wants_folder_events = !!params.capabilities?.workspace?.workspaceFolders;
@@ -346,7 +349,7 @@ export class ConnectionEventHandler {
 
             log(`workspace folder added: ${root}`);
             const workspace = this.extension_state.registerWorkspace(root);
-            workspace.initialize();
+            workspace.initializeDetached();
         }
     }
 

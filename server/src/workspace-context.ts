@@ -2,8 +2,16 @@ import * as path from 'path';
 
 import { readdirSync } from 'fs';
 
-import { Connection, Disposable, DidChangeWatchedFilesNotification, TextDocuments } from 'vscode-languageserver';
+import {
+    Connection,
+    Disposable,
+    DidChangeWatchedFilesNotification,
+    TextDocuments,
+    WorkDoneProgressServerReporter
+} from 'vscode-languageserver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
+
+import { log } from './log';
 
 import { ConfigEventEmitter } from './config-event-emitter';
 import { ServerEventEmitter } from './server-event-emitter';
@@ -99,23 +107,37 @@ export class WorkspaceContext {
     // restore the local tool manifest, regenerate .assemblies.json, parse
     // ghul.json/.ghulproj. Fires configAvailable, which is what wakes the
     // server manager and starts the compiler child.
-    initialize() {
+    //
+    // Runs off the initialize response, not inside it. The tool restore alone
+    // can take tens of seconds on a machine that has never seen the compiler,
+    // and until the response is sent the client holds back every notification
+    // it has for us — so a caller that waits for this leaves the editor with
+    // no language support at all and no way to say why.
+    async initialize(): Promise<void> {
         let problems: string[] = [];
+
+        const progress = await this.startProgress();
 
         // generateAssembliesJson writes .assemblies.json; getGhulConfig
         // reads it to build the -a flags for .analysis.rsp. Must run in
         // this order — on a fresh checkout the file does not yet exist,
         // so a reversed order leaves the analyser with no -a flags and
         // it falls back to a five-assembly default.
-        let tools_problem = restoreDotNetTools(this.workspace_root);
+        progress?.report("restoring .NET tools");
+
+        let tools_problem = await restoreDotNetTools(this.workspace_root);
         if (tools_problem) {
             problems.push(tools_problem);
         }
 
-        let assemblies_problem = generateAssembliesJson(this.workspace_root);
+        progress?.report("resolving project references");
+
+        let assemblies_problem = await generateAssembliesJson(this.workspace_root);
         if (assemblies_problem) {
             problems.push(assemblies_problem);
         }
+
+        progress?.done();
 
         this.config = getGhulConfig(this.workspace_root);
         problems.push(...(this.config.problems ?? []));
@@ -170,7 +192,35 @@ export class WorkspaceContext {
         // reference set no longer binds.
         this.reference_build_attempted = false;
 
-        this.initialize();
+        this.initializeDetached();
+    }
+
+    // initialize() for callers that cannot wait for it and have nowhere to put
+    // a failure. Setup already collects its own problems and surfaces them to
+    // the user; anything reaching here is unforeseen, and must not surface as
+    // an unhandled rejection that takes the server down with it.
+    initializeDetached() {
+        this.initialize().catch(e => log(`workspace initialization failed: ${e}`));
+    }
+
+    // A progress notification for the setup the user would otherwise wait
+    // through with no sign anything is happening. Silently absent on a client
+    // that does not support it, and never a reason for setup to fail.
+    private async startProgress(): Promise<WorkDoneProgressServerReporter | null> {
+        if (!this.connection?.window?.createWorkDoneProgress) {
+            return null;
+        }
+
+        try {
+            const progress = await this.connection.window.createWorkDoneProgress();
+
+            progress.begin("ghūl", undefined, undefined, false);
+
+            return progress;
+        } catch (e) {
+            log(`could not create a progress reporter: ${e}`);
+            return null;
+        }
     }
 
     // Referenced projects are not built while resolving their output paths, so
@@ -188,7 +238,7 @@ export class WorkspaceContext {
         this.reference_build_attempted = true;
 
         buildReferencedAssemblies(this.workspace_root)
-            .then(() => this.initialize());
+            .then(() => this.initializeDetached());
     }
 
     // Backstop for the assemblies arriving by some other route than the build

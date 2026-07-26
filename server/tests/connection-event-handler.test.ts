@@ -130,7 +130,7 @@ describe('ConnectionEventHandler', () => {
             getWorkspaceForUri: jest.fn().mockReturnValue(workspace),
             defaultWorkspace: jest.fn().mockReturnValue(workspace),
             registerWorkspace: jest.fn().mockReturnValue({
-                initialize: jest.fn(),
+                initializeDetached: jest.fn(),
             }),
             unregisterWorkspace: jest.fn(),
             allWorkspaces: jest.fn().mockReturnValue([]),
@@ -173,8 +173,8 @@ describe('ConnectionEventHandler', () => {
             const initializeA = jest.fn();
             const initializeB = jest.fn();
             (extensionState.registerWorkspace as jest.Mock)
-                .mockReturnValueOnce({ initialize: initializeA })
-                .mockReturnValueOnce({ initialize: initializeB });
+                .mockReturnValueOnce({ initializeDetached: initializeA })
+                .mockReturnValueOnce({ initializeDetached: initializeB });
 
             handler.onInitialize({
                 workspaceFolders: [
@@ -367,8 +367,8 @@ describe('ConnectionEventHandler', () => {
             const initializeA = jest.fn();
             const initializeB = jest.fn();
             (extensionState.registerWorkspace as jest.Mock)
-                .mockReturnValueOnce({ initialize: initializeA })
-                .mockReturnValueOnce({ initialize: initializeB });
+                .mockReturnValueOnce({ initializeDetached: initializeA })
+                .mockReturnValueOnce({ initializeDetached: initializeB });
 
             handler.onDidChangeWorkspaceFolders({
                 added: [
@@ -421,7 +421,7 @@ describe('ConnectionEventHandler', () => {
             });
             (extensionState.registerWorkspace as jest.Mock).mockImplementation((root: string) => {
                 order.push(`add:${root}`);
-                return { initialize: jest.fn() };
+                return { initializeDetached: jest.fn() };
             });
 
             handler.onDidChangeWorkspaceFolders({
