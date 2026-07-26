@@ -118,6 +118,24 @@ export class WorkspaceContext {
         this.config = getGhulConfig(this.workspace_root);
         problems.push(...(this.config.problems ?? []));
 
+        // Missing referenced assemblies are expected right up until the build
+        // that produces them has run, and they resolve themselves without the
+        // user doing anything — so stay quiet and withhold the diagnostics
+        // they would distort. Once that build has been and gone they are a
+        // real problem the user has to act on, so say so and let the
+        // diagnostics through, incomplete as they are.
+        const awaiting_reference_build =
+            this.config.missing_assemblies.length > 0 && !this.reference_build_attempted;
+
+        this.response_handler.suppress_diagnostics = awaiting_reference_build;
+
+        if (this.config.missing_assemblies.length && !awaiting_reference_build) {
+            problems.push(
+                `could not build ${this.config.missing_assemblies.length} referenced ` +
+                `assembly/assemblies; analysis will be incomplete until they are built`
+            );
+        }
+
         // A degraded-but-runnable load: warn so the user knows analysis may be
         // incomplete. A load with no usable compiler is fatal and reported as
         // an error by the server manager when it declines to spawn.

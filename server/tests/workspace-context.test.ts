@@ -186,6 +186,65 @@ describe('WorkspaceContext.initialize', () => {
 
         expect(configAvailableSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, config);
     });
+
+    function stubConfig(missing_assemblies: string[]): GhulConfig {
+        const config = {
+            compiler: ['ghul'],
+            source: ['test.ghul'],
+            arguments: [],
+            want_plaintext_hover: false,
+            missing_assemblies,
+            problems: [],
+        } as GhulConfig;
+
+        jest.spyOn(restoreDotNetTools, 'restoreDotNetTools').mockReturnValue(null);
+        jest.spyOn(generateAssembliesJson, 'generateAssembliesJson').mockReturnValue(null);
+        jest.spyOn(GetGhulConfig, 'getGhulConfig').mockReturnValue(config);
+
+        return config;
+    }
+
+    it('withholds diagnostics while a referenced assembly is yet to be built', () => {
+        stubConfig(['/path/to/workspace/lib/bin/Debug/net10.0/lib.dll']);
+
+        jest.spyOn(generateAssembliesJson, 'buildReferencedAssemblies')
+            .mockReturnValue(new Promise(() => { /* never settles */ }));
+
+        context.initialize();
+
+        expect(context.response_handler.suppress_diagnostics).toBe(true);
+        expect(connection.window.showWarningMessage).not.toHaveBeenCalled();
+    });
+
+    it('releases diagnostics and warns when a referenced assembly is still absent after the build', async () => {
+        stubConfig(['/path/to/workspace/lib/bin/Debug/net10.0/lib.dll']);
+
+        // Resolving without the assembly appearing is the build-failed case:
+        // the user now has to act, so the incomplete diagnostics are better
+        // than none and the warning explains them.
+        jest.spyOn(generateAssembliesJson, 'buildReferencedAssemblies')
+            .mockResolvedValue(null);
+
+        context.initialize();
+
+        await new Promise(resolve => setImmediate(resolve));
+
+        expect(context.response_handler.suppress_diagnostics).toBe(false);
+        expect(connection.window.showWarningMessage).toHaveBeenCalledWith(
+            expect.stringContaining('analysis will be incomplete')
+        );
+    });
+
+    it('does not withhold diagnostics when every referenced assembly is present', () => {
+        stubConfig([]);
+
+        const buildSpy = jest.spyOn(generateAssembliesJson, 'buildReferencedAssemblies');
+
+        context.initialize();
+
+        expect(context.response_handler.suppress_diagnostics).toBe(false);
+        expect(buildSpy).not.toHaveBeenCalled();
+    });
 });
 
 describe('WorkspaceContext.looksLikeGhulWorkspace', () => {
