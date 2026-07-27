@@ -27,11 +27,25 @@ export function activate(context: ExtensionContext) {
 	// library's own source calls it "a silent window progress with a hidden
 	// notification"). The workspace setup this reports on can take the better
 	// part of a minute on a fresh checkout, so surface it ourselves via a
-	// dedicated status bar item, keyed on which progress tokens are still open
-	// in case more than one workspace folder is initialising at once.
+	// dedicated status bar item instead.
 	let statusBarItem = window.createStatusBarItem(StatusBarAlignment.Left);
 	context.subscriptions.push(statusBarItem);
-	let openProgressTokens = new Set<string | number>();
+
+	// Keyed per token so two workspace folders initialising concurrently each
+	// keep their own message: one folder finishing must not blank out or
+	// overwrite what another still-initialising folder is reporting.
+	let progressMessages = new Map<string | number, string>();
+
+	function renderProgress() {
+		if (progressMessages.size === 0) {
+			statusBarItem.hide();
+			return;
+		}
+
+		const [, message] = [...progressMessages].pop()!;
+		statusBarItem.text = `$(sync~spin) ghūl: ${message}`;
+		statusBarItem.show();
+	}
 
 	// Options to control the language client
 	let clientOptions: LanguageClientOptions = {
@@ -47,22 +61,19 @@ export function activate(context: ExtensionContext) {
 			handleWorkDoneProgress: (token, params, next) => {
 				switch (params.kind) {
 					case 'begin':
-						openProgressTokens.add(token);
-						statusBarItem.text = `$(sync~spin) ghūl: ${params.title}`;
-						statusBarItem.show();
+						progressMessages.set(token, params.message ?? params.title);
 						break;
 					case 'report':
 						if (params.message) {
-							statusBarItem.text = `$(sync~spin) ghūl: ${params.message}`;
+							progressMessages.set(token, params.message);
 						}
 						break;
 					case 'end':
-						openProgressTokens.delete(token);
-						if (openProgressTokens.size === 0) {
-							statusBarItem.hide();
-						}
+						progressMessages.delete(token);
 						break;
 				}
+
+				renderProgress();
 
 				next(token, params);
 			}
