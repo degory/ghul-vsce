@@ -3,7 +3,7 @@
 import { log } from 'console';
 import * as path from 'path';
 
-import { ExtensionContext } from 'vscode';
+import { ExtensionContext, StatusBarAlignment, window } from 'vscode';
 import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient/node';
 
 export function activate(context: ExtensionContext) {
@@ -14,14 +14,25 @@ export function activate(context: ExtensionContext) {
 
 	// The debug options for the server
 	let debugOptions = { execArgv: ["--nolazy", "--inspect=6009"] };
-		
+
 	// If the extension is launched in debug mode then the debug server options are used
 	// Otherwise the run options are used
 	let serverOptions: ServerOptions = {
 		run : { module: serverModule, transport: TransportKind.ipc },
 		debug: { module: serverModule, transport: TransportKind.ipc, options: debugOptions }
 	}
-	
+
+	// vscode-languageclient renders workDoneProgress at ProgressLocation.Window
+	// by default, which VS Code shows as an easy-to-miss status bar sliver (the
+	// library's own source calls it "a silent window progress with a hidden
+	// notification"). The workspace setup this reports on can take the better
+	// part of a minute on a fresh checkout, so surface it ourselves via a
+	// dedicated status bar item, keyed on which progress tokens are still open
+	// in case more than one workspace folder is initialising at once.
+	let statusBarItem = window.createStatusBarItem(StatusBarAlignment.Left);
+	context.subscriptions.push(statusBarItem);
+	let openProgressTokens = new Set<string | number>();
+
 	// Options to control the language client
 	let clientOptions: LanguageClientOptions = {
 		// Register the server for ghul source files
@@ -31,6 +42,31 @@ export function activate(context: ExtensionContext) {
 		// patterns it cares about itself, via workspace/didChangeWatchedFiles,
 		// so that every client watches the same set. Declaring them here too
 		// would deliver each change twice.
+
+		middleware: {
+			handleWorkDoneProgress: (token, params, next) => {
+				switch (params.kind) {
+					case 'begin':
+						openProgressTokens.add(token);
+						statusBarItem.text = `$(sync~spin) ghūl: ${params.title}`;
+						statusBarItem.show();
+						break;
+					case 'report':
+						if (params.message) {
+							statusBarItem.text = `$(sync~spin) ghūl: ${params.message}`;
+						}
+						break;
+					case 'end':
+						openProgressTokens.delete(token);
+						if (openProgressTokens.size === 0) {
+							statusBarItem.hide();
+						}
+						break;
+				}
+
+				next(token, params);
+			}
+		}
 	}
 	
 	// Create the language client and start the client.
