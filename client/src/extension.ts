@@ -47,6 +47,16 @@ export function activate(context: ExtensionContext) {
 		statusBarItem.show();
 	}
 
+	// Map iteration order is insertion order, and re-setting an existing key
+	// does not move it to the end — so a token's key must be deleted before
+	// it is re-set, or renderProgress keeps showing whichever token merely
+	// began first instead of whichever most recently reported.
+	function setProgress(token: string | number, message: string) {
+		progressMessages.delete(token);
+		progressMessages.set(token, message);
+		renderProgress();
+	}
+
 	// Options to control the language client
 	let clientOptions: LanguageClientOptions = {
 		// Register the server for ghul source files
@@ -61,19 +71,18 @@ export function activate(context: ExtensionContext) {
 			handleWorkDoneProgress: (token, params, next) => {
 				switch (params.kind) {
 					case 'begin':
-						progressMessages.set(token, params.message ?? params.title);
+						setProgress(token, params.message ?? params.title);
 						break;
 					case 'report':
 						if (params.message) {
-							progressMessages.set(token, params.message);
+							setProgress(token, params.message);
 						}
 						break;
 					case 'end':
 						progressMessages.delete(token);
+						renderProgress();
 						break;
 				}
-
-				renderProgress();
 
 				next(token, params);
 			}
