@@ -217,4 +217,57 @@ describe('DocumentChangeTracker', () => {
             expect(workspace.reinitialize).toHaveBeenCalledTimes(1);
         });
     });
+
+    describe('a referenced assembly arriving re-initialises the workspace', () => {
+        const MISSING = '/workspace/lib/bin/Debug/net10.0/lib.dll';
+
+        beforeAll(() => { jest.useFakeTimers(); });
+        afterAll(() => { jest.useRealTimers(); });
+
+        beforeEach(() => {
+            documentChangeTracker = new DocumentChangeTracker(
+                workspace, editQueue, globs, documents, [MISSING]
+            );
+        });
+
+        it('re-initialises once an absent referenced assembly appears', () => {
+            documentChangeTracker.onDidChangeWatchedFiles(
+                createDidChangeWatchedFilesParams(URI.file(MISSING).toString(), FileChangeType.Created)
+            );
+
+            jest.advanceTimersByTime(5000);
+
+            expect(workspace.reinitialize).toHaveBeenCalledTimes(1);
+        });
+
+        it('ignores an assembly of the same name built somewhere else', () => {
+            documentChangeTracker.onDidChangeWatchedFiles(
+                createDidChangeWatchedFilesParams(
+                    URI.file('/workspace/other/bin/Debug/net10.0/lib.dll').toString(),
+                    FileChangeType.Created
+                )
+            );
+
+            jest.advanceTimersByTime(5000);
+
+            expect(workspace.reinitialize).not.toHaveBeenCalled();
+        });
+
+        it('ignores assembly changes once nothing is missing', () => {
+            // The routine rebuild during editing rewrites these constantly;
+            // with the reference set complete none of it may reach the
+            // workspace, or the analyser would recycle on every build.
+            documentChangeTracker = new DocumentChangeTracker(
+                workspace, editQueue, globs, documents, []
+            );
+
+            documentChangeTracker.onDidChangeWatchedFiles(
+                createDidChangeWatchedFilesParams(URI.file(MISSING).toString(), FileChangeType.Changed)
+            );
+
+            jest.advanceTimersByTime(5000);
+
+            expect(workspace.reinitialize).not.toHaveBeenCalled();
+        });
+    });
 });

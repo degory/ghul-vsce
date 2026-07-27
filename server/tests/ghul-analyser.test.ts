@@ -62,6 +62,7 @@ describe('GhulAnalyser', () => {
             arguments: [],
             want_plaintext_hover: false,
             incremental_analysis: false,
+            missing_assemblies: [],
             problems: [],
         };
         configEvents.configAvailable(workspace, config);
@@ -93,6 +94,7 @@ describe('GhulAnalyser', () => {
             arguments: [],
             want_plaintext_hover: false,
             incremental_analysis: false,
+            missing_assemblies: [],
             problems: [],
         });
 
@@ -126,6 +128,7 @@ describe('GhulAnalyser', () => {
             arguments: [],
             want_plaintext_hover: false,
             incremental_analysis: false,
+            missing_assemblies: [],
             problems: [],
         });
 
@@ -166,6 +169,7 @@ describe('GhulAnalyser', () => {
                     arguments: [],
                     want_plaintext_hover: false,
                     incremental_analysis: false,
+                    missing_assemblies: [],
                     problems: [],
                 });
 
@@ -199,6 +203,7 @@ describe('GhulAnalyser', () => {
             arguments: [],
             want_plaintext_hover: false,
             incremental_analysis: false,
+            missing_assemblies: [],
             problems: [],
         });
 

@@ -33,6 +33,8 @@ import {
     TextEdit,
     TextDocuments,
     WorkspaceFolder,
+    WorkspaceSymbolParams,
+    CancellationToken,
 } from 'vscode-languageserver';
 
 import { URI } from 'vscode-uri';
@@ -102,44 +104,44 @@ export class ConnectionEventHandler {
         // register it in onInitialize, gated on the actual client capability.
 
         connection.onCompletion(
-            (textDocumentPosition: CompletionParams): Promise<CompletionItem[]> =>
-                this.onCompletion(textDocumentPosition));
+            (textDocumentPosition: CompletionParams, token: CancellationToken): Promise<CompletionItem[]> =>
+                this.onCompletion(textDocumentPosition, token));
 
         connection.onHover(
-            (params: TextDocumentPositionParams): Promise<Hover> =>
-                this.onHover(params));
+            (params: TextDocumentPositionParams, token: CancellationToken): Promise<Hover> =>
+                this.onHover(params, token));
 
         connection.onDefinition(
-            (params: TextDocumentPositionParams): Promise<Definition> =>
-                this.onDefinition(params));
+            (params: TextDocumentPositionParams, token: CancellationToken): Promise<Definition> =>
+                this.onDefinition(params, token));
 
         connection.onDeclaration(
-            (params: TextDocumentPositionParams): Promise<Definition> =>
-                this.onDeclaration(params));
+            (params: TextDocumentPositionParams, token: CancellationToken): Promise<Definition> =>
+                this.onDeclaration(params, token));
 
         connection.onSignatureHelp(
-            (params: TextDocumentPositionParams): Promise<SignatureHelp> =>
-                this.onSignatureHelp(params));
+            (params: TextDocumentPositionParams, token: CancellationToken): Promise<SignatureHelp> =>
+                this.onSignatureHelp(params, token));
 
         connection.onDocumentSymbol(
-            (params: DocumentSymbolParams): Promise<SymbolInformation[]> =>
-                this.onDocumentSymbol(params));
+            (params: DocumentSymbolParams, token: CancellationToken): Promise<SymbolInformation[]> =>
+                this.onDocumentSymbol(params, token));
 
         connection.onWorkspaceSymbol(
-            (): Promise<SymbolInformation[]> =>
-                this.onWorkspaceSymbol());
+            (_params: WorkspaceSymbolParams, token: CancellationToken): Promise<SymbolInformation[]> =>
+                this.onWorkspaceSymbol(token));
 
         connection.onReferences(
-            (params: ReferenceParams): Promise<Location[]> =>
-                this.onReferences(params));
+            (params: ReferenceParams, token: CancellationToken): Promise<Location[]> =>
+                this.onReferences(params, token));
 
         connection.onImplementation(
-            (params: TextDocumentPositionParams): Promise<Definition> =>
-                this.onImplementation(params));
+            (params: TextDocumentPositionParams, token: CancellationToken): Promise<Definition> =>
+                this.onImplementation(params, token));
 
         connection.onTypeDefinition(
-            (params: TextDocumentPositionParams): Promise<Definition> =>
-                this.onTypeDefinition(params));
+            (params: TextDocumentPositionParams, token: CancellationToken): Promise<Definition> =>
+                this.onTypeDefinition(params, token));
 
         connection.onRenameRequest(
              (params: RenameParams): Promise<WorkspaceEdit> =>
@@ -154,12 +156,12 @@ export class ConnectionEventHandler {
                 this.onDocumentRangeFormatting(params));
 
         connection.languages.semanticTokens.on(
-            (params: SemanticTokensParams): Promise<SemanticTokens> =>
-                this.onSemanticTokens(params));
+            (params: SemanticTokensParams, token: CancellationToken): Promise<SemanticTokens> =>
+                this.onSemanticTokens(params, token));
 
         connection.languages.inlayHint.on(
-            (params: InlayHintParams): Promise<InlayHint[]> =>
-                this.onInlayHint(params));
+            (params: InlayHintParams, token: CancellationToken): Promise<InlayHint[]> =>
+                this.onInlayHint(params, token));
 
         connection.onCodeAction(
             (params: CodeActionParams): (Command | CodeAction)[] =>
@@ -191,7 +193,10 @@ export class ConnectionEventHandler {
 
             const workspace = this.extension_state.registerWorkspace(root);
 
-            workspace.initialize();
+            // Deliberately not awaited: the client sends us nothing — not even
+            // the open documents — until it has this response, so setup has to
+            // proceed alongside it rather than in front of it.
+            workspace.initializeDetached();
         }
 
         const wants_folder_events = !!params.capabilities?.workspace?.workspaceFolders;
@@ -346,7 +351,7 @@ export class ConnectionEventHandler {
 
             log(`workspace folder added: ${root}`);
             const workspace = this.extension_state.registerWorkspace(root);
-            workspace.initialize();
+            workspace.initializeDetached();
         }
     }
 
@@ -368,7 +373,7 @@ export class ConnectionEventHandler {
         // TODO: handle configuration change
     }
 
-    onCompletion(textDocumentPosition: CompletionParams): Promise<CompletionItem[]> {
+    onCompletion(textDocumentPosition: CompletionParams, token?: CancellationToken): Promise<CompletionItem[]> {
         const workspace = this.workspaceForUri(textDocumentPosition.textDocument.uri);
 
         if (!workspace) {
@@ -382,41 +387,42 @@ export class ConnectionEventHandler {
         return workspace.requester.sendCompletion(
             textDocumentPosition.textDocument.uri,
             textDocumentPosition.position.line,
-            textDocumentPosition.position.character
+            textDocumentPosition.position.character,
+            token
         );
     }
 
-    onHover(params: TextDocumentPositionParams): Promise<Hover> {
+    onHover(params: TextDocumentPositionParams, token?: CancellationToken): Promise<Hover> {
         const workspace = this.workspaceForUri(params.textDocument.uri);
 
         if (!workspace) {
             return Promise.resolve(null);
         }
 
-        return workspace.requester.sendHover(params.textDocument.uri, params.position.line, params.position.character);
+        return workspace.requester.sendHover(params.textDocument.uri, params.position.line, params.position.character, token);
     }
 
-    onDefinition(params: TextDocumentPositionParams): Promise<Definition> {
+    onDefinition(params: TextDocumentPositionParams, token?: CancellationToken): Promise<Definition> {
         const workspace = this.workspaceForUri(params.textDocument.uri);
 
         if (!workspace) {
             return Promise.resolve([]);
         }
 
-        return workspace.requester.sendDefinition(params.textDocument.uri, params.position.line, params.position.character);
+        return workspace.requester.sendDefinition(params.textDocument.uri, params.position.line, params.position.character, token);
     }
 
-    onDeclaration(params: TextDocumentPositionParams): Promise<Definition> {
+    onDeclaration(params: TextDocumentPositionParams, token?: CancellationToken): Promise<Definition> {
         const workspace = this.workspaceForUri(params.textDocument.uri);
 
         if (!workspace) {
             return Promise.resolve([]);
         }
 
-        return workspace.requester.sendDeclaration(params.textDocument.uri, params.position.line, params.position.character);
+        return workspace.requester.sendDeclaration(params.textDocument.uri, params.position.line, params.position.character, token);
     }
 
-    onSignatureHelp(params: TextDocumentPositionParams): Promise<SignatureHelp> {
+    onSignatureHelp(params: TextDocumentPositionParams, token?: CancellationToken): Promise<SignatureHelp> {
         const workspace = this.workspaceForUri(params.textDocument.uri);
 
         if (!workspace) {
@@ -425,17 +431,17 @@ export class ConnectionEventHandler {
 
         workspace.edit_queue.sendQueued();
 
-        return workspace.requester.sendSignature(params.textDocument.uri, params.position.line, params.position.character);
+        return workspace.requester.sendSignature(params.textDocument.uri, params.position.line, params.position.character, token);
     }
 
-    onDocumentSymbol(params: DocumentSymbolParams): Promise<SymbolInformation[]> {
+    onDocumentSymbol(params: DocumentSymbolParams, token?: CancellationToken): Promise<SymbolInformation[]> {
         const workspace = this.workspaceForUri(params.textDocument.uri);
 
         if (!workspace) {
             return Promise.resolve([]);
         }
 
-        return workspace.requester.sendDocumentSymbol(params.textDocument.uri);
+        return workspace.requester.sendDocumentSymbol(params.textDocument.uri, token);
     }
 
     // Workspace-symbol queries aren't URI-scoped, so run them against every
@@ -443,7 +449,7 @@ export class ConnectionEventHandler {
     // whose analyser is still warming up or has crashed returns a null or
     // empty array; we coerce both to [] so a single misbehaving workspace
     // can't hide the symbols from the rest.
-    async onWorkspaceSymbol(): Promise<SymbolInformation[]> {
+    async onWorkspaceSymbol(token?: CancellationToken): Promise<SymbolInformation[]> {
         const workspaces = this.extension_state.allWorkspaces();
 
         if (workspaces.length === 0) {
@@ -451,7 +457,7 @@ export class ConnectionEventHandler {
         }
 
         const per_workspace = await Promise.all(
-            workspaces.map(w => w.requester.sendWorkspaceSymbol() ?? Promise.resolve([]))
+            workspaces.map(w => w.requester.sendWorkspaceSymbol(token) ?? Promise.resolve([]))
         );
 
         return per_workspace.reduce<SymbolInformation[]>(
@@ -460,34 +466,34 @@ export class ConnectionEventHandler {
         );
     }
 
-    onReferences(params: ReferenceParams): Promise<Location[]> {
+    onReferences(params: ReferenceParams, token?: CancellationToken): Promise<Location[]> {
         const workspace = this.workspaceForUri(params.textDocument.uri);
 
         if (!workspace) {
             return Promise.resolve([]);
         }
 
-        return workspace.requester.sendReferences(params.textDocument.uri, params.position.line, params.position.character);
+        return workspace.requester.sendReferences(params.textDocument.uri, params.position.line, params.position.character, token);
     }
 
-    onImplementation(params: TextDocumentPositionParams): Promise<Location[]> {
+    onImplementation(params: TextDocumentPositionParams, token?: CancellationToken): Promise<Location[]> {
         const workspace = this.workspaceForUri(params.textDocument.uri);
 
         if (!workspace) {
             return Promise.resolve([]);
         }
 
-        return workspace.requester.sendImplementation(params.textDocument.uri, params.position.line, params.position.character);
+        return workspace.requester.sendImplementation(params.textDocument.uri, params.position.line, params.position.character, token);
     }
 
-    onTypeDefinition(params: TextDocumentPositionParams): Promise<Definition> {
+    onTypeDefinition(params: TextDocumentPositionParams, token?: CancellationToken): Promise<Definition> {
         const workspace = this.workspaceForUri(params.textDocument.uri);
 
         if (!workspace) {
             return Promise.resolve([]);
         }
 
-        return workspace.requester.sendTypeDefinition(params.textDocument.uri, params.position.line, params.position.character);
+        return workspace.requester.sendTypeDefinition(params.textDocument.uri, params.position.line, params.position.character, token);
     }
 
     onRenameRequest(params: RenameParams): Promise<WorkspaceEdit> {
@@ -550,7 +556,7 @@ export class ConnectionEventHandler {
         );
     }
 
-    onSemanticTokens(params: SemanticTokensParams): Promise<SemanticTokens> {
+    onSemanticTokens(params: SemanticTokensParams, token?: CancellationToken): Promise<SemanticTokens> {
         const workspace = this.workspaceForUri(params.textDocument.uri);
 
         if (!workspace) {
@@ -561,10 +567,10 @@ export class ConnectionEventHandler {
         // current document text before we ask for tokens.
         workspace.edit_queue.sendQueued();
 
-        return workspace.requester.sendSemanticTokens(params.textDocument.uri);
+        return workspace.requester.sendSemanticTokens(params.textDocument.uri, token);
     }
 
-    onInlayHint(params: InlayHintParams): Promise<InlayHint[]> {
+    onInlayHint(params: InlayHintParams, token?: CancellationToken): Promise<InlayHint[]> {
         const workspace = this.workspaceForUri(params.textDocument.uri);
 
         if (!workspace) {
@@ -575,7 +581,7 @@ export class ConnectionEventHandler {
         // current document text before we ask for hints.
         workspace.edit_queue.sendQueued();
 
-        return workspace.requester.sendInlayHints(params.textDocument.uri);
+        return workspace.requester.sendInlayHints(params.textDocument.uri, token);
     }
 
     onDocumentRangeFormatting(params: DocumentRangeFormattingParams): Promise<TextEdit[]> {

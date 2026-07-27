@@ -203,6 +203,7 @@ describe('ServerManager (state helpers)', () => {
             arguments: ['-a', '/path/to/A.dll', '-a', '/path/to/B.dll', '-A'],
             want_plaintext_hover: false,
             incremental_analysis: false,
+            missing_assemblies: [],
             problems: [],
         };
 

@@ -36,6 +36,7 @@ describe('ResponseHandler', () => {
             arguments: [],
             want_plaintext_hover: true,
             incremental_analysis: false,
+            missing_assemblies: [],
             problems: [],
         };
 
@@ -225,6 +226,37 @@ describe('ResponseHandler', () => {
                 { severity: 4, range: { start: { line: 0, character: 19 }, end: { line: 1, character: 29 } }, message: 'Diagnostic 4', source: 'ghūl' },
             ]
         });
+        expect(onDiagnosticsReceivedSpy).toHaveBeenCalled();
+    });
+
+    it('handleDiagnostics publishes nothing while diagnostics are suppressed', () => {
+        responseHandler.connection = { sendDiagnostics: () => {} } as any;
+        responseHandler.edit_queue = {
+            onDiagnosticsReceived: () => {},
+            onFullCompileDone: () => {},
+            onPartialCompileDone: () => {},
+        } as any;
+
+        const onDiagnosticsReceivedSpy = jest.spyOn(responseHandler.edit_queue, 'onDiagnosticsReceived');
+        const sendDiagnosticsSpy = jest.spyOn(responseHandler.connection, 'sendDiagnostics');
+
+        responseHandler.suppress_diagnostics = true;
+
+        responseHandler.handleDiagnostics({
+            kind: 'diagnostics',
+            checked_paths: ['file:///test.ghul'],
+            diagnostics: [
+                { path: 'file:///test.ghul', start_line: 1, start_column: 20, end_line: 2, end_column: 30, severity: 1, message: 'Diagnostic 1' },
+            ],
+            phase: 'query',
+            elapsed_ms: 0,
+            compile_needed: false,
+        } as any);
+
+        expect(sendDiagnosticsSpy).not.toHaveBeenCalled();
+
+        // The edit queue still has to be driven: suppression withholds the
+        // squiggles, it does not discard the compile that produced them.
         expect(onDiagnosticsReceivedSpy).toHaveBeenCalled();
     });
 

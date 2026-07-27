@@ -1,4 +1,5 @@
 import {
+    CancellationToken,
     CompletionParams,
     Connection,
     DidChangeWatchedFilesNotification,
@@ -130,7 +131,7 @@ describe('ConnectionEventHandler', () => {
             getWorkspaceForUri: jest.fn().mockReturnValue(workspace),
             defaultWorkspace: jest.fn().mockReturnValue(workspace),
             registerWorkspace: jest.fn().mockReturnValue({
-                initialize: jest.fn(),
+                initializeDetached: jest.fn(),
             }),
             unregisterWorkspace: jest.fn(),
             allWorkspaces: jest.fn().mockReturnValue([]),
@@ -173,8 +174,8 @@ describe('ConnectionEventHandler', () => {
             const initializeA = jest.fn();
             const initializeB = jest.fn();
             (extensionState.registerWorkspace as jest.Mock)
-                .mockReturnValueOnce({ initialize: initializeA })
-                .mockReturnValueOnce({ initialize: initializeB });
+                .mockReturnValueOnce({ initializeDetached: initializeA })
+                .mockReturnValueOnce({ initializeDetached: initializeB });
 
             handler.onInitialize({
                 workspaceFolders: [
@@ -367,8 +368,8 @@ describe('ConnectionEventHandler', () => {
             const initializeA = jest.fn();
             const initializeB = jest.fn();
             (extensionState.registerWorkspace as jest.Mock)
-                .mockReturnValueOnce({ initialize: initializeA })
-                .mockReturnValueOnce({ initialize: initializeB });
+                .mockReturnValueOnce({ initializeDetached: initializeA })
+                .mockReturnValueOnce({ initializeDetached: initializeB });
 
             handler.onDidChangeWorkspaceFolders({
                 added: [
@@ -421,7 +422,7 @@ describe('ConnectionEventHandler', () => {
             });
             (extensionState.registerWorkspace as jest.Mock).mockImplementation((root: string) => {
                 order.push(`add:${root}`);
-                return { initialize: jest.fn() };
+                return { initializeDetached: jest.fn() };
             });
 
             handler.onDidChangeWorkspaceFolders({
@@ -452,6 +453,10 @@ describe('ConnectionEventHandler', () => {
     describe('per-URI request routing', () => {
         const URI = 'file:///workspace/file.ghul';
 
+        // Forwarded to the requester so a query held during start-up can be
+        // dropped when the client stops wanting the answer.
+        const TOKEN = CancellationToken.None;
+
         it('onCompletion with `.` trigger flushes the queue and routes via the URI', async () => {
             const params: CompletionParams = {
                 textDocument: { uri: URI },
@@ -459,11 +464,11 @@ describe('ConnectionEventHandler', () => {
                 context: { triggerCharacter: '.', triggerKind: 1 },
             };
 
-            await handler.onCompletion(params);
+            await handler.onCompletion(params, TOKEN);
 
             expect(extensionState.getWorkspaceForUri).toHaveBeenCalledWith(URI);
             expect(editQueue.sendQueued).toHaveBeenCalled();
-            expect(requester.sendCompletion).toHaveBeenCalledWith(URI, 1, 2);
+            expect(requester.sendCompletion).toHaveBeenCalledWith(URI, 1, 2, TOKEN);
         });
 
         it('onCompletion without `.` trigger does not flush the queue', async () => {
@@ -473,10 +478,10 @@ describe('ConnectionEventHandler', () => {
                 context: { triggerCharacter: '@', triggerKind: 1 },
             };
 
-            await handler.onCompletion(params);
+            await handler.onCompletion(params, TOKEN);
 
             expect(editQueue.sendQueued).not.toHaveBeenCalled();
-            expect(requester.sendCompletion).toHaveBeenCalledWith(URI, 1, 2);
+            expect(requester.sendCompletion).toHaveBeenCalledWith(URI, 1, 2, TOKEN);
         });
 
         it('onHover routes via the URI', async () => {
@@ -485,9 +490,9 @@ describe('ConnectionEventHandler', () => {
                 position: { line: 3, character: 4 },
             };
 
-            await handler.onHover(params);
+            await handler.onHover(params, TOKEN);
 
-            expect(requester.sendHover).toHaveBeenCalledWith(URI, 3, 4);
+            expect(requester.sendHover).toHaveBeenCalledWith(URI, 3, 4, TOKEN);
         });
 
         it('onDefinition routes via the URI', async () => {
@@ -496,9 +501,9 @@ describe('ConnectionEventHandler', () => {
                 position: { line: 0, character: 0 },
             };
 
-            await handler.onDefinition(params);
+            await handler.onDefinition(params, TOKEN);
 
-            expect(requester.sendDefinition).toHaveBeenCalledWith(URI, 0, 0);
+            expect(requester.sendDefinition).toHaveBeenCalledWith(URI, 0, 0, TOKEN);
         });
 
         it('onDeclaration routes via the URI', async () => {
@@ -507,9 +512,9 @@ describe('ConnectionEventHandler', () => {
                 position: { line: 0, character: 0 },
             };
 
-            await handler.onDeclaration(params);
+            await handler.onDeclaration(params, TOKEN);
 
-            expect(requester.sendDeclaration).toHaveBeenCalledWith(URI, 0, 0);
+            expect(requester.sendDeclaration).toHaveBeenCalledWith(URI, 0, 0, TOKEN);
         });
 
         it('onSignatureHelp flushes the queue and routes via the URI', async () => {
@@ -518,18 +523,18 @@ describe('ConnectionEventHandler', () => {
                 position: { line: 1, character: 2 },
             };
 
-            await handler.onSignatureHelp(params);
+            await handler.onSignatureHelp(params, TOKEN);
 
             expect(editQueue.sendQueued).toHaveBeenCalled();
-            expect(requester.sendSignature).toHaveBeenCalledWith(URI, 1, 2);
+            expect(requester.sendSignature).toHaveBeenCalledWith(URI, 1, 2, TOKEN);
         });
 
         it('onDocumentSymbol routes via the URI', async () => {
             const params: DocumentSymbolParams = { textDocument: { uri: URI } };
 
-            await handler.onDocumentSymbol(params);
+            await handler.onDocumentSymbol(params, TOKEN);
 
-            expect(requester.sendDocumentSymbol).toHaveBeenCalledWith(URI);
+            expect(requester.sendDocumentSymbol).toHaveBeenCalledWith(URI, TOKEN);
         });
 
         it('onReferences routes via the URI', async () => {
@@ -539,9 +544,9 @@ describe('ConnectionEventHandler', () => {
                 context: { includeDeclaration: true },
             };
 
-            await handler.onReferences(params);
+            await handler.onReferences(params, TOKEN);
 
-            expect(requester.sendReferences).toHaveBeenCalledWith(URI, 5, 6);
+            expect(requester.sendReferences).toHaveBeenCalledWith(URI, 5, 6, TOKEN);
         });
 
         it('onImplementation routes via the URI', async () => {
@@ -550,9 +555,9 @@ describe('ConnectionEventHandler', () => {
                 position: { line: 0, character: 0 },
             };
 
-            await handler.onImplementation(params);
+            await handler.onImplementation(params, TOKEN);
 
-            expect(requester.sendImplementation).toHaveBeenCalledWith(URI, 0, 0);
+            expect(requester.sendImplementation).toHaveBeenCalledWith(URI, 0, 0, TOKEN);
         });
 
         it('onTypeDefinition routes via the URI', async () => {
@@ -561,9 +566,9 @@ describe('ConnectionEventHandler', () => {
                 position: { line: 0, character: 0 },
             };
 
-            await handler.onTypeDefinition(params);
+            await handler.onTypeDefinition(params, TOKEN);
 
-            expect(requester.sendTypeDefinition).toHaveBeenCalledWith(URI, 0, 0);
+            expect(requester.sendTypeDefinition).toHaveBeenCalledWith(URI, 0, 0, TOKEN);
         });
 
         it('onRenameRequest routes via the URI and passes the new name', async () => {
@@ -579,10 +584,10 @@ describe('ConnectionEventHandler', () => {
         it('onSemanticTokens flushes the queue and routes via the URI', async () => {
             await handler.onSemanticTokens({
                 textDocument: { uri: URI },
-            } as any);
+            } as any, TOKEN);
 
             expect(editQueue.sendQueued).toHaveBeenCalled();
-            expect(requester.sendSemanticTokens).toHaveBeenCalledWith(URI);
+            expect(requester.sendSemanticTokens).toHaveBeenCalledWith(URI, TOKEN);
         });
 
         it('onDocumentFormatting routes via the URI when the buffer is known', async () => {

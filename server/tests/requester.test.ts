@@ -1,6 +1,8 @@
 import { ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 
+import { CancellationTokenSource } from 'vscode-languageserver';
+
 import { Requester } from '../src/requester';
 import { ResponseHandler } from '../src/response-handler';
 import { ServerEventEmitter } from '../src/server-event-emitter';
@@ -213,22 +215,110 @@ describe('Requester', () => {
         expect(parseOnlyRequest(stream)).toEqual({ command: 'heap_check' });
     });
 
-    it('send methods return null when analysed is false (compiler not yet ready)', () => {
-        requester.analysed = false;
+    describe('queries arriving before the analyser is ready', () => {
+        const URI = 'file:///x.ghul';
 
-        expect(requester.sendHover('u', 0, 0)).toBeNull();
-        expect(requester.sendDefinition('u', 0, 0)).toBeNull();
-        expect(requester.sendDeclaration('u', 0, 0)).toBeNull();
-        expect(requester.sendCompletion('u', 0, 0)).toBeNull();
-        expect(requester.sendSignature('u', 0, 0)).toBeNull();
-        expect(requester.sendDocumentSymbol('u')).toBeNull();
-        expect(requester.sendWorkspaceSymbol()).toBeNull();
-        expect(requester.sendReferences('u', 0, 0)).toBeNull();
-        expect(requester.sendImplementation('u', 0, 0)).toBeNull();
-        expect(requester.sendTypeDefinition('u', 0, 0)).toBeNull();
-        expect(requester.sendRenameRequest('u', 0, 0, 'n')).toBeNull();
-        expect(requester.sendSemanticTokens('u')).toBeNull();
-        // No writes should have occurred:
-        expect(stream.written).toEqual([]);
+        // Held queries arm a timeout apiece. Fake timers keep those from
+        // firing into a torn-down test; clearAllTimers drops any a test
+        // deliberately leaves outstanding.
+        beforeEach(() => {
+            jest.useFakeTimers();
+            requester.analysed = false;
+        });
+
+        afterEach(() => {
+            jest.clearAllTimers();
+            jest.useRealTimers();
+        });
+
+        it('sends nothing until the analyser is ready', () => {
+            requester.sendHover(URI, 0, 0);
+            requester.sendDefinition(URI, 0, 0);
+            requester.sendDeclaration(URI, 0, 0);
+            requester.sendCompletion(URI, 0, 0);
+            requester.sendSignature(URI, 0, 0);
+            requester.sendDocumentSymbol(URI);
+            requester.sendWorkspaceSymbol();
+            requester.sendReferences(URI, 0, 0);
+            requester.sendImplementation(URI, 0, 0);
+            requester.sendTypeDefinition(URI, 0, 0);
+            requester.sendRenameRequest(URI, 0, 0, 'n');
+            requester.sendSemanticTokens(URI);
+
+            expect(stream.written).toEqual([]);
+        });
+
+        it('holds a query and sends it once the analyser is ready', async () => {
+            const hover = requester.sendHover(URI, 0, 0);
+
+            expect(stream.written).toEqual([]);
+
+            requester.analysed = true;
+
+            await hover;
+
+            expect(parseOnlyRequest(stream).command).toEqual('hover');
+        });
+
+        it('keeps each held send adjacent to its own expectation', async () => {
+            const queries = [
+                requester.sendHover(URI, 0, 0),
+                requester.sendDefinition(URI, 0, 0),
+                requester.sendCompletion(URI, 0, 0),
+            ];
+
+            requester.analysed = true;
+
+            await Promise.all(queries);
+
+            expect(stream.written.map(line => JSON.parse(line.slice(0, -1)).command))
+                .toEqual(['hover', 'definition', 'complete']);
+            expect(response.expectations).toEqual(['hover', 'definition', 'completion']);
+        });
+
+        it('falls back to an empty answer when the analyser never becomes ready', async () => {
+            const hover = requester.sendHover(URI, 0, 0);
+
+            jest.advanceTimersByTime(60000);
+
+            await expect(hover).resolves.toBeNull();
+            expect(stream.written).toEqual([]);
+        });
+
+        it('drops a held query the client has withdrawn', async () => {
+            // The pointer moved off the hover, the completion was dismissed:
+            // sending it when the analyser comes up would spend a round trip
+            // on an answer nobody reads.
+            const source = new CancellationTokenSource();
+
+            const hover = requester.sendHover(URI, 0, 0, source.token);
+
+            source.cancel();
+
+            await expect(hover).resolves.toBeNull();
+
+            requester.analysed = true;
+
+            expect(stream.written).toEqual([]);
+        });
+
+        it('still sends held queries the client has not withdrawn', async () => {
+            const cancelled = new CancellationTokenSource();
+            const live = new CancellationTokenSource();
+
+            const dropped = requester.sendHover(URI, 0, 0, cancelled.token);
+            const kept = requester.sendDefinition(URI, 0, 0, live.token);
+
+            cancelled.cancel();
+
+            await expect(dropped).resolves.toBeNull();
+
+            requester.analysed = true;
+
+            await kept;
+
+            expect(stream.written.map(line => JSON.parse(line.slice(0, -1)).command))
+                .toEqual(['definition']);
+        });
     });
 });

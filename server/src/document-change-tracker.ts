@@ -21,6 +21,7 @@ export class DocumentChangeTracker {
     edit_queue: EditQueue;
     globs: string[];
     documents: TextDocuments<TextDocument>;
+    missing_assemblies: Set<string>;
 
     private debounced_reinitialize: () => void;
 
@@ -28,12 +29,16 @@ export class DocumentChangeTracker {
         workspace: ReinitializableWorkspace,
         edit_queue: EditQueue,
         globs: string[],
-        documents: TextDocuments<TextDocument>
+        documents: TextDocuments<TextDocument>,
+        missing_assemblies: string[] = []
     ) {
         this.workspace = workspace;
         this.edit_queue = edit_queue;
         this.globs = globs;
         this.documents = documents;
+        this.missing_assemblies = new Set(
+            missing_assemblies.map(assembly => assembly.replace(/\\/g, '/'))
+        );
 
         // Per-instance: with multi-workspace, each workspace runs its own
         // debounce so a save in one folder cannot rate-limit a save in
@@ -63,6 +68,12 @@ export class DocumentChangeTracker {
                 log("compiler block requested: " + c.uri);
 
                 this.workspace.reinitialize();
+            } else if (this.isMissingAssembly(c.uri)) {
+                log("referenced assembly appeared: " + c.uri);
+
+                this.debounced_reinitialize();
+
+                return;
             }
 
             let fn = this.tryGetValidSourceFile(c.uri);
@@ -94,6 +105,23 @@ export class DocumentChangeTracker {
                 this.edit_queue.queueEdit3(uri, null, file_contents);
             }
         }
+    }
+
+    // A reference the analyser started without. Matched on the resolved path
+    // rather than a suffix: an assembly of the same name built elsewhere in
+    // the tree is a different file and must not count.
+    isMissingAssembly(uri: string) {
+        if (!this.missing_assemblies.size) {
+            return false;
+        }
+
+        let parsed = URI.parse(uri);
+
+        if (parsed.scheme != "file" || !parsed.fsPath) {
+            return false;
+        }
+
+        return this.missing_assemblies.has(parsed.fsPath.replace(/\\/g, "/"));
     }
 
     isOpenInEditor(uri: string) {

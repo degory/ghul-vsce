@@ -14,6 +14,13 @@ export interface GhulConfig {
 	arguments: string[],
 	want_plaintext_hover: boolean,
 	incremental_analysis: boolean,
+	// Referenced assemblies named in .assemblies.json that do not exist on
+	// disk yet — typically the build outputs of ProjectReference'd projects in
+	// a tree that has never been built. They are withheld from the -a flags
+	// because the analyser reads each one eagerly and would die on the first
+	// missing file. Analysis is correspondingly incomplete until they appear,
+	// so consumers watch this set and reinitialize once it empties.
+	missing_assemblies: string[],
 	// Human-readable descriptions of anything that went wrong while loading
 	// the configuration — an unreadable project file, malformed JSON, no
 	// compiler found. Empty when the workspace loaded cleanly. Consumers use
@@ -269,6 +276,8 @@ export function getGhulConfig(workspace: string): GhulConfig {
 		}
 	}
 
+	let missing_assemblies: string[] = [];
+
 	if (existsSync(workspace + "/.assemblies.json")) {
 		try {
 			let buffer = ('' + readFileSync(workspace + "/.assemblies.json", "utf-8")).replace(/^\uFEFF/, '');
@@ -276,8 +285,20 @@ export function getGhulConfig(workspace: string): GhulConfig {
 			let { assemblies } = JSON.parse(buffer) as { assemblies: string[] };
 
 			for (let assembly of assemblies) {
+				if (!existsSync(assembly)) {
+					missing_assemblies.push(assembly);
+					continue;
+				}
+
 				args.push("-a");
 				args.push(assembly);
+			}
+
+			if (missing_assemblies.length) {
+				log(
+					`${missing_assemblies.length} referenced assembly/assemblies not present yet, ` +
+					`analysis will be incomplete until they are built: ${missing_assemblies.join(", ")}`
+				);
 			}
 		} catch (e) {
 			let problem = `could not load .assemblies.json: ${describeError(e)}`;
@@ -303,6 +324,7 @@ export function getGhulConfig(workspace: string): GhulConfig {
 		arguments: args,
 		want_plaintext_hover: config.want_plaintext_hover ?? false,
 		incremental_analysis,
+		missing_assemblies,
 		problems
 	};
 }

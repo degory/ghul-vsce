@@ -2,8 +2,16 @@ import * as path from 'path';
 
 import { readdirSync } from 'fs';
 
-import { Connection, TextDocuments } from 'vscode-languageserver';
+import {
+    Connection,
+    Disposable,
+    DidChangeWatchedFilesNotification,
+    TextDocuments,
+    WorkDoneProgressServerReporter
+} from 'vscode-languageserver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
+
+import { log } from './log';
 
 import { ConfigEventEmitter } from './config-event-emitter';
 import { ServerEventEmitter } from './server-event-emitter';
@@ -18,7 +26,7 @@ import { Watchdog } from './watchdog';
 
 import { getGhulConfig, GhulConfig } from './ghul-config';
 import { restoreDotNetTools } from './restore-dotnet-tools';
-import { generateAssembliesJson } from './generate-assemblies-json';
+import { generateAssembliesJson, buildReferencedAssemblies } from './generate-assemblies-json';
 
 // All compiler-facing state for a single workspace folder: one compiler child,
 // its watchdog, its edit queue and the response handler that fans replies back
@@ -43,6 +51,10 @@ export class WorkspaceContext {
 
     private connection: Connection;
     private documents: TextDocuments<TextDocument>;
+
+    private reference_build_attempted: boolean = false;
+
+    private missing_assembly_watch: Promise<Disposable> | null = null;
 
     constructor(
         workspace_root: string,
@@ -95,26 +107,58 @@ export class WorkspaceContext {
     // restore the local tool manifest, regenerate .assemblies.json, parse
     // ghul.json/.ghulproj. Fires configAvailable, which is what wakes the
     // server manager and starts the compiler child.
-    initialize() {
+    //
+    // Runs off the initialize response, not inside it. The tool restore alone
+    // can take tens of seconds on a machine that has never seen the compiler,
+    // and until the response is sent the client holds back every notification
+    // it has for us — so a caller that waits for this leaves the editor with
+    // no language support at all and no way to say why.
+    async initialize(): Promise<void> {
         let problems: string[] = [];
+
+        const progress = await this.startProgress();
 
         // generateAssembliesJson writes .assemblies.json; getGhulConfig
         // reads it to build the -a flags for .analysis.rsp. Must run in
         // this order — on a fresh checkout the file does not yet exist,
         // so a reversed order leaves the analyser with no -a flags and
         // it falls back to a five-assembly default.
-        let tools_problem = restoreDotNetTools(this.workspace_root);
+        progress?.report("restoring .NET tools");
+
+        let tools_problem = await restoreDotNetTools(this.workspace_root);
         if (tools_problem) {
             problems.push(tools_problem);
         }
 
-        let assemblies_problem = generateAssembliesJson(this.workspace_root);
+        progress?.report("resolving project references");
+
+        let assemblies_problem = await generateAssembliesJson(this.workspace_root);
         if (assemblies_problem) {
             problems.push(assemblies_problem);
         }
 
+        progress?.done();
+
         this.config = getGhulConfig(this.workspace_root);
         problems.push(...(this.config.problems ?? []));
+
+        // Missing referenced assemblies are expected right up until the build
+        // that produces them has run, and they resolve themselves without the
+        // user doing anything — so stay quiet and withhold the diagnostics
+        // they would distort. Once that build has been and gone they are a
+        // real problem the user has to act on, so say so and let the
+        // diagnostics through, incomplete as they are.
+        const awaiting_reference_build =
+            this.config.missing_assemblies.length > 0 && !this.reference_build_attempted;
+
+        this.response_handler.suppress_diagnostics = awaiting_reference_build;
+
+        if (this.config.missing_assemblies.length && !awaiting_reference_build) {
+            problems.push(
+                `could not build ${this.config.missing_assemblies.length} referenced ` +
+                `assembly/assemblies; analysis will be incomplete until they are built`
+            );
+        }
 
         // A degraded-but-runnable load: warn so the user knows analysis may be
         // incomplete. A load with no usable compiler is fatal and reported as
@@ -131,14 +175,93 @@ export class WorkspaceContext {
             this,
             this.edit_queue,
             this.config.source.map(glob => `${workspace_root_munged}/${glob}`),
-            this.documents
+            this.documents,
+            this.config.missing_assemblies
         );
 
+        this.watchMissingAssemblies();
+
         this.config_event_emitter.configAvailable(this.workspace_root, this.config);
+
+        this.buildMissingAssemblies();
     }
 
     reinitialize() {
-        this.initialize();
+        // An external change — a project file, the tool manifest — can add or
+        // remove references, so whatever was concluded about the previous
+        // reference set no longer binds.
+        this.reference_build_attempted = false;
+
+        this.initializeDetached();
+    }
+
+    // initialize() for callers that cannot wait for it and have nowhere to put
+    // a failure. Setup already collects its own problems and surfaces them to
+    // the user; anything reaching here is unforeseen, and must not surface as
+    // an unhandled rejection that takes the server down with it.
+    initializeDetached() {
+        this.initialize().catch(e => log(`workspace initialization failed: ${e}`));
+    }
+
+    // A progress notification for the setup the user would otherwise wait
+    // through with no sign anything is happening. Silently absent on a client
+    // that does not support it, and never a reason for setup to fail.
+    private async startProgress(): Promise<WorkDoneProgressServerReporter | null> {
+        if (!this.connection?.window?.createWorkDoneProgress) {
+            return null;
+        }
+
+        try {
+            const progress = await this.connection.window.createWorkDoneProgress();
+
+            progress.begin("ghūl", undefined, undefined, false);
+
+            return progress;
+        } catch (e) {
+            log(`could not create a progress reporter: ${e}`);
+            return null;
+        }
+    }
+
+    // Referenced projects are not built while resolving their output paths, so
+    // on a tree that has never been built those outputs are absent and the
+    // analyser starts without them. Build them now, off the critical path, and
+    // re-read the configuration once they exist.
+    //
+    // Attempted at most once per reference set: a build that fails, or that
+    // leaves an output still missing, must not re-trigger itself.
+    private buildMissingAssemblies() {
+        if (!this.config.missing_assemblies.length || this.reference_build_attempted) {
+            return;
+        }
+
+        this.reference_build_attempted = true;
+
+        buildReferencedAssemblies(this.workspace_root)
+            .then(() => this.initializeDetached());
+    }
+
+    // Backstop for the assemblies arriving by some other route than the build
+    // above — the user building from a terminal, a sibling tool, a git
+    // operation that restores them. Watches exactly the paths that are absent,
+    // so once they are all present nothing is registered and an ordinary
+    // rebuild during editing cannot trigger anything.
+    private watchMissingAssemblies() {
+        this.missing_assembly_watch?.then(watch => watch.dispose());
+        this.missing_assembly_watch = null;
+
+        if (!this.config.missing_assemblies.length || !this.connection?.client?.register) {
+            return;
+        }
+
+        this.missing_assembly_watch = this.connection.client.register(
+            DidChangeWatchedFilesNotification.type,
+            {
+                watchers: this.config.missing_assemblies.map(
+                    globPattern => ({ globPattern: globPattern.replace(/\\/g, '/') })
+                ),
+            }
+        );
     }
 
     // The set of file globs (already absolutised under workspace_root) that

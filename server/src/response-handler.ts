@@ -470,6 +470,15 @@ export class ResponseHandler {
     want_plaintext_hover: boolean;
     incremental_analysis_requested: boolean = false;
 
+    // Set while the analyser is running without some of the assemblies the
+    // project references. Every use of a type from a missing assembly fails to
+    // resolve, so the diagnostics of that compile describe the incomplete
+    // reference set rather than the code, and publishing them would fill the
+    // editor with errors that vanish moments later. Withholding them costs
+    // nothing: diagnostics only ever arrive with a compile, and no compile can
+    // precede the analyser starting.
+    suppress_diagnostics: boolean = false;
+
     server_manager: ServerManager;
     connection: Connection;
     edit_queue: EditQueue;
@@ -610,8 +619,10 @@ export class ResponseHandler {
     // phase "query", which (like the old query-miss DIAGNOSTICS frame that had
     // no following DONE) must not advance the state machine.
     handleDiagnostics(response: DiagnosticsResponse) {
-        for (let [uri, diagnostics] of this.parseDiagnostics(response)) {
-            this.connection.sendDiagnostics({ uri, diagnostics });
+        if (!this.suppress_diagnostics) {
+            for (let [uri, diagnostics] of this.parseDiagnostics(response)) {
+                this.connection.sendDiagnostics({ uri, diagnostics });
+            }
         }
 
         this.edit_queue.onDiagnosticsReceived();
