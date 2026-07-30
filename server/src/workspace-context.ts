@@ -206,8 +206,12 @@ export class WorkspaceContext {
         // Deliberately not awaited: nothing downstream depends on when the
         // status bar finally closes, and blocking initialize() on it would
         // delay whatever a caller synchronizes on this promise for (both a
-        // fresh load and a config-triggered reinitialize await it).
-        this.finishProgress(progress);
+        // fresh load and a config-triggered reinitialize await it). Caught
+        // the same way initializeDetached() catches initialize() itself: this
+        // waits up to FIRST_COMPILE_PROGRESS_TIMEOUT_MS, long enough for the
+        // connection to legitimately have gone away in the meantime, and an
+        // unhandled rejection here would take the whole server down with it.
+        this.finishProgress(progress).catch(e => log(`could not finish reporting progress: ${e}`));
     }
 
     // The setup above initialize() awaits is the smaller part of a cold
