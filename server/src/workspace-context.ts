@@ -62,6 +62,12 @@ export class WorkspaceContext {
 
     private missing_assembly_watch: Promise<Disposable> | null = null;
 
+    // The progress reporter finishProgress() is currently waiting to close,
+    // if any. reinitialize() (e.g. once buildMissingAssemblies() finishes)
+    // can start a fresh initialize() while an earlier one is still waiting
+    // on its own first compile; without this, both would stay open at once.
+    private active_progress: WorkDoneProgressServerReporter | null = null;
+
     constructor(
         workspace_root: string,
         connection: Connection,
@@ -122,7 +128,15 @@ export class WorkspaceContext {
     async initialize(): Promise<void> {
         let problems: string[] = [];
 
+        // A previous initialize() may still be waiting on its own first
+        // compile (see finishProgress() below) — e.g. buildMissingAssemblies()
+        // re-triggers this once a referenced assembly finishes building.
+        // That progress is now stale; close it rather than leaving two open
+        // at once.
+        this.active_progress?.done();
+
         const progress = await this.startProgress();
+        this.active_progress = progress;
 
         // generateAssembliesJson writes .assemblies.json; getGhulConfig
         // reads it to build the -a flags for .analysis.rsp. Must run in
@@ -202,8 +216,12 @@ export class WorkspaceContext {
     // all — the status bar disappeared the moment the compiler spawned. Keep
     // it open, with an updated message, through that first compile too.
     // Bounded so a compiler that never spawns, or never completes a compile,
-    // cannot leave the status bar spinning forever — whenAnalysed already
-    // holds queries safely regardless of how long this takes.
+    // cannot leave the status bar spinning forever. This bound is deliberately
+    // much longer than whenAnalysed's own per-query ANALYSED_WAIT_TIMEOUT_MS
+    // (requester.ts): giving up on an individual query early is the safe
+    // choice (the client just asks again later), but ending the status bar
+    // early would say "ready" while the analyser is still on its first
+    // compile, which is worse than leaving it open a while longer.
     private async finishProgress(progress: WorkDoneProgressServerReporter | null): Promise<void> {
         if (this.config.compiler?.length) {
             progress?.report("waiting for the compiler to analyse the project");
@@ -215,6 +233,10 @@ export class WorkspaceContext {
         }
 
         progress?.done();
+
+        if (this.active_progress === progress) {
+            this.active_progress = null;
+        }
     }
 
     reinitialize() {

@@ -118,9 +118,15 @@ export class LspClient {
     // Proper LSP shutdown, not just killing the client's own process: the
     // server's onShutdown handler kills its own compiler child, and skipping
     // this leaves an orphaned real ghul-compiler process behind every test.
+    // Bounded — a wedged or already-dead server would otherwise leave
+    // `shutdown` unanswered forever, and with it the compiler child too,
+    // which is exactly the failure this method exists to avoid.
     async dispose() {
         try {
-            await this.request('shutdown', null);
+            await Promise.race([
+                this.request('shutdown', null),
+                new Promise<void>(resolve => setTimeout(resolve, 5000).unref()),
+            ]);
             this.notify('exit', {});
         } finally {
             this.child.kill();
