@@ -136,7 +136,7 @@ jobs:
       gh-app-private-key: ${{ secrets.GHUL_REVIEWER_PRIVATE_KEY }}
 
   upload_beta_package:
-    needs: [version, unit_tests]
+    needs: [version, unit_tests, integration_tests]
     name: Publish beta package
 
     timeout-minutes: 5
@@ -183,7 +183,7 @@ jobs:
         path: ghul-language-server-${{ needs.version.outputs.package }}.tgz
 
   publish_release_package:
-    needs: [version, unit_tests]
+    needs: [version, unit_tests, integration_tests]
     name: Publish release package
 
     timeout-minutes: 5
@@ -255,7 +255,7 @@ jobs:
         echo "NPM_TOKEN is not configured, so the language server was not published to npm"
 
   create_release:
-    needs: [version, unit_tests, publish_release_package]
+    needs: [version, unit_tests, integration_tests, publish_release_package]
     name: Create release
     runs-on: ubuntu-latest
 
