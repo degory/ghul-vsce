@@ -33,7 +33,8 @@
     "watch": "installServerIntoExtension ../client ./package.json ./tsconfig.json && tsc -w -p .",
     "webpack": "webpack --mode production",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "test:integration": "jest --config jest.integration.config.js"
   },
   "devDependencies": {
     "@babel/core": "^8.0.1",

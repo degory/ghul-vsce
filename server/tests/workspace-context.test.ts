@@ -256,7 +256,25 @@ describe('WorkspaceContext.initialize', () => {
         expect(progressReporter.report.mock.calls.map(([message]) => message)).toEqual([
             'restoring .NET tools',
             'resolving project references',
+            'waiting for the compiler to analyse the project',
         ]);
+    });
+
+    it('keeps progress open through the analyser\'s first compile, not just the setup before it', async () => {
+        stubConfig([]);
+
+        await context.initialize();
+
+        // The setup phase is done, but the analyser has not compiled
+        // anything yet, so the status bar must still be open.
+        expect(progressReporter.done).not.toHaveBeenCalled();
+
+        context.requester.analysed = true;
+
+        // finishProgress() is deliberately not awaited by initialize(), so
+        // give its continuation a turn of the microtask queue to run.
+        await new Promise(resolve => setImmediate(resolve));
+
         expect(progressReporter.done).toHaveBeenCalled();
     });
 

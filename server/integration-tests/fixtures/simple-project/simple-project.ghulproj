@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <GhulCompiler>dotnet ghul-compiler</GhulCompiler>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <GhulSources Include="src/**/*.ghul" />
+
+    <!-- GenerateAssembliesJson (the MSBuild target that resolves the
+         analyser's -a flags) is imported from ghul.runtime's build/ folder
+         via NuGet, not from the compiler tool — a real ghūl project always
+         gets this transitively via its repo's Directory.Build.props. This
+         fixture has no such shared props file, so it references the package
+         directly instead. -->
+    <PackageReference Include="ghul.runtime" Version="5.8.2" />
+  </ItemGroup>
+</Project>

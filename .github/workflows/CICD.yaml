@@ -80,6 +80,35 @@ jobs:
     - name: Run tests
       run: npm test
 
+  integration_tests:
+    name: Run integration tests
+    needs: [version]
+    runs-on: ubuntu-latest
+
+    timeout-minutes: 10
+
+    steps:
+    - name: Setup NodeJS
+      uses: actions/setup-node@v7
+      with:
+        node-version: 'lts/*'
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: '10.0.x'
+
+    - uses: actions/checkout@v7
+
+    - name: Install dependencies
+      run: npm install
+
+    # Drives the real webpacked server.js against a real ghūl project and a
+    # real ghul.compiler child process — the end-to-end path every other
+    # test in this repo mocks out. See server/integration-tests/.
+    - name: Run integration tests
+      run: npm run test:integration
+
   code_review:
     name: Code review
     if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
@@ -107,7 +136,7 @@ jobs:
       gh-app-private-key: ${{ secrets.GHUL_REVIEWER_PRIVATE_KEY }}
 
   upload_beta_package:
-    needs: [version, unit_tests]
+    needs: [version, unit_tests, integration_tests]
     name: Publish beta package
 
     timeout-minutes: 5
@@ -154,7 +183,7 @@ jobs:
         path: ghul-language-server-${{ needs.version.outputs.package }}.tgz
 
   publish_release_package:
-    needs: [version, unit_tests]
+    needs: [version, unit_tests, integration_tests]
     name: Publish release package
 
     timeout-minutes: 5
@@ -226,7 +255,7 @@ jobs:
         echo "NPM_TOKEN is not configured, so the language server was not published to npm"
 
   create_release:
-    needs: [version, unit_tests, publish_release_package]
+    needs: [version, unit_tests, integration_tests, publish_release_package]
     name: Create release
     runs-on: ubuntu-latest
 
