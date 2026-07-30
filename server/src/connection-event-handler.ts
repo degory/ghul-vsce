@@ -185,18 +185,15 @@ export class ConnectionEventHandler {
         // fallback in case an older client connects.
         const roots = this.collectWorkspaceRoots(params);
 
+        const workspaces: WorkspaceContext[] = [];
+
         for (const root of roots) {
             if (!WorkspaceContext.looksLikeGhulWorkspace(root)) {
                 log(`skipping non-ghūl workspace folder: ${root}`);
                 continue;
             }
 
-            const workspace = this.extension_state.registerWorkspace(root);
-
-            // Deliberately not awaited: the client sends us nothing — not even
-            // the open documents — until it has this response, so setup has to
-            // proceed alongside it rather than in front of it.
-            workspace.initializeDetached();
+            workspaces.push(this.extension_state.registerWorkspace(root));
         }
 
         const wants_folder_events = !!params.capabilities?.workspace?.workspaceFolders;
@@ -204,31 +201,53 @@ export class ConnectionEventHandler {
         const can_register_watchers =
             !!params.capabilities?.workspace?.didChangeWatchedFiles?.dynamicRegistration;
 
-        // Both subscriptions are deferred to onInitialized, and both go
-        // through one handler because registering onInitialized twice would
-        // replace the first callback rather than add to it.
+        // Everything here is deferred to onInitialized rather than run
+        // directly in onInitialize, and all of it goes through one handler
+        // because registering onInitialized twice would replace the first
+        // callback rather than add to it.
         //
-        // Deferral matters for the folder subscription in particular: the
-        // library's `_notificationIsAutoRegistered` flag is set from our
-        // returned server capabilities, so reading the getter any earlier
-        // triggers a dynamic client/registerCapability call before the
-        // client has accepted our initialize response.
-        if (wants_folder_events || can_register_watchers) {
-            this.connection.onInitialized(() => {
-                if (wants_folder_events) {
-                    this.connection.workspace.onDidChangeWorkspaceFolders(
-                        (event: WorkspaceFoldersChangeEvent) =>
-                            this.onDidChangeWorkspaceFolders(event)
-                    );
-                }
+        // Deferral matters for the folder subscription for the reason the
+        // original comment gave: the library's `_notificationIsAutoRegistered`
+        // flag is set from our returned server capabilities, so reading the
+        // getter any earlier triggers a dynamic client/registerCapability
+        // call before the client has accepted our initialize response.
+        //
+        // It matters just as much for workspace setup, which used to run
+        // directly in onInitialize: initializeDetached() calls into
+        // createWorkDoneProgress(), which sends the client a
+        // window/workDoneProgress/create *request* — and the client's own
+        // handler for that request is wired up as part of processing our
+        // InitializeResult, which is not guaranteed to have happened yet at
+        // the point onInitialize runs (the result hasn't even been returned
+        // to it). Sent too early, the request lands on a client with no
+        // handler registered for it yet and comes back "Unhandled method",
+        // which is indistinguishable from a client that doesn't support
+        // progress at all — the status bar this powers never appears, with
+        // no error visible anywhere but the log. onInitialized fires once
+        // the client confirms it has finished processing the response, so
+        // waiting for it removes the race entirely.
+        this.connection.onInitialized(() => {
+            for (const workspace of workspaces) {
+                // Deliberately not awaited: initialized still arrives well
+                // before the client is done with its own start-up work (or
+                // sends us the open documents), so setup has to proceed
+                // alongside that rather than in front of it.
+                workspace.initializeDetached();
+            }
 
-                if (can_register_watchers) {
-                    this.connection.client.register(DidChangeWatchedFilesNotification.type, {
-                        watchers: WATCHED_FILE_GLOBS.map(globPattern => ({ globPattern })),
-                    });
-                }
-            });
-        }
+            if (wants_folder_events) {
+                this.connection.workspace.onDidChangeWorkspaceFolders(
+                    (event: WorkspaceFoldersChangeEvent) =>
+                        this.onDidChangeWorkspaceFolders(event)
+                );
+            }
+
+            if (can_register_watchers) {
+                this.connection.client.register(DidChangeWatchedFilesNotification.type, {
+                    watchers: WATCHED_FILE_GLOBS.map(globPattern => ({ globPattern })),
+                });
+            }
+        });
 
         return {
             capabilities: {

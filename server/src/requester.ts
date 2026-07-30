@@ -143,6 +143,20 @@ export class Requester {
         });
     }
 
+    // Resolves once the analyser completes its first compile since this
+    // requester was created — immediately, if that has already happened.
+    // Distinct from whenAnalysed: this holds no query and sends nothing of
+    // its own, so it has no fallback and no timeout of its own — it exists so
+    // start-up progress reporting can stay open through the analyser's first
+    // compile rather than ending the moment it spawns; the caller bounds it.
+    untilFirstAnalysed(): Promise<void> {
+        if (this.analysed) {
+            return Promise.resolve();
+        }
+
+        return new Promise(resolve => this.analysed_waiters.push(resolve));
+    }
+
     // Release everything waiting on the analyser. Called when the first
     // compile lands; the send and the matching expect stay adjacent within
     // each waiter, so the response handler's queues keep their pairing.

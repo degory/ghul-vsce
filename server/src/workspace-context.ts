@@ -28,6 +28,12 @@ import { getGhulConfig, GhulConfig } from './ghul-config';
 import { restoreDotNetTools } from './restore-dotnet-tools';
 import { generateAssembliesJson, buildReferencedAssemblies } from './generate-assemblies-json';
 
+// Bounds only the status bar, not correctness: whenAnalysed already holds
+// queries safely no matter how long the first compile takes. This only stops
+// the progress notification from spinning forever if the compiler never
+// spawns or never completes a first compile at all.
+const FIRST_COMPILE_PROGRESS_TIMEOUT_MS = 300_000;
+
 // All compiler-facing state for a single workspace folder: one compiler child,
 // its watchdog, its edit queue and the response handler that fans replies back
 // out to LSP. Multiple instances can coexist in the same extension host so the
@@ -137,8 +143,6 @@ export class WorkspaceContext {
             problems.push(assemblies_problem);
         }
 
-        progress?.done();
-
         this.config = getGhulConfig(this.workspace_root);
         problems.push(...(this.config.problems ?? []));
 
@@ -184,6 +188,33 @@ export class WorkspaceContext {
         this.config_event_emitter.configAvailable(this.workspace_root, this.config);
 
         this.buildMissingAssemblies();
+
+        // Deliberately not awaited: nothing downstream depends on when the
+        // status bar finally closes, and blocking initialize() on it would
+        // delay whatever a caller synchronizes on this promise for (both a
+        // fresh load and a config-triggered reinitialize await it).
+        this.finishProgress(progress);
+    }
+
+    // The setup above initialize() awaits is the smaller part of a cold
+    // start; the analyser's own first compile of the project is usually the
+    // greater part of it, and until now it ran with no visible progress at
+    // all — the status bar disappeared the moment the compiler spawned. Keep
+    // it open, with an updated message, through that first compile too.
+    // Bounded so a compiler that never spawns, or never completes a compile,
+    // cannot leave the status bar spinning forever — whenAnalysed already
+    // holds queries safely regardless of how long this takes.
+    private async finishProgress(progress: WorkDoneProgressServerReporter | null): Promise<void> {
+        if (this.config.compiler?.length) {
+            progress?.report("waiting for the compiler to analyse the project");
+
+            await Promise.race([
+                this.requester.untilFirstAnalysed(),
+                new Promise<void>(resolve => setTimeout(resolve, FIRST_COMPILE_PROGRESS_TIMEOUT_MS).unref())
+            ]);
+        }
+
+        progress?.done();
     }
 
     reinitialize() {

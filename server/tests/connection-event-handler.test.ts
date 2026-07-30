@@ -187,6 +187,14 @@ describe('ConnectionEventHandler', () => {
             expect(extensionState.registerWorkspace).toHaveBeenCalledTimes(2);
             expect(extensionState.registerWorkspace).toHaveBeenNthCalledWith(1, '/workspace/a');
             expect(extensionState.registerWorkspace).toHaveBeenNthCalledWith(2, '/workspace/b');
+
+            // Workspace setup is deferred to onInitialized — see the race it
+            // avoids in connection-event-handler.ts — so it hasn't run yet.
+            expect(initializeA).not.toHaveBeenCalled();
+            expect(initializeB).not.toHaveBeenCalled();
+
+            (connection as any).onInitialized.mock.calls[0][0]();
+
             expect(initializeA).toHaveBeenCalled();
             expect(initializeB).toHaveBeenCalled();
         });
@@ -252,7 +260,14 @@ describe('ConnectionEventHandler', () => {
                 workspaceFolders: [{ uri: 'file:///x', name: 'x' }],
             } as any);
 
-            expect((connection as any).onInitialized).not.toHaveBeenCalled();
+            // onInitialized is now always registered — workspace setup
+            // (initializeDetached) defers through it too, regardless of
+            // folder/watcher support — but the folder-change subscription
+            // itself still only fires when the client declared support.
+            expect((connection as any).onInitialized).toHaveBeenCalled();
+
+            (connection as any).onInitialized.mock.calls[0][0]();
+
             expect((connection as any).workspace.onDidChangeWorkspaceFolders).not.toHaveBeenCalled();
         });
 
