@@ -68,7 +68,12 @@ export function activate(context: ExtensionContext) {
 		// would deliver each change twice.
 
 		middleware: {
-			handleWorkDoneProgress: (token, params, next) => {
+			// Deliberately not calling `next(token, params)` here: doing so hands
+			// the same notification to vscode-languageclient's own default
+			// handler, which renders it a second time via the built-in
+			// ProgressLocation.Window UI described above — a second, differently
+			// styled spinner showing identical text next to this one.
+			handleWorkDoneProgress: (token, params, _next) => {
 				switch (params.kind) {
 					case 'begin':
 						setProgress(token, params.message ?? params.title);
@@ -83,8 +88,6 @@ export function activate(context: ExtensionContext) {
 						renderProgress();
 						break;
 				}
-
-				next(token, params);
 			}
 		}
 	}
