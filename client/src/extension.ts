@@ -68,7 +68,13 @@ export function activate(context: ExtensionContext) {
 		// would deliver each change twice.
 
 		middleware: {
-			handleWorkDoneProgress: (token, params, next) => {
+			// Deliberately does not call `next(token, params)`: doing so hands
+			// the same event to vscode-languageclient's own default handler,
+			// which renders it a second time as the "hidden" window-progress
+			// notification referenced above. That duplicate was easy to miss
+			// in desktop VS Code but shows up as a second, differently-styled
+			// spinner with identical text in the Codespaces status bar.
+			handleWorkDoneProgress: (token, params, _next) => {
 				switch (params.kind) {
 					case 'begin':
 						setProgress(token, params.message ?? params.title);
@@ -83,8 +89,6 @@ export function activate(context: ExtensionContext) {
 						renderProgress();
 						break;
 				}
-
-				next(token, params);
 			}
 		}
 	}
