@@ -536,6 +536,30 @@ describe('EditQueue reporting', () => {
         expect(queue.edit_latency_ms).toBe(20);
     });
 
+    it('drops an in-flight edit clock when the compiler goes away', () => {
+        // A recycle or crash mid-edit leaves a timestamp behind. The next
+        // compiler's whole-project analysis would then complete against it
+        // and report the span between the two as a keystroke.
+        queue.reset();
+        queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+        queue.onPartialCompileDone(10);
+
+        queue.queueEdit3('file:///a.ghul', 2, 'u');
+        queue.sendQueued();
+
+        jest.advanceTimersByTime(3000);
+
+        // The compiler dies with the edit outstanding, and a fresh one starts.
+        queue.reset();
+        queue.start([{ uri: 'file:///a.ghul', source: 'u' }]);
+
+        jest.advanceTimersByTime(4500);
+        queue.onPartialCompileDone(10);
+
+        expect(queue.edit_latency_ms).toBeNull();
+        expect(metrics.report).not.toHaveBeenCalled();
+    });
+
     it('measures the round trip rather than taking the analyser\'s own figure', () => {
         // What the analyser reports is a maximum of its lifetime mean and its
         // moving average — right for sizing the timeouts, wrong as a latency

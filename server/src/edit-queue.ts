@@ -125,6 +125,13 @@ export class EditQueue {
         this.progress?.end(Activity.Compile);
         this.progress?.end(Activity.Heap);
 
+        // Drop the in-flight clocks with the request they belong to. Left
+        // standing, the next compiler's whole-project analysis completes
+        // against a timestamp from the dead one's edit and reports the whole
+        // span between them as a keystroke's latency.
+        this.send_start_time = 0;
+        this.compile_start_time = 0;
+
         this.state = QueueState.IDLE;
     }
 
