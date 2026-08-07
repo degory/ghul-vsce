@@ -134,6 +134,7 @@ describe('ConnectionEventHandler', () => {
                 initializeDetached: jest.fn(),
             }),
             unregisterWorkspace: jest.fn(),
+            setClientSupportsConfiguration: jest.fn(),
             allWorkspaces: jest.fn().mockReturnValue([]),
             onDidChangeWatchedFiles: jest.fn(),
         } as unknown as ExtensionState;
@@ -669,6 +670,23 @@ describe('ConnectionEventHandler', () => {
 
             expect(result).toEqual([]);
             expect(requester.sendDocumentFormatting).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('configuration changes', () => {
+        it('re-reads settings for every workspace when the editor reports a change', () => {
+            // Settings become the analyser's command line at spawn time, so a
+            // change only takes effect by going round again — nothing can be
+            // told to a running compiler about a launch flag.
+            const a = { reinitialize: jest.fn() };
+            const b = { reinitialize: jest.fn() };
+
+            (extensionState.allWorkspaces as jest.Mock).mockReturnValue([a, b]);
+
+            handler.onDidChangeConfiguration({ settings: {} });
+
+            expect(a.reinitialize).toHaveBeenCalled();
+            expect(b.reinitialize).toHaveBeenCalled();
         });
     });
 

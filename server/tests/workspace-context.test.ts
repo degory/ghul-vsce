@@ -51,6 +51,9 @@ function makeMockConnection(): Connection {
             showWarningMessage: jest.fn(),
             createWorkDoneProgress: jest.fn(() => Promise.resolve(progressReporter)),
         },
+        workspace: {
+            getConfiguration: jest.fn(() => Promise.resolve([null, null])),
+        },
         // ResponseHandler's constructor subscribes to the config-event emitter
         // and otherwise uses Connection only for sendDiagnostics; the tests
         // here don't exercise that path, so an empty stub is enough.
@@ -88,6 +91,53 @@ describe('WorkspaceContext.initialize', () => {
         jest.restoreAllMocks();
     });
 
+    it('asks the editor for this folder\'s settings, scoped so a folder can override', async () => {
+        // scopeUri is what makes a per-folder override work: without it every
+        // folder in a multi-root workspace gets the same answer.
+        const getGhulConfigSpy = jest.spyOn(GetGhulConfig, 'getGhulConfig');
+        stubConfig([]);
+        context.client_supports_configuration = true;
+        (connection.workspace.getConfiguration as jest.Mock)
+            .mockResolvedValue([true, null]);
+
+        await context.initialize();
+
+        const [sections] = (connection.workspace.getConfiguration as jest.Mock).mock.calls[0];
+
+        expect(sections).toEqual([
+            { scopeUri: `file://${WORKSPACE_ROOT}`, section: 'ghul.incrementalAnalysis' },
+            { scopeUri: `file://${WORKSPACE_ROOT}`, section: 'ghul.plaintextHover' },
+        ]);
+        expect(getGhulConfigSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, {
+            incremental_analysis: true,
+            want_plaintext_hover: null,
+        });
+    });
+
+    it('treats a client that cannot answer as no preference expressed', async () => {
+        const getGhulConfigSpy = jest.spyOn(GetGhulConfig, 'getGhulConfig');
+        stubConfig([]);
+        context.client_supports_configuration = true;
+        (connection.workspace.getConfiguration as jest.Mock)
+            .mockRejectedValue(new Error('Unhandled method workspace/configuration'));
+
+        await context.initialize();
+
+        expect(getGhulConfigSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, {});
+        expect(context.config).toBeDefined();
+    });
+
+    it('does not ask a client that has not said it can answer', async () => {
+        // Asking one that cannot is not a degraded read: the request is never
+        // answered, and setup waiting on it never reaches the compiler.
+        stubConfig([]);
+
+        await context.initialize();
+
+        expect(connection.workspace.getConfiguration).not.toHaveBeenCalled();
+        expect(context.config).toBeDefined();
+    });
+
     it('generates .assemblies.json before reading it via getGhulConfig', async () => {
         // getGhulConfig builds the -a argument list from .assemblies.json,
         // which is written by generateAssembliesJson. If the read runs first
@@ -116,7 +166,7 @@ describe('WorkspaceContext.initialize', () => {
         expect(generateOrder).toBeLessThan(configOrder);
         expect(restoreDotNetToolsSpy).toHaveBeenCalledWith(WORKSPACE_ROOT);
         expect(generateAssembliesJsonSpy).toHaveBeenCalledWith(WORKSPACE_ROOT);
-        expect(getGhulConfigSpy).toHaveBeenCalledWith(WORKSPACE_ROOT);
+        expect(getGhulConfigSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, expect.anything());
     });
 
     it('surfaces a warning when the config loaded with problems but is still runnable', async () => {

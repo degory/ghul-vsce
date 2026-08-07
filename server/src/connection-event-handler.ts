@@ -183,6 +183,12 @@ export class ConnectionEventHandler {
         // and multi-root sessions. The legacy rootPath / rootUri fields are
         // still in the LSP spec but deprecated; honour them only as a
         // fallback in case an older client connects.
+        // Before any workspace is registered: registerWorkspace copies this
+        // onto each context, and setup reads settings only when it is set.
+        this.extension_state.setClientSupportsConfiguration(
+            !!params.capabilities?.workspace?.configuration
+        );
+
         const roots = this.collectWorkspaceRoots(params);
 
         const workspaces: WorkspaceContext[] = [];
@@ -386,10 +392,20 @@ export class ConnectionEventHandler {
         log("language extension: exit");
     }
 
+    // Settings are read during workspace setup and turned into the analyser's
+    // command line, so a change only takes effect by going round again — which
+    // restarts the compiler, since some of them (incremental analysis) are
+    // launch flags it cannot be told about afterwards.
+    //
+    // The notification carries the changed values on some clients and nothing
+    // useful on others, so it is treated purely as a signal to re-read rather
+    // than as a source of values.
     onDidChangeConfiguration(_change: DidChangeConfigurationParams) {
         log("language extension: configuration changed");
 
-        // TODO: handle configuration change
+        for (const workspace of this.extension_state.allWorkspaces()) {
+            workspace.reinitialize();
+        }
     }
 
     onCompletion(textDocumentPosition: CompletionParams, token?: CancellationToken): Promise<CompletionItem[]> {

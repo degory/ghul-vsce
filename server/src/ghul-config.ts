@@ -82,7 +82,26 @@ function describeError(e: unknown): string {
 	return e instanceof Error ? e.message : String(e);
 }
 
-export function getGhulConfig(workspace: string): GhulConfig {
+// What the editor's own settings say, once its User / Workspace / Workspace
+// Folder layers have been resolved into one value per setting. Null means the
+// user has expressed no preference, which is distinct from having chosen the
+// default: only then does ghul.json get a say.
+export interface EditorSettings {
+	incremental_analysis?: boolean | null,
+	want_plaintext_hover?: boolean | null,
+}
+
+// Settings that govern how the extension behaves rather than how the project
+// is built belong to the editor, where they are discoverable, validated and
+// overridable per user, per workspace and per folder. ghul.json is still read
+// for them, so a project that already sets one keeps working, but it is the
+// weaker voice and the project file is the right home for anything that
+// genuinely changes the build.
+function prefer(setting: boolean | null | undefined, from_json: boolean | undefined): boolean {
+	return setting ?? from_json ?? false;
+}
+
+export function getGhulConfig(workspace: string, settings: EditorSettings = {}): GhulConfig {
 	let problems: string[] = [];
 
 	let config: GhulConfigJson = {};
@@ -309,7 +328,7 @@ export function getGhulConfig(workspace: string): GhulConfig {
 
 	args.push("-A");
 
-	let incremental_analysis = config.incremental_analysis ?? false;
+	let incremental_analysis = prefer(settings.incremental_analysis, config.incremental_analysis);
 
 	if (incremental_analysis) {
 		args.push("--incremental-analysis");
@@ -322,7 +341,7 @@ export function getGhulConfig(workspace: string): GhulConfig {
 		compiler,
 		source,
 		arguments: args,
-		want_plaintext_hover: config.want_plaintext_hover ?? false,
+		want_plaintext_hover: prefer(settings.want_plaintext_hover, config.want_plaintext_hover),
 		incremental_analysis,
 		missing_assemblies,
 		problems
