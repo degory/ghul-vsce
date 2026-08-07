@@ -40,6 +40,11 @@ export class ActivityProgress {
     private reporter: WorkDoneProgressServerReporter | null = null;
     private opening: boolean = false;
 
+    // What the user is currently being shown. An activity ending underneath
+    // the one on top re-renders without changing anything, and re-sending the
+    // same message would spend a notification saying nothing new.
+    private shown: string | null = null;
+
     constructor(connection: Connection) {
         this.connection = connection;
     }
@@ -77,12 +82,17 @@ export class ActivityProgress {
         if (message == null) {
             this.reporter?.done();
             this.reporter = null;
+            this.shown = null;
 
             return;
         }
 
         if (this.reporter) {
-            this.reporter.report(message);
+            if (message != this.shown) {
+                this.shown = message;
+
+                this.reporter.report(message);
+            }
 
             return;
         }
@@ -117,6 +127,7 @@ export class ActivityProgress {
                 }
 
                 this.reporter = reporter;
+                this.shown = message;
             },
             e => {
                 this.opening = false;

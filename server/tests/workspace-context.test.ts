@@ -331,6 +331,52 @@ describe('WorkspaceContext.initialize', () => {
         expect(progressReporter.done).not.toHaveBeenCalled();
     });
 
+    it('reports the whole sequence again when a project file change reloads the workspace', async () => {
+        // Saving a .ghulproj / Directory.Build.props / dotnet-tools.json
+        // re-runs the tool restore and the reference resolution and then
+        // replaces the compiler, so the user faces the same wait as a cold
+        // start and must be shown the same sequence.
+        stubConfig([]);
+
+        await context.initialize();
+
+        context.requester.analysed = true;
+        await new Promise(resolve => setImmediate(resolve));
+
+        expect(progressReporter.done).toHaveBeenCalled();
+
+        progressReporter.begin.mockClear();
+        progressReporter.report.mockClear();
+        progressReporter.done.mockClear();
+
+        context.reinitialize();
+
+        // reinitialize() is detached, so let the setup it awaits complete.
+        await new Promise(resolve => setImmediate(resolve));
+        await new Promise(resolve => setImmediate(resolve));
+
+        // 'listening' makes the analyser send the whole project down the
+        // relaunched compiler's stdin; the stubbed child has none, so stand
+        // one in. Set after the relaunch, which installs the stub child's
+        // absent stdin over anything set before it.
+        context.requester.stream = { write: () => { } };
+
+        context.server_event_emitter.listening();
+
+        const messages = [
+            ...progressReporter.begin.mock.calls.map(([, , message]) => message),
+            ...progressReporter.report.mock.calls.map(([message]) => message),
+        ];
+
+        expect(messages).toEqual([
+            'restoring .NET tools',
+            'resolving project references',
+            'starting compiler',
+            'analysing project',
+        ]);
+        expect(progressReporter.done).not.toHaveBeenCalled();
+    });
+
     it('does not report a compiler start that is never going to happen', async () => {
         // No compiler was resolved, so the spawn is abandoned the moment it
         // is attempted; a progress notification opened here would never close.

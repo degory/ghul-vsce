@@ -72,6 +72,22 @@ describe('ActivityProgress', () => {
         expect(reporter.report).toHaveBeenLastCalledWith('analysing project');
     });
 
+    it('does not re-send a message that is already showing', async () => {
+        // An activity ending underneath the one on top changes nothing the
+        // user can see.
+        const reporter = makeReporter();
+        const progress = new ActivityProgress(makeConnection(reporter));
+
+        progress.report(Activity.Setup, 'restoring .NET tools');
+        await settle();
+
+        progress.report(Activity.Compiler, 'starting compiler');
+        progress.end(Activity.Setup);
+
+        expect(reporter.report.mock.calls.map(([message]) => message))
+            .toEqual(['starting compiler']);
+    });
+
     it('closes the notification when the last activity ends', async () => {
         const reporter = makeReporter();
         const progress = new ActivityProgress(makeConnection(reporter));
