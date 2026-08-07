@@ -11,6 +11,9 @@ import { Watchdog } from './watchdog';
 import { normalizeFileUri } from './normalize-file-uri';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
+import { Activity, ActivityProgress } from './activity-progress';
+import { MetricsReporter } from './metrics-reporter';
+
 enum QueueState {
     START,
     IDLE,
@@ -48,6 +51,14 @@ export class EditQueue {
     requester: Requester;
     response_handler: ResponseHandler;
     watchdog: Watchdog;
+    progress: ActivityProgress | null;
+    metrics: MetricsReporter | null;
+
+    // Smoothed round-trip times, in milliseconds, of the two things the user
+    // waits on: an incremental analysis of an edit, and a full compile of the
+    // project. Null until one of each has completed.
+    edit_latency_ms: number | null;
+    compile_latency_ms: number | null;
 
     send_start_time: number;
     analyse_start_time: number;
@@ -61,10 +72,18 @@ export class EditQueue {
     // the heap — long enough that it is a genuine lull in editing.
     static readonly HEAP_CHECK_IDLE_TIMEOUT = 60000;
 
+    // Weight given to the newest measurement when smoothing the reported
+    // latencies. Individual compiles vary by an order of magnitude depending
+    // on what was edited; the reported figure is meant to answer "how is this
+    // project performing", which a single sample does not.
+    static readonly LATENCY_SMOOTHING = 0.3;
+
     constructor(
         requester: Requester,
         response_handler: ResponseHandler,
-        watchdog: Watchdog
+        watchdog: Watchdog,
+        progress?: ActivityProgress,
+        metrics?: MetricsReporter
     ) {
         this.edit_count = 0;
         this.build_count = 0;
@@ -73,6 +92,11 @@ export class EditQueue {
         this.requester = requester;
         this.response_handler = response_handler;
         this.watchdog = watchdog;
+        this.progress = progress ?? null;
+        this.metrics = metrics ?? null;
+
+        this.edit_latency_ms = null;
+        this.compile_latency_ms = null;
 
         this.pending_changes = new Map();
 
@@ -86,6 +110,12 @@ export class EditQueue {
         this.pending_changes.clear();
         this.clearEditTimer();
         this.clearIdleTimer();
+
+        // Whatever was in flight died with the compiler, so nothing is going
+        // to report it done. Take the spinners down rather than leave them
+        // claiming work that is no longer happening.
+        this.progress?.end(Activity.Compile);
+        this.progress?.end(Activity.Heap);
 
         this.state = QueueState.IDLE;
     }
@@ -166,6 +196,8 @@ export class EditQueue {
     // with another request.
     onIdleTimeout() {
         if (this.state == QueueState.IDLE && !this.watchdog.isRunning()) {
+            this.progress?.report(Activity.Heap, "garbage collecting");
+
             this.requester.sendHeapCheckRequest();
 
             this.state = QueueState.DOING_HEAP_CHECK;
@@ -194,6 +226,9 @@ export class EditQueue {
         this.requester.analysed = true;
 
         if (milliseconds) {
+            this.edit_latency_ms = this.smooth(this.edit_latency_ms, milliseconds);
+            this.reportMetrics();
+
             this.edit_timeout = milliseconds * 1.5;
 
             if (this.full_build_timeout < this.edit_timeout) {
@@ -228,7 +263,12 @@ export class EditQueue {
 
         this.requester.analysed = true;
 
+        this.progress?.end(Activity.Compile);
+
         if (milliseconds) {
+            this.compile_latency_ms = this.smooth(this.compile_latency_ms, milliseconds);
+            this.reportMetrics();
+
             this.full_build_timeout = milliseconds * 1.5;
 
             if (this.full_build_timeout < this.edit_timeout) {
@@ -261,6 +301,8 @@ export class EditQueue {
             return;
         }
 
+        this.progress?.end(Activity.Heap);
+
         if (this.pending_changes.size > 0) {
             this.state = QueueState.WAITING_FOR_MORE_EDITS;
             this.startEditTimer(this.edit_timeout);
@@ -279,9 +321,23 @@ export class EditQueue {
     }
 
     private requestFullCompile() {
+        this.progress?.report(Activity.Compile, "checking project");
+
         this.requester.sendFullCompileRequest();
 
         this.state = QueueState.DOING_FULL_COMPILE;
+    }
+
+    private smooth(previous: number | null, sample: number): number {
+        if (previous == null) {
+            return sample;
+        }
+
+        return previous + EditQueue.LATENCY_SMOOTHING * (sample - previous);
+    }
+
+    private reportMetrics() {
+        this.metrics?.report(this.edit_latency_ms, this.compile_latency_ms);
     }
 
     // Self-clearing, so callers never leak a second edit timer: the queue has

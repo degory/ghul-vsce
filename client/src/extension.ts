@@ -6,6 +6,15 @@ import * as path from 'path';
 import { ExtensionContext, StatusBarAlignment, window } from 'vscode';
 import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient/node';
 
+// Mirrors the payload of the server's ghul/metrics notification
+// (server/src/metrics-reporter.ts). Durations are in milliseconds, and null
+// until the analyser has completed one of that kind of run.
+interface AnalysisMetrics {
+	workspace: string;
+	edit_ms: number | null;
+	compile_ms: number | null;
+}
+
 export function activate(context: ExtensionContext) {
 	log("client entry point...")
 
@@ -57,6 +66,63 @@ export function activate(context: ExtensionContext) {
 		renderProgress();
 	}
 
+	// The two numbers that answer "is the language support keeping up?": how
+	// long the analyser takes to digest an edit, and how long a full check of
+	// the project takes. Both are smoothed server-side, so this shows a
+	// settled figure rather than one that jumps on every keystroke.
+	let metricsBarItem = window.createStatusBarItem(StatusBarAlignment.Right);
+	context.subscriptions.push(metricsBarItem);
+
+	// Keyed per workspace folder for the same reason progress is keyed per
+	// token: in a multi-root workspace each folder has its own compiler, and
+	// its own latency.
+	let metrics = new Map<string, AnalysisMetrics>();
+
+	function formatDuration(milliseconds: number): string {
+		return milliseconds >= 1000
+			? `${(milliseconds / 1000).toFixed(1)} s`
+			: `${milliseconds.toFixed(0)} ms`;
+	}
+
+	function summarise(m: AnalysisMetrics): string {
+		let parts: string[] = [];
+
+		if (m.edit_ms != null) {
+			parts.push(`edit ${formatDuration(m.edit_ms)}`);
+		}
+
+		if (m.compile_ms != null) {
+			parts.push(`compile ${formatDuration(m.compile_ms)}`);
+		}
+
+		return parts.join(" · ");
+	}
+
+	function renderMetrics() {
+		// Map iteration order is insertion order and a re-set key does not
+		// move, so the most recently *reported* folder is whichever was
+		// deleted and re-added last — see setMetrics below.
+		const latest = [...metrics.values()].pop();
+		const summary = latest ? summarise(latest) : "";
+
+		if (!summary) {
+			metricsBarItem.hide();
+			return;
+		}
+
+		metricsBarItem.text = `$(watch) ghūl: ${summary}`;
+		metricsBarItem.tooltip = [...metrics.values()]
+			.map(m => `${m.workspace}\nanalysis of an edit: ${m.edit_ms == null ? "—" : formatDuration(m.edit_ms)}\nfull check of the project: ${m.compile_ms == null ? "—" : formatDuration(m.compile_ms)}`)
+			.join("\n\n");
+		metricsBarItem.show();
+	}
+
+	function setMetrics(m: AnalysisMetrics) {
+		metrics.delete(m.workspace);
+		metrics.set(m.workspace, m);
+		renderMetrics();
+	}
+
 	// Options to control the language client
 	let clientOptions: LanguageClientOptions = {
 		// Register the server for ghul source files
@@ -97,7 +163,11 @@ export function activate(context: ExtensionContext) {
 
 	client.start().then(() => {
 		log("client started...");
-	
+
+		context.subscriptions.push(
+			client.onNotification('ghul/metrics', (m: AnalysisMetrics) => setMetrics(m))
+		);
+
 		// Push the disposable to the context's subscriptions so that the 
 		// client can be deactivated on extension deactivation
 		context.subscriptions.push(client);
