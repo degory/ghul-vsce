@@ -411,11 +411,17 @@ export class EditQueue {
         }
     }
 
+    // Hand the analyser the whole project, once, when a compiler starts.
+    //
+    // Deliberately not stamped as the start of an edit. It is not one: it is
+    // every file in the project rather than the one being typed in, and it
+    // takes seconds rather than milliseconds. Averaged in as though it were a
+    // keystroke it dominates the reported figure for the next twenty edits,
+    // and every compiler recycle puts it back — which reads as the analyser
+    // being far slower than it is.
     start(documents: { uri: string, source: string }[]) {
         this.clearEditTimer();
         this.clearIdleTimer();
-
-        this.send_start_time = Date.now();
 
         this.state = QueueState.DOING_PARTIAL_COMPILE;
         this.sendMultiEdits(documents);
