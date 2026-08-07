@@ -121,7 +121,15 @@ export class WorkspaceContext {
             busy => this.reportOutstandingRequest(busy)
         );
 
-        this.requester = new Requester(this.server_event_emitter, this.response_handler, this.watchdog);
+        // Same late-bound shape as the watchdog callback above: the requester
+        // is built before the server manager, and only ever calls this once
+        // a request is actually in hand.
+        this.requester = new Requester(
+            this.server_event_emitter,
+            this.response_handler,
+            this.watchdog,
+            () => this.server_manager?.ensureRunning()
+        );
 
         this.edit_queue = new EditQueue(
             this.requester,

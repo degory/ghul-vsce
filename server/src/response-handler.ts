@@ -1087,6 +1087,17 @@ export class ResponseHandler {
         this.edit_queue.reset();
     }
 
+    // The compiler is exiting because nothing has been asked of it for a
+    // while, and does not want replacing until there is something to ask.
+    // Relaunching here instead would recompile the whole project on a timer
+    // for a user who is not there — costing more than the memory the exit
+    // just returned.
+    handleExit(reason: string) {
+        log("compiler is exiting: " + reason);
+        this.server_manager.noteIdleExit();
+        this.edit_queue.reset();
+    }
+
     handleUnexpected() {
         this.server_manager.abort();
     }

@@ -115,6 +115,10 @@ export class ResponseParser {
             this.response_handler.handleRestart();
             break;
 
+        case "exit":
+            this.response_handler.handleExit(message.reason);
+            break;
+
         case "heap_check":
             this.response_handler.handleHeapCheckDone();
             break;

@@ -60,15 +60,21 @@ export class Requester {
     response_handler: ResponseHandler;
     watchdog: Watchdog;
 
+    // Wakes a compiler that exited while idle. Every send calls it; it does
+    // nothing unless the compiler is actually away.
+    ensure_running: () => void;
+
     watchdog_timer: NodeJS.Timer;
 
     constructor(
         server_event_emitter: ServerEventEmitter,
         response_handler: ResponseHandler,
-        watchdog: Watchdog
+        watchdog: Watchdog,
+        ensure_running: () => void = () => {}
     ) {
         this.response_handler = response_handler;
         this.watchdog = watchdog;
+        this.ensure_running = ensure_running;
         this.analysed = false;
 
         server_event_emitter.onStarting(() => {
@@ -98,6 +104,13 @@ export class Requester {
         fallback: T = null,
         token?: CancellationToken
     ): Promise<T> {
+        // A query is exactly the "something to ask" an idle exit was waiting
+        // for. Waking here rather than on a timer is the point of the idle
+        // exit: the relaunch is paid for by a request that wants an answer.
+        // The wait below then covers the cold start, as it already does for a
+        // compiler that is starting for any other reason.
+        this.ensure_running();
+
         if (this.analysed) {
             this.watchdog.startWatchdogIfNotRunning();
 
@@ -186,6 +199,12 @@ export class Requester {
     }
 
     sendDocuments(documents: { uri: string, source: string }[]) {
+        // Editing is the other way work arrives. A relaunch re-primes the
+        // analyser with the open documents on its own, so the wake matters
+        // here even though this particular edit may land on a stream that is
+        // already gone.
+        this.ensure_running();
+
         this.watchdog.startWatchdogIfNotRunning();
 
         this.send({

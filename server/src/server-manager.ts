@@ -31,7 +31,11 @@ export enum ServerState {
 	// The compiler could not be started — either it was never resolved, or it
 	// kept failing and we have given up retrying. We stay here, doing nothing,
 	// until a fresh configuration arrives (the user edits a project file).
-	Failed
+	Failed,
+	// The compiler exited because it had been idle, and is waiting to be
+	// needed. Healthy, unlike every other not-running state: the next request
+	// brings it straight back.
+	Dormant
 }
 
 // How many consecutive failed starts to tolerate before giving up. A healthy
@@ -40,10 +44,27 @@ export enum ServerState {
 // .ghulproj, an unresolved compiler tool, an immediate crash.
 export const MAX_RESTART_ATTEMPTS = 5;
 
+// Every compiler this process has spawned that has not been seen to exit,
+// keyed by workspace root.
+//
+// A ServerManager kills its own outgoing child when it relaunches, but a
+// *replacement* manager for the same workspace — a fresh configuration, a
+// reconnect — starts with no handle to the child its predecessor left running,
+// and cannot kill what it cannot see. The abandoned compiler then stays
+// resident for the life of the extension host, holding the several hundred
+// megabytes of a warm analyser, and is not reaped by end-of-input either: the
+// host still holds its pipes open, so no end of input ever arrives.
+//
+// Registering here rather than on the instance is what makes the reap
+// survive the instance. Same process throughout, so a live handle is exact —
+// no pid to go stale or be reused by something else.
+const live_children = new Map<string, ChildProcess>();
+
 export class ServerManager {
 	child: ChildProcess;
 	expecting_exit: boolean;
 	expecting_recycle: boolean;
+	expecting_idle_exit: boolean;
 
 	event_emitter: ServerEventEmitter;
 	connection: Connection;
@@ -98,6 +119,30 @@ export class ServerManager {
 		this.launch();
 	}
 
+	// Kill a compiler left running for this workspace by an earlier manager.
+	// Ours, if we have one, has just been killed above and is not a candidate.
+	private reapAbandonedCompiler() {
+		const abandoned = live_children.get(this.workspace_root);
+
+		if (!abandoned || abandoned === this.child || abandoned.exitCode != null) {
+			return;
+		}
+
+		log(`killing abandoned compiler PID ${abandoned.pid} left by an earlier connection`);
+
+		try {
+			// Its stdout may still be wired to a parser belonging to whatever
+			// created it; detach before killing so a dying frame cannot reach
+			// anyone's parser.
+			abandoned.stdout?.removeAllListeners('data');
+			abandoned.kill();
+		} catch (e) {
+			log("killing abandoned compiler caught: " + e);
+		}
+
+		live_children.delete(this.workspace_root);
+	}
+
 	private launch() {
 		this.event_emitter.starting();
 
@@ -115,6 +160,8 @@ export class ServerManager {
 			this.child.stdout?.removeAllListeners('data');
 			this.child.kill();
 		}
+
+		this.reapAbandonedCompiler();
 
 		if (this.ghul_config.block) {
 			log("compiler block requested: won't spawn compiler");
@@ -180,6 +227,8 @@ export class ServerManager {
 			onChildFailure(`compiler: failed to start: ${err.message}`);
 		});
 
+		live_children.set(this.workspace_root, this.child);
+
 		log(`spawned compiler process PID ${this.child.pid}`);
 
 		this.child.stderr.on('data', (chunk: Buffer) => {
@@ -202,8 +251,16 @@ export class ServerManager {
 
 		const pid = this.child?.pid;
 
+		const spawned = this.child;
+
 		this.child.on('exit',
 			(_code: number, _signal: string) => {
+				// Only if it is still ours: a later launch may already have
+				// registered its own child over this entry.
+				if (live_children.get(this.workspace_root) === spawned) {
+					live_children.delete(this.workspace_root);
+				}
+
 				if (this.expecting_exit) {
 					log(`compiler PID ${pid}: exited`);
 					this.child = null;
@@ -223,6 +280,20 @@ export class ServerManager {
 					this.response_handler.resolveAllPendingPromises();
 					this.edit_queue.reset();
 					this.launch();
+					return;
+				}
+
+				// An idle exit is the one healthy exit we do not follow with a
+				// launch. Nothing is scheduled and no back-off is spent: the
+				// next request calls ensureRunning and pays for the restart
+				// then.
+				if (this.expecting_idle_exit) {
+					this.expecting_idle_exit = false;
+					log(`compiler PID ${pid}: exited while idle — will restart when next needed`);
+					this.child = null;
+					this.server_state = ServerState.Dormant;
+					this.response_handler.resolveAllPendingPromises();
+					this.edit_queue.reset();
 					return;
 				}
 
@@ -330,6 +401,31 @@ export class ServerManager {
 	// rather than being treated as a crash.
 	noteRecycle() {
 		this.expecting_recycle = true;
+	}
+
+	// The compiler announced an idle exit and is about to go. Unlike a
+	// recycle, it should not be replaced until there is work for it: see
+	// ensureRunning, which every outgoing request passes through.
+	noteIdleExit() {
+		this.expecting_idle_exit = true;
+	}
+
+	// Bring the compiler back if an idle exit put it away. Called before
+	// anything is sent, so the cost of the timeout is paid by whoever next
+	// needs an answer rather than by a timer nobody is watching.
+	//
+	// Only Dormant is woken here: every other state is either already running,
+	// deliberately not running (Blocked, Aborted), or being retried on its own
+	// schedule (Failed, and the back-off timer), and launching underneath any
+	// of those would fight whatever put us there.
+	ensureRunning() {
+		if (this.server_state != ServerState.Dormant) {
+			return;
+		}
+
+		log("compiler is needed again after an idle exit — relaunching");
+
+		this.launch();
 	}
 
 	// The watchdog fired: the compiler has stopped answering but has not
