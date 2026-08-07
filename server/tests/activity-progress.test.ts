@@ -1,6 +1,6 @@
 import { Connection } from 'vscode-languageserver';
 
-import { Activity, ActivityProgress, SLOW_ACTIVITY_DELAY_MS } from '../src/activity-progress';
+import { Activity, ActivityProgress, CREATE_TIMEOUT_MS, SLOW_ACTIVITY_DELAY_MS } from '../src/activity-progress';
 
 // A reporter that records what the user would see, in order.
 function makeReporter() {
@@ -241,6 +241,85 @@ describe('ActivityProgress', () => {
 
             expect(reporter.report).toHaveBeenLastCalledWith('analysing');
             expect(reporter.done).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('when the client does not grant a token', () => {
+        beforeEach(() => {
+            jest.useFakeTimers();
+        });
+
+        afterEach(() => {
+            jest.useRealTimers();
+        });
+
+        // A client whose grants are held, so a test can answer requests out of
+        // order or not at all.
+        function makeDeferredConnection() {
+            const grants: ((reporter: any) => void)[] = [];
+
+            const connection = {
+                window: {
+                    createWorkDoneProgress: jest.fn(
+                        () => new Promise(resolve => { grants.push(resolve); })
+                    ),
+                },
+            } as unknown as Connection;
+
+            return { connection, grants };
+        }
+
+        it('asks again for a later activity after a request goes unanswered', async () => {
+            // Only one request for a token is ever in flight, so one that is
+            // never answered would otherwise be the last one ever made — every
+            // activity for the rest of the session silently unreported, with
+            // the start-up sequence that already completed still looking fine.
+            const { connection, grants } = makeDeferredConnection();
+            const progress = new ActivityProgress(connection);
+
+            progress.report(Activity.Compile, 'checking project');
+
+            expect(grants).toHaveLength(1);
+
+            jest.advanceTimersByTime(CREATE_TIMEOUT_MS);
+            progress.end(Activity.Compile);
+
+            progress.report(Activity.Heap, 'garbage collecting');
+
+            expect(grants).toHaveLength(2);
+
+            const reporter = makeReporter();
+            grants[1](reporter);
+            await Promise.resolve();
+
+            expect(reporter.begin).toHaveBeenCalledWith('ghūl', undefined, 'garbage collecting', false);
+        });
+
+        it('closes a token granted so late that another has taken over', async () => {
+            const abandoned = makeReporter();
+            const current = makeReporter();
+
+            const { connection, grants } = makeDeferredConnection();
+            const progress = new ActivityProgress(connection);
+
+            progress.report(Activity.Compile, 'checking project');
+            jest.advanceTimersByTime(CREATE_TIMEOUT_MS);
+
+            progress.report(Activity.Heap, 'garbage collecting');
+            grants[1](current);
+            await Promise.resolve();
+
+            expect(current.begin).toHaveBeenCalledWith('ghūl', undefined, 'garbage collecting', false);
+
+            // The abandoned request is answered eventually. Its token must be
+            // closed rather than left half-open, and must not displace the one
+            // now in use.
+            grants[0](abandoned);
+            await Promise.resolve();
+
+            expect(abandoned.begin).toHaveBeenCalledWith('ghūl', undefined, '', false);
+            expect(abandoned.done).toHaveBeenCalled();
+            expect(current.done).not.toHaveBeenCalled();
         });
     });
 

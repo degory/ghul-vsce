@@ -141,8 +141,15 @@ export function activate(context: ExtensionContext) {
 			// styled spinner showing identical text next to this one.
 			handleWorkDoneProgress: (token, params, _next) => {
 				switch (params.kind) {
+					// A blank message means the token was granted after the
+					// work it was for had already finished. It has to be begun
+					// before it can be ended, so it arrives as an immediate
+					// begin/end pair with nothing to say — rendering it would
+					// flash an empty label in the status bar.
 					case 'begin':
-						setProgress(token, params.message ?? params.title);
+						if (params.message) {
+							setProgress(token, params.message);
+						}
 						break;
 					case 'report':
 						if (params.message) {

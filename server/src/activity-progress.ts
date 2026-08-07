@@ -29,6 +29,14 @@ export enum Activity {
 // reads as instability rather than as information.
 export const SLOW_ACTIVITY_DELAY_MS = 500;
 
+// How long to wait for the client to answer a request for a progress token.
+//
+// Only one such request is ever in flight, so one that is never answered would
+// otherwise be the last one ever made, and every activity for the rest of the
+// session would go unreported. Giving up lets the next activity ask again;
+// nothing is lost but the one notification.
+export const CREATE_TIMEOUT_MS = 10_000;
+
 interface ReportedActivity {
     message: string;
     // A fallback activity is shown only when nothing more specific is. The
@@ -191,24 +199,41 @@ export class ActivityProgress {
 
         this.opening = true;
 
+        const give_up = setTimeout(() => {
+            this.opening = false;
+
+            log("the client has not granted a progress token; will ask again for the next activity");
+        }, CREATE_TIMEOUT_MS);
+
+        give_up.unref?.();
+
         Promise.resolve(this.connection.window.createWorkDoneProgress()).then(
             reporter => {
+                clearTimeout(give_up);
+
                 this.opening = false;
 
                 const message = this.current();
 
-                reporter.begin("ghūl", undefined, message ?? "", false);
-
-                if (message == null) {
+                // Nothing left to announce, or a later request was granted
+                // first because this one was given up on. A token has to be
+                // begun before it can be ended, so close it with no message —
+                // the client renders nothing for a blank one.
+                if (message == null || this.reporter) {
+                    reporter.begin("ghūl", undefined, "", false);
                     reporter.done();
 
                     return;
                 }
 
+                reporter.begin("ghūl", undefined, message, false);
+
                 this.reporter = reporter;
                 this.shown = message;
             },
             e => {
+                clearTimeout(give_up);
+
                 this.opening = false;
 
                 log(`could not create a progress reporter: ${e}`);
