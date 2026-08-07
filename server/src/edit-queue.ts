@@ -440,6 +440,18 @@ export class EditQueue {
     // flight the pending edits ride out on its completion, and barging a second
     // #EDIT# in would leave the queue tracking two in-flight requests as one.
     sendQueued(_why: string = "send queued") {
+        // Nothing queued, nothing to flush. An edit carrying no files is not a
+        // cheap no-op at the other end: the analyser serves an edit
+        // incrementally only when it names exactly one file, so an empty one
+        // is declined and answered with a rebuild of the whole project.
+        //
+        // Semantic tokens and inlay hints flush before every request, and the
+        // editor asks for those continuously while typing and scrolling — so
+        // an idle queue turned each of them into a whole-project rebuild.
+        if (this.pending_changes.size == 0) {
+            return;
+        }
+
         if (
             this.state != QueueState.WAITING_FOR_MORE_EDITS &&
             this.state != QueueState.WAITING_FOR_MORE_EDITS_AFTER_PARTIAL_COMPILE

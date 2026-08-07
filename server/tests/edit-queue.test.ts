@@ -536,6 +536,55 @@ describe('EditQueue reporting', () => {
         expect(queue.edit_latency_ms).toBe(20);
     });
 
+    it('does not flush an empty queue', () => {
+        // Semantic tokens and inlay hints flush before every request, and the
+        // editor asks for those continuously. An edit naming no files is
+        // declined by the analyser and answered with a whole-project rebuild,
+        // so an idle queue turned each of those requests into one.
+        queue.reset();
+        queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+        queue.onPartialCompileDone(10);
+
+        const sends = recorder.sendDocumentsCalls.length;
+
+        // The state a moment after typing stops, with nothing left pending.
+        queue.sendQueued('semantic tokens');
+        queue.sendQueued('inlay hints');
+
+        expect(recorder.sendDocumentsCalls).toHaveLength(sends);
+    });
+
+    it('still flushes a queue that has something in it', () => {
+        queue.reset();
+        queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+        queue.onPartialCompileDone(10);
+
+        queue.queueEdit3('file:///a.ghul', 2, 'u');
+
+        const sends = recorder.sendDocumentsCalls.length;
+
+        queue.sendQueued('completion');
+
+        expect(recorder.sendDocumentsCalls).toHaveLength(sends + 1);
+        expect(recorder.sendDocumentsCalls[sends]).toEqual([
+            { uri: 'file:///a.ghul', source: 'u' },
+        ]);
+    });
+
+    it('leaves the debounced full compile to happen on its own', () => {
+        // Declining to flush must not also cancel the timer that asks for the
+        // full compile once typing has stopped.
+        queue.reset();
+        queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+        queue.onPartialCompileDone(10);
+
+        queue.sendQueued('inlay hints');
+
+        jest.advanceTimersByTime(queue.full_build_timeout);
+
+        expect(recorder.sendFullCompileRequestCalls).toBe(1);
+    });
+
     it('drops an in-flight edit clock when the compiler goes away', () => {
         // A recycle or crash mid-edit leaves a timestamp behind. The next
         // compiler's whole-project analysis would then complete against it
