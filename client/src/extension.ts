@@ -53,10 +53,11 @@ export function activate(context: ExtensionContext) {
 	// not to still be claiming something is happening when it isn't.
 	const COMPLETED_HOLD_MS = 1500;
 
-	// Same codicon cell as the spinner it replaces, so swapping one for the
-	// other doesn't change the item's width and shove its neighbours along.
+	// A finished activity already says so in the past tense, so it carries no
+	// icon of its own and the spinner's cell simply goes. The item is right
+	// aligned, so losing a cell from the front of the text pulls the logo in
+	// towards the message rather than moving the message itself.
 	const RUNNING_ICON = '$(sync~spin)';
-	const COMPLETED_ICON = '$(check)';
 
 	// Contributed in package.json from images/ghul-icons.woff. It stands where
 	// the word "ghūl" used to, so the item says who is reporting without
@@ -83,9 +84,10 @@ export function activate(context: ExtensionContext) {
 		const entries = [...progressMessages.values()];
 		const entry = entries[entries.length - 1];
 
-		statusBarItem.text = entry
-			? `${BRAND_ICON} ${entry.completed ? COMPLETED_ICON : RUNNING_ICON} ${entry.message}`
-			: BRAND_ICON;
+		statusBarItem.text =
+			!entry ? BRAND_ICON :
+			entry.completed ? `${BRAND_ICON} ${entry.message}` :
+			`${BRAND_ICON} ${RUNNING_ICON} ${entry.message}`;
 
 		statusBarItem.tooltip = describeMetrics();
 		statusBarItem.show();
@@ -112,7 +114,7 @@ export function activate(context: ExtensionContext) {
 	}
 
 	// The activity is over. Whatever it last said stays up, in the past tense
-	// the server switched it to, under a completed icon — then the item falls
+	// the server switched it to, with the spinner stopped — then the item falls
 	// back to the logo on its own. More work arriving in the meantime takes the
 	// display back immediately, via setProgress above; there is no wait to get
 	// through before the next thing can be reported.
@@ -157,7 +159,7 @@ export function activate(context: ExtensionContext) {
 		}
 
 		return [...metrics.values()]
-			.map(m => `${m.workspace}\nanalysis of an edit: ${m.edit_ms == null ? "—" : formatDuration(m.edit_ms)}\nfull check of the project: ${m.compile_ms == null ? "—" : formatDuration(m.compile_ms)}`)
+			.map(m => `${m.workspace}\nedit analysis: ${m.edit_ms == null ? "—" : formatDuration(m.edit_ms)}\nfull analysis: ${m.compile_ms == null ? "—" : formatDuration(m.compile_ms)}`)
 			.join("\n\n");
 	}
 
