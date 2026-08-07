@@ -575,6 +575,7 @@ describe('ServerManager (idle exit)', () => {
         source: [],
         block: false,
         incremental_analysis: false,
+        want_plaintext_hover: false,
         missing_assemblies: [],
         problems: [],
     };
@@ -704,6 +705,7 @@ describe('ServerManager (abandoned compiler reap)', () => {
         source: [],
         block: false,
         incremental_analysis: false,
+        want_plaintext_hover: false,
         missing_assemblies: [],
         problems: [],
     };
