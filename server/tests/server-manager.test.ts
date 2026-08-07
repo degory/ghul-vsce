@@ -560,3 +560,502 @@ describe('ServerManager (state helpers)', () => {
         });
     });
 });
+
+describe('ServerManager (idle exit)', () => {
+    let manager: ServerManager;
+    let serverEvents: ServerEventEmitter;
+    let configEvents: ConfigEventEmitter;
+    let watchdog: Watchdog;
+    let responseHandler: ResponseHandler;
+    let editQueue: EditQueue;
+
+    const baseConfig: GhulConfig = {
+        compiler: ['dotnet', 'ghul-compiler'],
+        arguments: ['-a', 'lib.dll'],
+        source: [],
+        block: false,
+        incremental_analysis: false,
+        want_plaintext_hover: false,
+        missing_assemblies: [],
+        problems: [],
+    };
+
+    // Each case gets its own workspace root: the abandoned-compiler registry
+    // is keyed by it and lives for the module, so sharing one would let a
+    // child left behind by an earlier case be reaped inside a later one.
+    function makeManager(workspace_root: string): ServerManager {
+        const created = new ServerManager(
+            configEvents,
+            serverEvents,
+            editQueue,
+            responseHandler,
+            { reset: jest.fn(), handleChunk: jest.fn() } as unknown as ResponseParser,
+            watchdog,
+            workspace_root,
+            { window: { showErrorMessage: jest.fn(), showWarningMessage: jest.fn() } } as any,
+        );
+
+        created.ghul_config = { ...baseConfig };
+
+        return created;
+    }
+
+    beforeEach(() => {
+        jest.useFakeTimers();
+
+        serverEvents = new ServerEventEmitter();
+        configEvents = new ConfigEventEmitter();
+        watchdog = new Watchdog(10000, () => {});
+        editQueue = { reset: jest.fn() } as unknown as EditQueue;
+
+        responseHandler = {
+            resolveAllPendingPromises: jest.fn(),
+            rejectAllPendingPromises: jest.fn(),
+        } as unknown as ResponseHandler;
+
+        (writeFileSync as jest.Mock).mockClear();
+        (spawn as jest.Mock).mockClear().mockImplementation(() => makeFakeChild());
+
+        manager = makeManager('/test/workspace/idle');
+    });
+
+    afterEach(() => {
+        watchdog.clearWatchdog();
+        jest.clearAllTimers();
+        jest.useRealTimers();
+    });
+
+    // The point of the idle exit: relaunching here would recompile the whole
+    // project on a timer for a user who is not at the keyboard.
+    it('goes dormant on an announced idle exit rather than relaunching', () => {
+        manager.start();
+        const spawnsAfterStart = (spawn as jest.Mock).mock.calls.length;
+
+        manager.noteIdleExit();
+        manager.child!.emit('exit', 0, null);
+
+        expect(manager.state()).toBe(ServerState.Dormant);
+        expect((spawn as jest.Mock).mock.calls.length).toBe(spawnsAfterStart);
+
+        // Nothing scheduled either — a back-off relaunch would defeat it just
+        // as surely as an immediate one.
+        jest.advanceTimersByTime(120000);
+        expect((spawn as jest.Mock).mock.calls.length).toBe(spawnsAfterStart);
+    });
+
+    it('does not spend the crash budget on an idle exit', () => {
+        manager.start();
+
+        manager.noteIdleExit();
+        manager.child!.emit('exit', 0, null);
+
+        expect(manager.restart_attempts).toBe(0);
+    });
+
+    it('relaunches when a request needs the compiler again', () => {
+        manager.start();
+        manager.noteIdleExit();
+        manager.child!.emit('exit', 0, null);
+
+        const spawnsWhileDormant = (spawn as jest.Mock).mock.calls.length;
+
+        manager.ensureRunning();
+
+        expect((spawn as jest.Mock).mock.calls.length).toBe(spawnsWhileDormant + 1);
+        expect(manager.state()).toBe(ServerState.StartingUp);
+    });
+
+    it('leaves a running compiler alone when a request arrives', () => {
+        manager.start();
+        manager.startListening();
+
+        const spawnsBefore = (spawn as jest.Mock).mock.calls.length;
+
+        manager.ensureRunning();
+
+        expect((spawn as jest.Mock).mock.calls.length).toBe(spawnsBefore);
+    });
+
+    // Blocked and Failed are deliberate not-running states; waking them here
+    // would fight whatever put the manager there.
+    it.each([
+        ['Blocked', ServerState.Blocked],
+        ['Failed', ServerState.Failed],
+    ])('does not relaunch from %s', (_name, state) => {
+        manager.start();
+        manager.server_state = state;
+
+        const spawnsBefore = (spawn as jest.Mock).mock.calls.length;
+
+        manager.ensureRunning();
+
+        expect((spawn as jest.Mock).mock.calls.length).toBe(spawnsBefore);
+    });
+});
+
+describe('ServerManager (abandoned compiler reap)', () => {
+    let serverEvents: ServerEventEmitter;
+    let configEvents: ConfigEventEmitter;
+    let watchdog: Watchdog;
+    let responseHandler: ResponseHandler;
+
+    const baseConfig: GhulConfig = {
+        compiler: ['dotnet', 'ghul-compiler'],
+        arguments: [],
+        source: [],
+        block: false,
+        incremental_analysis: false,
+        want_plaintext_hover: false,
+        missing_assemblies: [],
+        problems: [],
+    };
+
+    function makeManager(workspace_root: string): ServerManager {
+        const created = new ServerManager(
+            configEvents,
+            serverEvents,
+            { reset: jest.fn() } as unknown as EditQueue,
+            responseHandler,
+            { reset: jest.fn(), handleChunk: jest.fn() } as unknown as ResponseParser,
+            watchdog,
+            workspace_root,
+            { window: { showErrorMessage: jest.fn(), showWarningMessage: jest.fn() } } as any,
+        );
+
+        created.ghul_config = { ...baseConfig };
+
+        return created;
+    }
+
+    beforeEach(() => {
+        jest.useFakeTimers();
+
+        serverEvents = new ServerEventEmitter();
+        configEvents = new ConfigEventEmitter();
+        watchdog = new Watchdog(10000, () => {});
+
+        responseHandler = {
+            resolveAllPendingPromises: jest.fn(),
+            rejectAllPendingPromises: jest.fn(),
+        } as unknown as ResponseHandler;
+
+        (writeFileSync as jest.Mock).mockClear();
+        (spawn as jest.Mock).mockClear().mockImplementation(() => makeFakeChild());
+    });
+
+    afterEach(() => {
+        watchdog.clearWatchdog();
+        jest.clearAllTimers();
+        jest.useRealTimers();
+    });
+
+    // The leak this closes: a replacement manager for the same workspace has
+    // no handle to the child its predecessor left running, and the extension
+    // host keeps that child's pipes open, so nothing else reaps it either.
+    it('kills a compiler abandoned by an earlier manager for the same workspace', () => {
+        const abandoned = makeFakeChild(1111);
+        (spawn as jest.Mock).mockImplementationOnce(() => abandoned);
+
+        const first = makeManager('/test/workspace/reap');
+        first.start();
+
+        // The predecessor goes away without exiting its child — a fresh
+        // connection, not a relaunch, so nothing killed it.
+        const second = makeManager('/test/workspace/reap');
+        second.start();
+
+        expect(abandoned.kill).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves another workspace\'s compiler running', () => {
+        const other = makeFakeChild(2222);
+        (spawn as jest.Mock).mockImplementationOnce(() => other);
+
+        makeManager('/test/workspace/reap-mine').start();
+        makeManager('/test/workspace/reap-theirs').start();
+
+        expect(other.kill).not.toHaveBeenCalled();
+    });
+
+    it('does not kill a child that has already exited', () => {
+        const exited = makeFakeChild(3333);
+        (spawn as jest.Mock).mockImplementationOnce(() => exited);
+
+        const first = makeManager('/test/workspace/reap-exited');
+        first.start();
+
+        first.expecting_exit = true;
+        exited.emit('exit', 0, null);
+        exited.kill.mockClear();
+
+        makeManager('/test/workspace/reap-exited').start();
+
+        expect(exited.kill).not.toHaveBeenCalled();
+    });
+
+    it('detaches an abandoned child\'s stdout before killing it', () => {
+        const abandoned = makeFakeChild(4444);
+        (spawn as jest.Mock).mockImplementationOnce(() => abandoned);
+
+        const first = makeManager('/test/workspace/reap-stdout');
+        const handleChunk = jest.fn();
+        first.response_parser = { reset: jest.fn(), handleChunk } as unknown as ResponseParser;
+        first.start();
+
+        makeManager('/test/workspace/reap-stdout').start();
+
+        abandoned.stdout.emit('data', Buffer.from('half a fra'));
+
+        expect(handleChunk).not.toHaveBeenCalled();
+    });
+});
+
+describe('ServerManager (announced exit that never happens)', () => {
+    let manager: ServerManager;
+    let serverEvents: ServerEventEmitter;
+    let configEvents: ConfigEventEmitter;
+    let watchdog: Watchdog;
+    let responseHandler: ResponseHandler;
+
+    beforeEach(() => {
+        jest.useFakeTimers();
+
+        serverEvents = new ServerEventEmitter();
+        configEvents = new ConfigEventEmitter();
+        watchdog = new Watchdog(10000, () => {});
+
+        responseHandler = {
+            resolveAllPendingPromises: jest.fn(),
+            rejectAllPendingPromises: jest.fn(),
+        } as unknown as ResponseHandler;
+
+        (writeFileSync as jest.Mock).mockClear();
+        (spawn as jest.Mock).mockClear().mockImplementation(() => makeFakeChild());
+
+        manager = new ServerManager(
+            configEvents,
+            serverEvents,
+            { reset: jest.fn() } as unknown as EditQueue,
+            responseHandler,
+            { reset: jest.fn(), handleChunk: jest.fn() } as unknown as ResponseParser,
+            watchdog,
+            '/test/workspace/stale-intent',
+            { window: { showErrorMessage: jest.fn(), showWarningMessage: jest.fn() } } as any,
+        );
+
+        manager.ghul_config = {
+            compiler: ['dotnet', 'ghul-compiler'],
+            arguments: [],
+            source: [],
+            block: false,
+            incremental_analysis: false,
+            want_plaintext_hover: false,
+            missing_assemblies: [],
+            problems: [],
+        };
+    });
+
+    afterEach(() => {
+        watchdog.clearWatchdog();
+        jest.clearAllTimers();
+        jest.useRealTimers();
+    });
+
+    // A compiler can announce an exit and then be killed before it gets round
+    // to exiting — a configuration change, say. The announcement described
+    // that child, so it must not survive into the next one and disguise a
+    // real crash as a planned exit.
+    it.each([
+        ['an idle exit', (m: ServerManager) => m.noteIdleExit()],
+        ['a recycle', (m: ServerManager) => m.noteRecycle()],
+    ])('does not carry %s announcement across a relaunch', (_name, announce) => {
+        manager.start();
+
+        announce(manager);
+
+        // Relaunched for an unrelated reason before the announced exit lands.
+        const announced_child = manager.child!;
+        manager.start();
+        announced_child.emit('exit', 0, null);
+
+        // The replacement then crashes for a reason of its own.
+        manager.child!.emit('exit', 1, null);
+
+        expect(manager.state()).not.toBe(ServerState.Dormant);
+        expect(manager.restart_attempts).toBe(1);
+    });
+});
+
+describe('ServerManager (reaping does not disturb the predecessor)', () => {
+    let serverEvents: ServerEventEmitter;
+    let configEvents: ConfigEventEmitter;
+    let watchdog: Watchdog;
+    let responseHandler: ResponseHandler;
+
+    // The reap tests above use makeFakeChild, whose kill() is inert. A real
+    // child answers a kill with an 'exit' event, and it is that event — not
+    // the kill — that runs the owning manager's crash recovery.
+    function makeExitingFakeChild(pid: number) {
+        const child: any = makeFakeChild(pid);
+
+        child.kill = jest.fn(() => {
+            child.exitCode = 1;
+            child.emit('exit', null, 'SIGTERM');
+        });
+
+        return child;
+    }
+
+    function makeManager(workspace_root: string): ServerManager {
+        const created = new ServerManager(
+            configEvents,
+            serverEvents,
+            { reset: jest.fn() } as unknown as EditQueue,
+            responseHandler,
+            { reset: jest.fn(), handleChunk: jest.fn() } as unknown as ResponseParser,
+            watchdog,
+            workspace_root,
+            { window: { showErrorMessage: jest.fn(), showWarningMessage: jest.fn() } } as any,
+        );
+
+        created.ghul_config = {
+            compiler: ['dotnet', 'ghul-compiler'],
+            arguments: [],
+            source: [],
+            block: false,
+            incremental_analysis: false,
+            want_plaintext_hover: false,
+            missing_assemblies: [],
+            problems: [],
+        };
+
+        return created;
+    }
+
+    beforeEach(() => {
+        jest.useFakeTimers();
+
+        serverEvents = new ServerEventEmitter();
+        configEvents = new ConfigEventEmitter();
+        watchdog = new Watchdog(10000, () => {});
+
+        responseHandler = {
+            resolveAllPendingPromises: jest.fn(),
+            rejectAllPendingPromises: jest.fn(),
+        } as unknown as ResponseHandler;
+
+        (writeFileSync as jest.Mock).mockClear();
+        (spawn as jest.Mock).mockClear().mockImplementation(() => makeFakeChild());
+    });
+
+    afterEach(() => {
+        watchdog.clearWatchdog();
+        jest.clearAllTimers();
+        jest.useRealTimers();
+    });
+
+    // Left to react, the predecessor books the reap as a crash of its own,
+    // relaunches at once, and reaps whatever is registered for the workspace
+    // by then — which is the successor's healthy compiler.
+    it('does not let the reaped child\'s owner resurrect itself and kill the replacement', () => {
+        const abandoned = makeExitingFakeChild(1111);
+        (spawn as jest.Mock).mockImplementationOnce(() => abandoned);
+
+        const predecessor = makeManager('/test/workspace/reap-owner');
+        predecessor.start();
+
+        const successor_child = makeFakeChild(2222);
+        (spawn as jest.Mock).mockImplementationOnce(() => successor_child);
+
+        const successor = makeManager('/test/workspace/reap-owner');
+        successor.start();
+
+        // Whatever the predecessor's back-off would have done, it has had its
+        // chance by now.
+        jest.advanceTimersByTime(120000);
+
+        expect(abandoned.kill).toHaveBeenCalledTimes(1);
+        expect(successor_child.kill).not.toHaveBeenCalled();
+        expect(successor.child).toBe(successor_child);
+        expect(predecessor.restart_attempts).toBe(0);
+    });
+});
+
+describe('ServerManager (a reap that goes wrong)', () => {
+    let serverEvents: ServerEventEmitter;
+    let configEvents: ConfigEventEmitter;
+    let watchdog: Watchdog;
+    let responseHandler: ResponseHandler;
+
+    function makeManager(workspace_root: string): ServerManager {
+        const created = new ServerManager(
+            configEvents,
+            serverEvents,
+            { reset: jest.fn() } as unknown as EditQueue,
+            responseHandler,
+            { reset: jest.fn(), handleChunk: jest.fn() } as unknown as ResponseParser,
+            watchdog,
+            workspace_root,
+            { window: { showErrorMessage: jest.fn(), showWarningMessage: jest.fn() } } as any,
+        );
+
+        created.ghul_config = {
+            compiler: ['dotnet', 'ghul-compiler'],
+            arguments: [],
+            source: [],
+            block: false,
+            incremental_analysis: false,
+            want_plaintext_hover: false,
+            missing_assemblies: [],
+            problems: [],
+        };
+
+        return created;
+    }
+
+    beforeEach(() => {
+        jest.useFakeTimers();
+
+        serverEvents = new ServerEventEmitter();
+        configEvents = new ConfigEventEmitter();
+        watchdog = new Watchdog(10000, () => {});
+
+        responseHandler = {
+            resolveAllPendingPromises: jest.fn(),
+            rejectAllPendingPromises: jest.fn(),
+        } as unknown as ResponseHandler;
+
+        (writeFileSync as jest.Mock).mockClear();
+        (spawn as jest.Mock).mockClear().mockImplementation(() => makeFakeChild());
+    });
+
+    afterEach(() => {
+        watchdog.clearWatchdog();
+        jest.clearAllTimers();
+        jest.useRealTimers();
+    });
+
+    // Killing can fail — the process is already gone, or the signal is
+    // refused. Node throws an 'error' emitted with no listener attached, so
+    // stripping the owner's handler without leaving one would turn a failed
+    // reap into a crash of the language server serving every workspace.
+    it('survives an abandoned child that errors while being killed', () => {
+        const abandoned = makeFakeChild(1111);
+
+        // Asynchronously, as Node does: a synchronous emit would be caught by
+        // the try/catch around the kill and prove nothing.
+        abandoned.kill = jest.fn(() => {
+            setTimeout(() => abandoned.emit('error', new Error('kill EPERM')), 0);
+        });
+
+        (spawn as jest.Mock).mockImplementationOnce(() => abandoned);
+
+        makeManager('/test/workspace/reap-error').start();
+
+        const successor = makeManager('/test/workspace/reap-error');
+        successor.start();
+
+        expect(() => jest.runAllTimers()).not.toThrow();
+        expect(successor.child).toBeTruthy();
+    });
+});
