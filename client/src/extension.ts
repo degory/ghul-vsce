@@ -37,7 +37,13 @@ export function activate(context: ExtensionContext) {
 	// notification"). The workspace setup this reports on can take the better
 	// part of a minute on a fresh checkout, so surface it ourselves via a
 	// dedicated status bar item instead.
-	let statusBarItem = window.createStatusBarItem(StatusBarAlignment.Left);
+	//
+	// One item carries everything ghūl has to say: the logo on its own while
+	// nothing is happening, an icon and a message while something is, and the
+	// analyser timings in the tooltip rather than taking permanent width. The
+	// extension only activates on a workspace containing ghūl files, so the
+	// item is meaningful wherever it appears and never needs to be hidden.
+	let statusBarItem = window.createStatusBarItem(StatusBarAlignment.Right);
 	context.subscriptions.push(statusBarItem);
 
 	// How long a finished activity stays on screen. Work that takes a moment
@@ -47,10 +53,19 @@ export function activate(context: ExtensionContext) {
 	// not to still be claiming something is happening when it isn't.
 	const COMPLETED_HOLD_MS = 1500;
 
-	// Same codicon cell as the spinner it replaces, so swapping one for the
-	// other doesn't change the item's width and shove its neighbours along.
+	// A finished activity already says so in the past tense, so it carries no
+	// icon of its own and the spinner's cell simply goes. The item is right
+	// aligned, so losing a cell from the front of the text pulls the logo in
+	// towards the message rather than moving the message itself.
 	const RUNNING_ICON = '$(sync~spin)';
-	const COMPLETED_ICON = '$(check)';
+
+	// Contributed in package.json from images/ghul-icons.woff. It stands where
+	// the word "ghūl" used to, so the item says who is reporting without
+	// spending width on it, and it takes the status bar foreground colour the
+	// same way the codicons beside it do. On its own it is also the resting
+	// state: the item is present, so ghūl support is up and has nothing to
+	// report.
+	const BRAND_ICON = '$(ghul-logo)';
 
 	interface ProgressEntry {
 		message: string;
@@ -65,16 +80,16 @@ export function activate(context: ExtensionContext) {
 	let progressMessages = new Map<string | number, ProgressEntry>();
 	let holdTimers = new Map<string | number, NodeJS.Timeout>();
 
-	function renderProgress() {
-		if (progressMessages.size === 0) {
-			statusBarItem.hide();
-			return;
-		}
+	function render() {
+		const entries = [...progressMessages.values()];
+		const entry = entries[entries.length - 1];
 
-		const [, entry] = [...progressMessages].pop()!;
-		const icon = entry.completed ? COMPLETED_ICON : RUNNING_ICON;
+		statusBarItem.text =
+			!entry ? BRAND_ICON :
+			entry.completed ? `${BRAND_ICON} ${entry.message}` :
+			`${BRAND_ICON} ${RUNNING_ICON} ${entry.message}`;
 
-		statusBarItem.text = `${icon} ghūl: ${entry.message}`;
+		statusBarItem.tooltip = describeMetrics();
 		statusBarItem.show();
 	}
 
@@ -89,20 +104,20 @@ export function activate(context: ExtensionContext) {
 
 	// Map iteration order is insertion order, and re-setting an existing key
 	// does not move it to the end — so a token's key must be deleted before
-	// it is re-set, or renderProgress keeps showing whichever token merely
-	// began first instead of whichever most recently reported.
+	// it is re-set, or render keeps showing whichever token merely began first
+	// instead of whichever most recently reported.
 	function setProgress(token: string | number, message: string) {
 		clearHold(token);
 		progressMessages.delete(token);
 		progressMessages.set(token, { message, completed: false });
-		renderProgress();
+		render();
 	}
 
 	// The activity is over. Whatever it last said stays up, in the past tense
-	// the server switched it to, under a completed icon — then goes. More work
-	// arriving in the meantime takes the display back immediately, via
-	// setProgress above; there is no wait to get through before the next thing
-	// can be reported.
+	// the server switched it to, with the spinner stopped — then the item falls
+	// back to the logo on its own. More work arriving in the meantime takes the
+	// display back immediately, via setProgress above; there is no wait to get
+	// through before the next thing can be reported.
 	function finishProgress(token: string | number) {
 		const entry = progressMessages.get(token);
 
@@ -111,23 +126,22 @@ export function activate(context: ExtensionContext) {
 		}
 
 		entry.completed = true;
-		renderProgress();
+		render();
 
 		clearHold(token);
 		holdTimers.set(token, setTimeout(() => {
 			holdTimers.delete(token);
 			progressMessages.delete(token);
-			renderProgress();
+			render();
 		}, COMPLETED_HOLD_MS));
 	}
 
 	// The two numbers that answer "is the language support keeping up?": how
 	// long the analyser takes to digest an edit, and how long a full check of
-	// the project takes. Both are smoothed server-side, so this shows a
-	// settled figure rather than one that jumps on every keystroke.
-	let metricsBarItem = window.createStatusBarItem(StatusBarAlignment.Right);
-	context.subscriptions.push(metricsBarItem);
-
+	// the project takes. Both are smoothed server-side, so these are settled
+	// figures rather than ones that jump on every keystroke. They live in the
+	// tooltip: worth having to hand, not worth standing width in the bar for.
+	//
 	// Keyed per workspace folder for the same reason progress is keyed per
 	// token: in a multi-root workspace each folder has its own compiler, and
 	// its own latency.
@@ -139,44 +153,27 @@ export function activate(context: ExtensionContext) {
 			: `${milliseconds.toFixed(0)} ms`;
 	}
 
-	function summarise(m: AnalysisMetrics): string {
-		let parts: string[] = [];
-
-		if (m.edit_ms != null) {
-			parts.push(`edit ${formatDuration(m.edit_ms)}`);
+	function describeMetrics(): string {
+		if (metrics.size === 0) {
+			return "ghūl language support";
 		}
 
-		if (m.compile_ms != null) {
-			parts.push(`compile ${formatDuration(m.compile_ms)}`);
-		}
-
-		return parts.join(" · ");
-	}
-
-	function renderMetrics() {
-		// Map iteration order is insertion order and a re-set key does not
-		// move, so the most recently *reported* folder is whichever was
-		// deleted and re-added last — see setMetrics below.
-		const latest = [...metrics.values()].pop();
-		const summary = latest ? summarise(latest) : "";
-
-		if (!summary) {
-			metricsBarItem.hide();
-			return;
-		}
-
-		metricsBarItem.text = `$(watch) ghūl: ${summary}`;
-		metricsBarItem.tooltip = [...metrics.values()]
-			.map(m => `${m.workspace}\nanalysis of an edit: ${m.edit_ms == null ? "—" : formatDuration(m.edit_ms)}\nfull check of the project: ${m.compile_ms == null ? "—" : formatDuration(m.compile_ms)}`)
+		return [...metrics.values()]
+			.map(m => `${m.workspace}\nedit analysis: ${m.edit_ms == null ? "—" : formatDuration(m.edit_ms)}\nfull analysis: ${m.compile_ms == null ? "—" : formatDuration(m.compile_ms)}`)
 			.join("\n\n");
-		metricsBarItem.show();
 	}
 
 	function setMetrics(m: AnalysisMetrics) {
 		metrics.delete(m.workspace);
 		metrics.set(m.workspace, m);
-		renderMetrics();
+		render();
 	}
+
+	// Put the item up before the server has said anything. Activation already
+	// means this workspace contains ghūl code, and an item that only appeared
+	// once the first activity happened to arrive would read as ghūl support
+	// coming and going.
+	render();
 
 	// Options to control the language client
 	let clientOptions: LanguageClientOptions = {
