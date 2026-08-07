@@ -39,6 +39,9 @@ export const CREATE_TIMEOUT_MS = 10_000;
 
 interface ReportedActivity {
     message: string;
+    // What to leave on screen once this activity is the last one to finish,
+    // phrased in the past tense. Absent means close without a closing word.
+    done_message: string | null;
     // A fallback activity is shown only when nothing more specific is. The
     // generic "a request is taking a while" is true during a full compile too,
     // but "checking project" says more, and whichever was reported last would
@@ -51,6 +54,7 @@ export interface ReportOptions {
     // ends first.
     delay_ms?: number;
     fallback?: boolean;
+    done_message?: string;
 }
 
 // One progress notification per workspace, shared by every activity that wants
@@ -90,7 +94,11 @@ export class ActivityProgress {
 
     // Show `message` for `activity`, replacing whatever it was showing before.
     report(activity: Activity, message: string, options: ReportOptions = {}) {
-        const reported = { message, fallback: options.fallback ?? false };
+        const reported = {
+            message,
+            fallback: options.fallback ?? false,
+            done_message: options.done_message ?? null
+        };
 
         // Already waiting out its delay: update what it will say when the
         // delay expires, but do not restart the clock — the wait the user is
@@ -134,7 +142,22 @@ export class ActivityProgress {
             this.waiting.delete(activity);
         }
 
+        const reported = this.activities.get(activity);
+
         if (!this.activities.delete(activity)) {
+            return;
+        }
+
+        // The last thing running, and it has a closing word: say it before the
+        // notification goes, so what the user is left with is what finished
+        // rather than whatever was on screen when it started.
+        if (this.reporter && this.activities.size == 0 && reported?.done_message) {
+            this.reporter.report(reported.done_message);
+            this.reporter.done();
+
+            this.reporter = null;
+            this.shown = null;
+
             return;
         }
 
