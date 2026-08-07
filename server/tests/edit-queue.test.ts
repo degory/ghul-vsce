@@ -506,6 +506,60 @@ describe('EditQueue reporting', () => {
         expect(progress.end).toHaveBeenCalledWith(Activity.Heap);
     });
 
+    // Drive one real edit through the queue: an initial whole-project analysis
+    // followed by a keystroke, which is the only thing that counts as an edit.
+    function typeOneEdit(uri: string, text: string, took: number) {
+        queue.queueEdit3(uri, 2, text);
+        queue.sendQueued();
+        jest.advanceTimersByTime(took);
+        queue.onPartialCompileDone(10);
+    }
+
+    it('does not count the initial whole-project analysis as an edit', () => {
+        // It is every file in the project, not the one being typed in, and it
+        // takes seconds. Averaged in as a keystroke it dominates the reported
+        // figure for the next twenty edits, and every compiler recycle puts it
+        // back — which reads as a huge latency regression that is not there.
+        queue.reset();
+        queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+
+        jest.advanceTimersByTime(4500);
+        queue.onPartialCompileDone(10);
+
+        expect(queue.edit_latency_ms).toBeNull();
+        expect(metrics.report).not.toHaveBeenCalled();
+
+        typeOneEdit('file:///a.ghul', 'u', 20);
+
+        // The first real edit is the first measurement, not a correction to a
+        // four-and-a-half-second one.
+        expect(queue.edit_latency_ms).toBe(20);
+    });
+
+    it('drops an in-flight edit clock when the compiler goes away', () => {
+        // A recycle or crash mid-edit leaves a timestamp behind. The next
+        // compiler's whole-project analysis would then complete against it
+        // and report the span between the two as a keystroke.
+        queue.reset();
+        queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+        queue.onPartialCompileDone(10);
+
+        queue.queueEdit3('file:///a.ghul', 2, 'u');
+        queue.sendQueued();
+
+        jest.advanceTimersByTime(3000);
+
+        // The compiler dies with the edit outstanding, and a fresh one starts.
+        queue.reset();
+        queue.start([{ uri: 'file:///a.ghul', source: 'u' }]);
+
+        jest.advanceTimersByTime(4500);
+        queue.onPartialCompileDone(10);
+
+        expect(queue.edit_latency_ms).toBeNull();
+        expect(metrics.report).not.toHaveBeenCalled();
+    });
+
     it('measures the round trip rather than taking the analyser\'s own figure', () => {
         // What the analyser reports is a maximum of its lifetime mean and its
         // moving average — right for sizing the timeouts, wrong as a latency
@@ -513,10 +567,9 @@ describe('EditQueue reporting', () => {
         // has become fast. The wire figure here (9999) must not be what shows.
         queue.reset();
         queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+        queue.onPartialCompileDone(10);
 
-        jest.advanceTimersByTime(100);
-
-        queue.onPartialCompileDone(9999);
+        typeOneEdit('file:///a.ghul', 'u', 100);
 
         expect(queue.edit_latency_ms).toBe(100);
         expect(metrics.report).toHaveBeenLastCalledWith(100, null);
@@ -525,13 +578,10 @@ describe('EditQueue reporting', () => {
     it('smooths later measurements so a single slow compile does not dominate', () => {
         queue.reset();
         queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
-        jest.advanceTimersByTime(100);
         queue.onPartialCompileDone(10);
 
-        queue.queueEdit3('file:///a.ghul', 2, 'u');
-        queue.sendQueued();
-        jest.advanceTimersByTime(1100);
-        queue.onPartialCompileDone(10);
+        typeOneEdit('file:///a.ghul', 'u', 100);
+        typeOneEdit('file:///a.ghul', 'v', 1100);
 
         // 100 + 0.3 * (1100 - 100)
         expect(queue.edit_latency_ms).toBeCloseTo(400);
@@ -540,8 +590,9 @@ describe('EditQueue reporting', () => {
     it('reports edit and full compile latency separately', () => {
         queue.reset();
         queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
-        jest.advanceTimersByTime(40);
         queue.onPartialCompileDone(10);
+
+        typeOneEdit('file:///a.ghul', 'u', 40);
 
         jest.advanceTimersByTime(queue.full_build_timeout);
         expect(recorder.sendFullCompileRequestCalls).toBe(1);
@@ -560,8 +611,9 @@ describe('EditQueue reporting', () => {
         // request happened to go out.
         queue.reset();
         queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
-        jest.advanceTimersByTime(40);
         queue.onPartialCompileDone(10);
+
+        typeOneEdit('file:///a.ghul', 'u', 40);
 
         const reports = metrics.report.mock.calls.length;
 

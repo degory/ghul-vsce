@@ -125,6 +125,13 @@ export class EditQueue {
         this.progress?.end(Activity.Compile);
         this.progress?.end(Activity.Heap);
 
+        // Drop the in-flight clocks with the request they belong to. Left
+        // standing, the next compiler's whole-project analysis completes
+        // against a timestamp from the dead one's edit and reports the whole
+        // span between them as a keystroke's latency.
+        this.send_start_time = 0;
+        this.compile_start_time = 0;
+
         this.state = QueueState.IDLE;
     }
 
@@ -411,11 +418,17 @@ export class EditQueue {
         }
     }
 
+    // Hand the analyser the whole project, once, when a compiler starts.
+    //
+    // Deliberately not stamped as the start of an edit. It is not one: it is
+    // every file in the project rather than the one being typed in, and it
+    // takes seconds rather than milliseconds. Averaged in as though it were a
+    // keystroke it dominates the reported figure for the next twenty edits,
+    // and every compiler recycle puts it back — which reads as the analyser
+    // being far slower than it is.
     start(documents: { uri: string, source: string }[]) {
         this.clearEditTimer();
         this.clearIdleTimer();
-
-        this.send_start_time = Date.now();
 
         this.state = QueueState.DOING_PARTIAL_COMPILE;
         this.sendMultiEdits(documents);
