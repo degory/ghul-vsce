@@ -154,6 +154,17 @@ export class ServerManager {
 			log("killing running compiler PID " + this.child.pid);
 			this.expecting_exit = true;
 
+			// Killing it ourselves overrides whatever it had announced about
+			// its own exit. Left set, either flag would outlive the child it
+			// described — the exit handler takes the expecting_exit branch and
+			// returns without clearing them — and the *next* child would
+			// inherit it, so a genuine crash would be read as a planned exit:
+			// no error surfaced, and for an idle exit no crash budget spent
+			// either, because the relaunch would come from the request path
+			// rather than from the back-off.
+			this.expecting_recycle = false;
+			this.expecting_idle_exit = false;
+
 			// Stop routing the outgoing compiler's stdout into the shared
 			// parser — its dying output must not bleed into the replacement's
 			// frames.
@@ -261,9 +272,18 @@ export class ServerManager {
 					live_children.delete(this.workspace_root);
 				}
 
+				// A child that has already been replaced must not clear the
+				// handle to its replacement. The kill and the exit it causes
+				// are not simultaneous, so by the time this runs the manager
+				// may be several hundred milliseconds into the life of a
+				// perfectly healthy successor.
+				const is_current = this.child === spawned;
+
 				if (this.expecting_exit) {
 					log(`compiler PID ${pid}: exited`);
-					this.child = null;
+					if (is_current) {
+						this.child = null;
+					}
 					this.response_handler.resolveAllPendingPromises();
 					this.expecting_exit = false;
 					return;
@@ -276,7 +296,9 @@ export class ServerManager {
 				if (this.expecting_recycle) {
 					this.expecting_recycle = false;
 					log(`compiler PID ${pid}: recycled — relaunching`);
-					this.child = null;
+					if (is_current) {
+						this.child = null;
+					}
 					this.response_handler.resolveAllPendingPromises();
 					this.edit_queue.reset();
 					this.launch();
@@ -290,7 +312,9 @@ export class ServerManager {
 				if (this.expecting_idle_exit) {
 					this.expecting_idle_exit = false;
 					log(`compiler PID ${pid}: exited while idle — will restart when next needed`);
-					this.child = null;
+					if (is_current) {
+						this.child = null;
+					}
 					this.server_state = ServerState.Dormant;
 					this.response_handler.resolveAllPendingPromises();
 					this.edit_queue.reset();

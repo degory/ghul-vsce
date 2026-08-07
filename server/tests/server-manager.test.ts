@@ -809,3 +809,79 @@ describe('ServerManager (abandoned compiler reap)', () => {
         expect(handleChunk).not.toHaveBeenCalled();
     });
 });
+
+describe('ServerManager (announced exit that never happens)', () => {
+    let manager: ServerManager;
+    let serverEvents: ServerEventEmitter;
+    let configEvents: ConfigEventEmitter;
+    let watchdog: Watchdog;
+    let responseHandler: ResponseHandler;
+
+    beforeEach(() => {
+        jest.useFakeTimers();
+
+        serverEvents = new ServerEventEmitter();
+        configEvents = new ConfigEventEmitter();
+        watchdog = new Watchdog(10000, () => {});
+
+        responseHandler = {
+            resolveAllPendingPromises: jest.fn(),
+            rejectAllPendingPromises: jest.fn(),
+        } as unknown as ResponseHandler;
+
+        (writeFileSync as jest.Mock).mockClear();
+        (spawn as jest.Mock).mockClear().mockImplementation(() => makeFakeChild());
+
+        manager = new ServerManager(
+            configEvents,
+            serverEvents,
+            { reset: jest.fn() } as unknown as EditQueue,
+            responseHandler,
+            { reset: jest.fn(), handleChunk: jest.fn() } as unknown as ResponseParser,
+            watchdog,
+            '/test/workspace/stale-intent',
+            { window: { showErrorMessage: jest.fn(), showWarningMessage: jest.fn() } } as any,
+        );
+
+        manager.ghul_config = {
+            compiler: ['dotnet', 'ghul-compiler'],
+            arguments: [],
+            source: [],
+            block: false,
+            incremental_analysis: false,
+            want_plaintext_hover: false,
+            missing_assemblies: [],
+            problems: [],
+        };
+    });
+
+    afterEach(() => {
+        watchdog.clearWatchdog();
+        jest.clearAllTimers();
+        jest.useRealTimers();
+    });
+
+    // A compiler can announce an exit and then be killed before it gets round
+    // to exiting — a configuration change, say. The announcement described
+    // that child, so it must not survive into the next one and disguise a
+    // real crash as a planned exit.
+    it.each([
+        ['an idle exit', (m: ServerManager) => m.noteIdleExit()],
+        ['a recycle', (m: ServerManager) => m.noteRecycle()],
+    ])('does not carry %s announcement across a relaunch', (_name, announce) => {
+        manager.start();
+
+        announce(manager);
+
+        // Relaunched for an unrelated reason before the announced exit lands.
+        const announced_child = manager.child!;
+        manager.start();
+        announced_child.emit('exit', 0, null);
+
+        // The replacement then crashes for a reason of its own.
+        manager.child!.emit('exit', 1, null);
+
+        expect(manager.state()).not.toBe(ServerState.Dormant);
+        expect(manager.restart_attempts).toBe(1);
+    });
+});
