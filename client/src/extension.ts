@@ -52,6 +52,12 @@ export function activate(context: ExtensionContext) {
 	const RUNNING_ICON = '$(sync~spin)';
 	const COMPLETED_ICON = '$(check)';
 
+	// Contributed in package.json from images/ghul-icons.woff. It stands where
+	// the word "ghūl" used to, so the item says who is reporting without
+	// spending width on it, and it takes the status bar foreground colour the
+	// same way the codicons beside it do.
+	const BRAND_ICON = '$(ghul-logo)';
+
 	interface ProgressEntry {
 		message: string;
 		// Set once the activity has finished and the message is only being
@@ -74,7 +80,7 @@ export function activate(context: ExtensionContext) {
 		const [, entry] = [...progressMessages].pop()!;
 		const icon = entry.completed ? COMPLETED_ICON : RUNNING_ICON;
 
-		statusBarItem.text = `${icon} ghūl: ${entry.message}`;
+		statusBarItem.text = `${BRAND_ICON} ${icon} ${entry.message}`;
 		statusBarItem.show();
 	}
 
@@ -165,7 +171,7 @@ export function activate(context: ExtensionContext) {
 			return;
 		}
 
-		metricsBarItem.text = `$(watch) ghūl: ${summary}`;
+		metricsBarItem.text = `${BRAND_ICON} $(watch) ${summary}`;
 		metricsBarItem.tooltip = [...metrics.values()]
 			.map(m => `${m.workspace}\nanalysis of an edit: ${m.edit_ms == null ? "—" : formatDuration(m.edit_ms)}\nfull check of the project: ${m.compile_ms == null ? "—" : formatDuration(m.compile_ms)}`)
 			.join("\n\n");

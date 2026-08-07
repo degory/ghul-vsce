@@ -64,6 +64,15 @@
         }
       }
     },
+    "icons": {
+      "ghul-logo": {
+        "description": "ghūl logo",
+        "default": {
+          "fontPath": "./images/ghul-icons.woff",
+          "fontCharacter": "\\E000"
+        }
+      }
+    },
     "configurationDefaults": {
       "editor.tokenColorCustomizations": {
         "textMateRules": [
