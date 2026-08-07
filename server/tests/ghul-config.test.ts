@@ -350,3 +350,63 @@ describe('getGhulConfig', () => {
         });
     });
 });
+
+// Settings that govern how the extension behaves belong to the editor, where
+// they are discoverable and overridable per user, per workspace and per
+// folder. ghul.json keeps a say so a project that already sets one is not
+// broken by the move, but it is the weaker voice.
+describe('getGhulConfig editor settings', () => {
+    let workspace: string;
+
+    beforeEach(() => {
+        const { mkdtempSync } = jest.requireActual('fs');
+        const { tmpdir } = jest.requireActual('os');
+        const path = jest.requireActual('path');
+        workspace = mkdtempSync(path.join(tmpdir(), 'ghul-vsce-settings-'));
+    });
+
+    afterEach(() => {
+        const { rmSync } = jest.requireActual('fs');
+        rmSync(workspace, { recursive: true, force: true });
+    });
+
+    function writeGhulJson(contents: object) {
+        const { writeFileSync } = jest.requireActual('fs');
+        const path = jest.requireActual('path');
+        writeFileSync(path.join(workspace, 'ghul.json'), JSON.stringify(contents));
+    }
+
+    it('is off when nobody has asked for it', () => {
+        expect(getGhulConfig(workspace).incremental_analysis).toBe(false);
+        expect(getGhulConfig(workspace).arguments).not.toContain('--incremental-analysis');
+    });
+
+    it('takes the editor setting when one is expressed', () => {
+        const cfg = getGhulConfig(workspace, { incremental_analysis: true });
+
+        expect(cfg.incremental_analysis).toBe(true);
+        expect(cfg.arguments).toContain('--incremental-analysis');
+    });
+
+    it('falls back to ghul.json when the user has expressed no preference', () => {
+        writeGhulJson({ incremental_analysis: true });
+
+        expect(getGhulConfig(workspace, {}).incremental_analysis).toBe(true);
+        expect(getGhulConfig(workspace, { incremental_analysis: null }).incremental_analysis).toBe(true);
+    });
+
+    it('lets the editor setting turn off what ghul.json turned on', () => {
+        // Unset and off have to be different, or a project file could never be
+        // overridden from the editor.
+        writeGhulJson({ incremental_analysis: true });
+
+        expect(getGhulConfig(workspace, { incremental_analysis: false }).incremental_analysis).toBe(false);
+    });
+
+    it('applies the same precedence to plaintext hover', () => {
+        writeGhulJson({ want_plaintext_hover: true });
+
+        expect(getGhulConfig(workspace, {}).want_plaintext_hover).toBe(true);
+        expect(getGhulConfig(workspace, { want_plaintext_hover: false }).want_plaintext_hover).toBe(false);
+    });
+});

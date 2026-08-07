@@ -22,6 +22,28 @@ This Visual Studio Code extension provides support for the [ghūl programming la
 - go to symbol in workspace
 - rename symbol
 
+## Settings
+
+How the extension behaves is configured through ordinary editor settings, so
+they appear in the Settings UI and can be set per user, per workspace, or per
+workspace folder:
+
+- `ghul.incrementalAnalysis` — reuse the analyser's existing state across an
+  edit instead of rebuilding the whole project for each one. Much faster on a
+  large project, at the cost of some answers being briefly out of date after an
+  edit that changes a declaration. Off unless turned on.
+- `ghul.plaintextHover` — render hovers as plain text rather than markdown.
+
+How the *project* is built stays in the project file: `<GhulCompiler>`,
+`<GhulSources>` and `<GhulOptions>` in the `.ghulproj` are read by the
+extension and by an ordinary build alike, so the editor analyses what a build
+compiles.
+
+A `ghul.json` in the workspace root is still read, and still sets
+`incremental_analysis` and `want_plaintext_hover` for a project that already
+does. An editor setting wins over it wherever the user has expressed a
+preference.
+
 ## Other editors
 
 The language server this extension runs is also published on its own, for any

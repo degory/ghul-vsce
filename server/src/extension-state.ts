@@ -90,6 +90,21 @@ export class ExtensionState {
     // Create a WorkspaceContext for the given root and store it in the
     // registry. Caller is responsible for invoking context.initialize();
     // ConnectionEventHandler.onInitialize does it straight away today.
+    // Whether the client can answer workspace/configuration. Asking one that
+    // cannot is not a degraded read — the request is simply never answered, and
+    // any setup awaiting it stops there — so this gates the ask rather than
+    // being a hint. Set from the client's declared capabilities before any
+    // workspace initializes, and applied to folders added later too.
+    private client_supports_configuration: boolean = false;
+
+    public setClientSupportsConfiguration(supported: boolean) {
+        this.client_supports_configuration = supported;
+
+        for (const context of this.allWorkspaces()) {
+            context.client_supports_configuration = supported;
+        }
+    }
+
     public registerWorkspace(workspace_root: string): WorkspaceContext {
         const existing = this.workspaces.get(workspace_root);
 
@@ -98,6 +113,8 @@ export class ExtensionState {
         }
 
         const context = new WorkspaceContext(workspace_root, this.connection, this.documents);
+
+        context.client_supports_configuration = this.client_supports_configuration;
 
         this.workspaces.set(workspace_root, context);
 

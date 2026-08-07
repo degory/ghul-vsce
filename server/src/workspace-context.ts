@@ -1,5 +1,7 @@
 import * as path from 'path';
 
+import { pathToFileURL } from 'url';
+
 import { readdirSync } from 'fs';
 
 import {
@@ -25,9 +27,23 @@ import { Watchdog } from './watchdog';
 import { Activity, ActivityProgress, SLOW_ACTIVITY_DELAY_MS } from './activity-progress';
 import { MetricsReporter } from './metrics-reporter';
 
-import { getGhulConfig, GhulConfig } from './ghul-config';
+import { EditorSettings, getGhulConfig, GhulConfig } from './ghul-config';
 import { restoreDotNetTools } from './restore-dotnet-tools';
 import { generateAssembliesJson, buildReferencedAssemblies } from './generate-assemblies-json';
+
+// How long to wait for the client to answer for its settings before falling
+// back to the project's own configuration. Setup cannot proceed without an
+// answer, so an unbounded wait is a workspace that never gets a compiler.
+const CONFIGURATION_TIMEOUT_MS = 5_000;
+
+// A setting the user has expressed no preference on comes back as null, and a
+// client that does not know the setting at all comes back with undefined — both
+// mean "unset". Anything that is not a boolean is treated the same way rather
+// than coerced, so a mistyped setting falls back rather than silently reading
+// as true.
+function asOptionalBoolean(value: unknown): boolean | null {
+    return typeof value == 'boolean' ? value : null;
+}
 
 // Bounds only the status bar, not correctness: whenAnalysed already holds
 // queries safely no matter how long the first compile takes. This only stops
@@ -60,6 +76,11 @@ export class WorkspaceContext {
 
     private connection: Connection;
     private documents: TextDocuments<TextDocument>;
+
+    // Set by ExtensionState from the client's declared capabilities. See the
+    // note there: a client that has not declared this never answers the
+    // request, so asking one that has not would stall setup outright.
+    client_supports_configuration: boolean = false;
 
     private reference_build_attempted: boolean = false;
 
@@ -256,7 +277,7 @@ export class WorkspaceContext {
             problems.push(assemblies_problem);
         }
 
-        this.config = getGhulConfig(this.workspace_root);
+        this.config = getGhulConfig(this.workspace_root, await this.readEditorSettings());
         problems.push(...(this.config.problems ?? []));
 
         // Missing referenced assemblies are expected right up until the build
@@ -306,6 +327,57 @@ export class WorkspaceContext {
         this.progress.end(Activity.Setup);
 
         this.buildMissingAssemblies();
+    }
+
+    // The editor's settings for this folder, with its User / Workspace /
+    // Workspace Folder layers already resolved — the client does the layering,
+    // which is the whole reason for asking it rather than reading a file.
+    //
+    // scopeUri is what makes a per-folder override work: without it a
+    // multi-root workspace would get one answer for every folder.
+    //
+    // Never a reason for setup to fail. A client that does not support the
+    // request, or answers it badly, leaves every setting unexpressed and the
+    // project's own ghul.json decides.
+    private async readEditorSettings(): Promise<EditorSettings> {
+        if (!this.client_supports_configuration || !this.connection?.workspace?.getConfiguration) {
+            return {};
+        }
+
+        const scopeUri = pathToFileURL(this.workspace_root).toString();
+
+        try {
+            // Bounded even though the capability was declared: setup must not
+            // be able to stop here, and a client that declares the capability
+            // and then does not answer would otherwise leave the workspace
+            // with no compiler at all and nothing said about why.
+            const answered = await Promise.race([
+                this.connection.workspace.getConfiguration([
+                    { scopeUri, section: 'ghul.incrementalAnalysis' },
+                    { scopeUri, section: 'ghul.plaintextHover' },
+                ]),
+                new Promise<null>(resolve => {
+                    setTimeout(() => resolve(null), CONFIGURATION_TIMEOUT_MS).unref?.();
+                }),
+            ]);
+
+            if (!answered) {
+                log("the client did not answer for its settings; using the project's own configuration");
+
+                return {};
+            }
+
+            const [incremental_analysis, want_plaintext_hover] = answered;
+
+            return {
+                incremental_analysis: asOptionalBoolean(incremental_analysis),
+                want_plaintext_hover: asOptionalBoolean(want_plaintext_hover),
+            };
+        } catch (e) {
+            log(`could not read editor settings: ${e}`);
+
+            return {};
+        }
     }
 
     reinitialize() {
