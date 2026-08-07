@@ -5,7 +5,7 @@ import { EditQueue } from '../src/edit-queue';
 import { Requester } from '../src/requester';
 import { ResponseHandler } from '../src/response-handler';
 import { Watchdog } from '../src/watchdog';
-import { Activity, ActivityProgress } from '../src/activity-progress';
+import { Activity, ActivityProgress, SLOW_ACTIVITY_DELAY_MS } from '../src/activity-progress';
 import { MetricsReporter } from '../src/metrics-reporter';
 
 // A minimal Requester stand-in that records every send for assertion.
@@ -468,7 +468,8 @@ describe('EditQueue reporting', () => {
         reachFullCompile();
 
         expect(recorder.sendFullCompileRequestCalls).toBe(1);
-        expect(progress.report).toHaveBeenCalledWith(Activity.Compile, 'checking project');
+        expect(progress.report).toHaveBeenCalledWith(
+            Activity.Compile, 'checking project', { delay_ms: SLOW_ACTIVITY_DELAY_MS });
 
         queue.onFullCompileDone(200);
 
@@ -484,7 +485,8 @@ describe('EditQueue reporting', () => {
         jest.advanceTimersByTime(EditQueue.HEAP_CHECK_IDLE_TIMEOUT);
 
         expect(recorder.sendHeapCheckRequestCalls).toBe(1);
-        expect(progress.report).toHaveBeenCalledWith(Activity.Heap, 'garbage collecting');
+        expect(progress.report).toHaveBeenCalledWith(
+            Activity.Heap, 'garbage collecting', { delay_ms: SLOW_ACTIVITY_DELAY_MS });
 
         queue.onHeapCheckDone();
 

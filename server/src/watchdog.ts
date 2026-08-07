@@ -16,10 +16,22 @@ export class Watchdog {
     watchdog_timer: NodeJS.Timeout;
     timeout_milliseconds: number;
     private on_timeout: () => void;
+    private on_busy_changed: (busy: boolean) => void;
 
-    constructor(timeout_milliseconds: number, on_timeout: () => void) {
+    // The timer's lifetime is exactly "a request is outstanding" — armed when
+    // one is sent, cleared by the first frame back — which makes this the one
+    // place that knows the compiler is working on something, whatever that
+    // something is. on_busy_changed observes it so the user can be told about
+    // a wait nothing else predicts: the analyser recompiles on demand to
+    // answer a query and gives no advance notice that it is about to.
+    constructor(
+        timeout_milliseconds: number,
+        on_timeout: () => void,
+        on_busy_changed: (busy: boolean) => void = () => { }
+    ) {
         this.timeout_milliseconds = timeout_milliseconds;
         this.on_timeout = on_timeout;
+        this.on_busy_changed = on_busy_changed;
     }
 
     setTimeout(timeout_milliseconds: number) {
@@ -34,6 +46,8 @@ export class Watchdog {
 
     startWatchdog() {
         this.watchdog_timer = setTimeout(() => { this.onWatchdogTimeout(); }, this.timeout_milliseconds);
+
+        this.on_busy_changed(true);
     }
 
     resetWatchdog() {
@@ -46,6 +60,8 @@ export class Watchdog {
             clearTimeout(this.watchdog_timer);
             this.watchdog_timer = null;
         }
+
+        this.on_busy_changed(false);
     }
 
     // Called on every (re)launch. Drops any timer still running against the
@@ -68,6 +84,10 @@ export class Watchdog {
     // recovers it on its own. Hand off to the recovery callback.
     private onWatchdogTimeout() {
         this.watchdog_timer = null;
+
+        // The request is over, however badly: recovery kills the compiler, so
+        // no frame is ever coming back to clear this.
+        this.on_busy_changed(false);
 
         log("ghūl language extension: compiler watchdog timeout");
 

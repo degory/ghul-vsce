@@ -17,6 +17,32 @@ export enum Activity {
     Compile = 'compile',
     // The analyser sampling (and so collecting) its heap.
     Heap = 'heap',
+    // A request outstanding for long enough to be worth mentioning, when
+    // nothing more specific is being shown. The analyser recompiles on demand
+    // to answer a query and does not say so in advance, so an ordinary hover
+    // can turn into a wait with no other warning of it.
+    Request = 'request',
+}
+
+// How long an activity has to run before it is worth interrupting the user
+// with. Below this, showing and immediately hiding a spinner is a flicker that
+// reads as instability rather than as information.
+export const SLOW_ACTIVITY_DELAY_MS = 500;
+
+interface ReportedActivity {
+    message: string;
+    // A fallback activity is shown only when nothing more specific is. The
+    // generic "a request is taking a while" is true during a full compile too,
+    // but "checking project" says more, and whichever was reported last would
+    // otherwise win on recency alone.
+    fallback: boolean;
+}
+
+export interface ReportOptions {
+    // Wait this long before showing the activity, and drop it silently if it
+    // ends first.
+    delay_ms?: number;
+    fallback?: boolean;
 }
 
 // One progress notification per workspace, shared by every activity that wants
@@ -35,7 +61,12 @@ export class ActivityProgress {
     // is deleted before being re-set so re-reporting moves it to the end —
     // otherwise a long-running activity that merely started first would keep
     // the display no matter what happened since.
-    private activities = new Map<string, string>();
+    private activities = new Map<string, ReportedActivity>();
+
+    // Activities reported with a delay that has not elapsed yet. Held apart
+    // from `activities` so an activity that ends inside its own delay is never
+    // shown at all.
+    private waiting = new Map<string, { timer: NodeJS.Timeout, activity: ReportedActivity }>();
 
     private reporter: WorkDoneProgressServerReporter | null = null;
     private opening: boolean = false;
@@ -50,15 +81,51 @@ export class ActivityProgress {
     }
 
     // Show `message` for `activity`, replacing whatever it was showing before.
-    report(activity: Activity, message: string) {
-        this.activities.delete(activity);
-        this.activities.set(activity, message);
+    report(activity: Activity, message: string, options: ReportOptions = {}) {
+        const reported = { message, fallback: options.fallback ?? false };
 
-        this.render();
+        // Already waiting out its delay: update what it will say when the
+        // delay expires, but do not restart the clock — the wait the user is
+        // enduring started when the activity did.
+        const waiting = this.waiting.get(activity);
+
+        if (waiting) {
+            waiting.activity = reported;
+
+            return;
+        }
+
+        if (options.delay_ms && !this.activities.has(activity)) {
+            const timer = setTimeout(() => {
+                const pending = this.waiting.get(activity);
+
+                this.waiting.delete(activity);
+
+                if (pending) {
+                    this.show(activity, pending.activity);
+                }
+            }, options.delay_ms);
+
+            timer.unref?.();
+
+            this.waiting.set(activity, { timer, activity: reported });
+
+            return;
+        }
+
+        this.show(activity, reported);
     }
 
-    // Stop showing `activity`. Harmless if it was never reported.
+    // Stop showing `activity`. Harmless if it was never reported, and if it
+    // was reported with a delay that has not elapsed, it is never shown.
     end(activity: Activity) {
+        const waiting = this.waiting.get(activity);
+
+        if (waiting) {
+            clearTimeout(waiting.timer);
+            this.waiting.delete(activity);
+        }
+
         if (!this.activities.delete(activity)) {
             return;
         }
@@ -66,14 +133,26 @@ export class ActivityProgress {
         this.render();
     }
 
+    private show(activity: Activity, reported: ReportedActivity) {
+        this.activities.delete(activity);
+        this.activities.set(activity, reported);
+
+        this.render();
+    }
+
     private current(): string | null {
         let message: string | null = null;
+        let fallback: string | null = null;
 
         for (const activity of this.activities.values()) {
-            message = activity;
+            if (activity.fallback) {
+                fallback = activity.message;
+            } else {
+                message = activity.message;
+            }
         }
 
-        return message;
+        return message ?? fallback;
     }
 
     private render() {

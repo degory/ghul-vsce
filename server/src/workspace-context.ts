@@ -22,7 +22,7 @@ import { ServerManager } from './server-manager';
 import { DocumentChangeTracker } from './document-change-tracker';
 import { GhulAnalyser } from './ghul-analyser';
 import { Watchdog } from './watchdog';
-import { Activity, ActivityProgress } from './activity-progress';
+import { Activity, ActivityProgress, SLOW_ACTIVITY_DELAY_MS } from './activity-progress';
 import { MetricsReporter } from './metrics-reporter';
 
 import { getGhulConfig, GhulConfig } from './ghul-config';
@@ -94,7 +94,11 @@ export class WorkspaceContext {
         // Created before the requester/edit_queue so they can be handed a live
         // watchdog reference; the on_timeout callback closes over `this` and
         // forwards to the server manager once it's constructed below.
-        this.watchdog = new Watchdog(10000, () => this.server_manager.recoverFromHang());
+        this.watchdog = new Watchdog(
+            10000,
+            () => this.server_manager.recoverFromHang(),
+            busy => this.reportOutstandingRequest(busy)
+        );
 
         this.requester = new Requester(this.server_event_emitter, this.response_handler, this.watchdog);
 
@@ -130,6 +134,27 @@ export class WorkspaceContext {
         this.response_handler.setEditQueue(this.edit_queue);
 
         this.reportCompilerStartup();
+    }
+
+    // A request has gone to the compiler and no answer has come back yet.
+    //
+    // Worth saying something about because the analyser recompiles on demand
+    // to answer a query it has no current state for, and nothing in the
+    // protocol says in advance that it is about to — so an ordinary hover can
+    // become a multi-second wait that otherwise looks like the editor
+    // ignoring the user. Delayed, because most requests answer far too
+    // quickly to be worth a spinner, and marked as a fallback so a request
+    // that belongs to something already being reported (a full compile, the
+    // heap check) keeps that more specific description.
+    private reportOutstandingRequest(busy: boolean) {
+        if (busy) {
+            this.progress.report(Activity.Request, "analysing", {
+                delay_ms: SLOW_ACTIVITY_DELAY_MS,
+                fallback: true
+            });
+        } else {
+            this.progress.end(Activity.Request);
+        }
     }
 
     // The compiler is not only started once. It is recycled when it has

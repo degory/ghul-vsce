@@ -11,7 +11,7 @@ import { Watchdog } from './watchdog';
 import { normalizeFileUri } from './normalize-file-uri';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
-import { Activity, ActivityProgress } from './activity-progress';
+import { Activity, ActivityProgress, SLOW_ACTIVITY_DELAY_MS } from './activity-progress';
 import { MetricsReporter } from './metrics-reporter';
 
 enum QueueState {
@@ -196,7 +196,7 @@ export class EditQueue {
     // with another request.
     onIdleTimeout() {
         if (this.state == QueueState.IDLE && !this.watchdog.isRunning()) {
-            this.progress?.report(Activity.Heap, "garbage collecting");
+            this.progress?.report(Activity.Heap, "garbage collecting", { delay_ms: SLOW_ACTIVITY_DELAY_MS });
 
             this.requester.sendHeapCheckRequest();
 
@@ -321,7 +321,7 @@ export class EditQueue {
     }
 
     private requestFullCompile() {
-        this.progress?.report(Activity.Compile, "checking project");
+        this.progress?.report(Activity.Compile, "checking project", { delay_ms: SLOW_ACTIVITY_DELAY_MS });
 
         this.requester.sendFullCompileRequest();
 

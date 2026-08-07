@@ -1,6 +1,6 @@
 import { Connection } from 'vscode-languageserver';
 
-import { Activity, ActivityProgress } from '../src/activity-progress';
+import { Activity, ActivityProgress, SLOW_ACTIVITY_DELAY_MS } from '../src/activity-progress';
 
 // A reporter that records what the user would see, in order.
 function makeReporter() {
@@ -142,6 +142,106 @@ describe('ActivityProgress', () => {
         await settle();
 
         expect(reporter.begin).toHaveBeenCalledTimes(1);
+    });
+
+    describe('delayed activities', () => {
+        beforeEach(() => {
+            jest.useFakeTimers();
+        });
+
+        afterEach(() => {
+            jest.useRealTimers();
+        });
+
+        it('says nothing about work that finishes quickly', async () => {
+            // Most requests answer in a few milliseconds. A spinner shown and
+            // hidden inside that reads as instability, not information.
+            const reporter = makeReporter();
+            const progress = new ActivityProgress(makeConnection(reporter));
+
+            progress.report(Activity.Request, 'analysing', { delay_ms: SLOW_ACTIVITY_DELAY_MS });
+            jest.advanceTimersByTime(SLOW_ACTIVITY_DELAY_MS - 1);
+            progress.end(Activity.Request);
+
+            jest.advanceTimersByTime(SLOW_ACTIVITY_DELAY_MS);
+            await Promise.resolve();
+
+            expect(reporter.begin).not.toHaveBeenCalled();
+        });
+
+        it('speaks up once work outlasts the delay', async () => {
+            const reporter = makeReporter();
+            const progress = new ActivityProgress(makeConnection(reporter));
+
+            progress.report(Activity.Request, 'analysing', { delay_ms: SLOW_ACTIVITY_DELAY_MS });
+            jest.advanceTimersByTime(SLOW_ACTIVITY_DELAY_MS);
+            await Promise.resolve();
+
+            expect(reporter.begin).toHaveBeenCalledWith('ghūl', undefined, 'analysing', false);
+        });
+
+        it('does not restart the clock when a waiting activity is re-reported', async () => {
+            // The wait the user is enduring started when the activity did, so
+            // a repeat report must not push the spinner further away.
+            const reporter = makeReporter();
+            const progress = new ActivityProgress(makeConnection(reporter));
+
+            progress.report(Activity.Request, 'analysing', { delay_ms: SLOW_ACTIVITY_DELAY_MS });
+            jest.advanceTimersByTime(SLOW_ACTIVITY_DELAY_MS - 100);
+            progress.report(Activity.Request, 'still analysing', { delay_ms: SLOW_ACTIVITY_DELAY_MS });
+            jest.advanceTimersByTime(100);
+            await Promise.resolve();
+
+            expect(reporter.begin).toHaveBeenCalledWith('ghūl', undefined, 'still analysing', false);
+        });
+    });
+
+    describe('fallback activities', () => {
+        beforeEach(() => {
+            jest.useFakeTimers();
+        });
+
+        afterEach(() => {
+            jest.useRealTimers();
+        });
+
+        it('yields to whatever describes the work better', async () => {
+            // Every full compile is also an outstanding request, and the
+            // generic description would win on recency alone.
+            const reporter = makeReporter();
+            const progress = new ActivityProgress(makeConnection(reporter));
+
+            progress.report(Activity.Compile, 'checking project');
+            await Promise.resolve();
+            progress.report(Activity.Request, 'analysing', { fallback: true });
+
+            expect(reporter.begin).toHaveBeenCalledWith('ghūl', undefined, 'checking project', false);
+            expect(reporter.report).not.toHaveBeenCalledWith('analysing');
+        });
+
+        it('shows when nothing more specific is running', async () => {
+            // A hover that turns into a recompile has nothing else to say.
+            const reporter = makeReporter();
+            const progress = new ActivityProgress(makeConnection(reporter));
+
+            progress.report(Activity.Request, 'analysing', { fallback: true });
+            await Promise.resolve();
+
+            expect(reporter.begin).toHaveBeenCalledWith('ghūl', undefined, 'analysing', false);
+        });
+
+        it('takes over when the more specific activity ends first', async () => {
+            const reporter = makeReporter();
+            const progress = new ActivityProgress(makeConnection(reporter));
+
+            progress.report(Activity.Request, 'analysing', { fallback: true });
+            await Promise.resolve();
+            progress.report(Activity.Compile, 'checking project');
+            progress.end(Activity.Compile);
+
+            expect(reporter.report).toHaveBeenLastCalledWith('analysing');
+            expect(reporter.done).not.toHaveBeenCalled();
+        });
     });
 
     it('is inert on a client that cannot report progress', () => {
