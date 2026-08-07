@@ -135,6 +135,15 @@ export class ServerManager {
 			// created it; detach before killing so a dying frame cannot reach
 			// anyone's parser.
 			abandoned.stdout?.removeAllListeners('data');
+
+			// The manager that spawned it is still listening for its exit, and
+			// has no idea we are about to cause one: it would book a crash,
+			// relaunch itself immediately, and reap whatever is registered for
+			// this workspace by then — which is this manager's own healthy
+			// child. Detaching first means the kill stays ours.
+			abandoned.removeAllListeners('exit');
+			abandoned.removeAllListeners('error');
+
 			abandoned.kill();
 		} catch (e) {
 			log("killing abandoned compiler caught: " + e);
