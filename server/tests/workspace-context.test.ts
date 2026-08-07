@@ -253,11 +253,30 @@ describe('WorkspaceContext.initialize', () => {
 
         expect(connection.window.createWorkDoneProgress).toHaveBeenCalled();
         expect(progressReporter.begin).toHaveBeenCalled();
-        expect(progressReporter.report.mock.calls.map(([message]) => message)).toEqual([
-            'restoring .NET tools',
-            'resolving project references',
-            'waiting for the compiler to analyse the project',
-        ]);
+        // The reporter is created asynchronously, so the messages reported
+        // before it arrives are folded into its begin() rather than replayed
+        // through report(); the sequence is the concatenation of the two.
+        const messages = [
+            ...progressReporter.begin.mock.calls.map(([, , message]) => message),
+            ...progressReporter.report.mock.calls.map(([message]) => message),
+        ];
+
+        expect(messages).toContain('resolving project references');
+        expect(messages).toContain('starting compiler');
+        expect(messages[messages.length - 1]).toBe('starting compiler');
+    });
+
+    it('says what is being done, not what the extension is waiting for', async () => {
+        stubConfig([]);
+
+        await context.initialize();
+
+        const messages = [
+            ...progressReporter.begin.mock.calls.map(([, , message]) => message),
+            ...progressReporter.report.mock.calls.map(([message]) => message),
+        ];
+
+        expect(messages).not.toContain('waiting for the compiler to analyse the project');
     });
 
     it('keeps progress open through the analyser\'s first compile, not just the setup before it', async () => {
@@ -271,8 +290,108 @@ describe('WorkspaceContext.initialize', () => {
 
         context.requester.analysed = true;
 
-        // finishProgress() is deliberately not awaited by initialize(), so
-        // give its continuation a turn of the microtask queue to run.
+        // The wait on the first analysis is deliberately not awaited by
+        // initialize(), so give its continuation a turn of the microtask
+        // queue to run.
+        await new Promise(resolve => setImmediate(resolve));
+
+        expect(progressReporter.done).toHaveBeenCalled();
+    });
+
+    it('reports the start-up sequence again when the compiler is relaunched', async () => {
+        // A recycle or a crash leaves the compiler with no project state, so
+        // the user is back to waiting through a cold analysis — and must be
+        // told so, exactly as on the first start.
+        stubConfig([]);
+
+        await context.initialize();
+
+        context.requester.analysed = true;
+        await new Promise(resolve => setImmediate(resolve));
+
+        progressReporter.begin.mockClear();
+        progressReporter.report.mockClear();
+        progressReporter.done.mockClear();
+
+        // 'listening' makes the analyser send the whole project down the
+        // compiler's stdin; there is no compiler here, so stand one in.
+        context.requester.stream = { write: () => { } };
+
+        context.server_event_emitter.starting();
+        context.server_event_emitter.listening();
+
+        await new Promise(resolve => setImmediate(resolve));
+
+        const messages = [
+            ...progressReporter.begin.mock.calls.map(([, , message]) => message),
+            ...progressReporter.report.mock.calls.map(([message]) => message),
+        ];
+
+        expect(messages).toContain('analysing project');
+        expect(progressReporter.done).not.toHaveBeenCalled();
+    });
+
+    it('reports the whole sequence again when a project file change reloads the workspace', async () => {
+        // Saving a .ghulproj / Directory.Build.props / dotnet-tools.json
+        // re-runs the tool restore and the reference resolution and then
+        // replaces the compiler, so the user faces the same wait as a cold
+        // start and must be shown the same sequence.
+        stubConfig([]);
+
+        await context.initialize();
+
+        context.requester.analysed = true;
+        await new Promise(resolve => setImmediate(resolve));
+
+        expect(progressReporter.done).toHaveBeenCalled();
+
+        progressReporter.begin.mockClear();
+        progressReporter.report.mockClear();
+        progressReporter.done.mockClear();
+
+        context.reinitialize();
+
+        // reinitialize() is detached, so let the setup it awaits complete.
+        await new Promise(resolve => setImmediate(resolve));
+        await new Promise(resolve => setImmediate(resolve));
+
+        // 'listening' makes the analyser send the whole project down the
+        // relaunched compiler's stdin; the stubbed child has none, so stand
+        // one in. Set after the relaunch, which installs the stub child's
+        // absent stdin over anything set before it.
+        context.requester.stream = { write: () => { } };
+
+        context.server_event_emitter.listening();
+
+        const messages = [
+            ...progressReporter.begin.mock.calls.map(([, , message]) => message),
+            ...progressReporter.report.mock.calls.map(([message]) => message),
+        ];
+
+        expect(messages).toEqual([
+            'restoring .NET tools',
+            'resolving project references',
+            'starting compiler',
+            'analysing project',
+        ]);
+        expect(progressReporter.done).not.toHaveBeenCalled();
+    });
+
+    it('does not report a compiler start that is never going to happen', async () => {
+        // No compiler was resolved, so the spawn is abandoned the moment it
+        // is attempted; a progress notification opened here would never close.
+        jest.spyOn(restoreDotNetTools, 'restoreDotNetTools').mockResolvedValue(null);
+        jest.spyOn(generateAssembliesJson, 'generateAssembliesJson').mockResolvedValue(null);
+        jest.spyOn(GetGhulConfig, 'getGhulConfig').mockReturnValue({
+            compiler: [],
+            source: ['test.ghul'],
+            arguments: [],
+            want_plaintext_hover: false,
+            missing_assemblies: [],
+            problems: ['no compiler'],
+        } as GhulConfig);
+
+        await context.initialize();
         await new Promise(resolve => setImmediate(resolve));
 
         expect(progressReporter.done).toHaveBeenCalled();

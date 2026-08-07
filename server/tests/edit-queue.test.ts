@@ -5,6 +5,8 @@ import { EditQueue } from '../src/edit-queue';
 import { Requester } from '../src/requester';
 import { ResponseHandler } from '../src/response-handler';
 import { Watchdog } from '../src/watchdog';
+import { Activity, ActivityProgress, SLOW_ACTIVITY_DELAY_MS } from '../src/activity-progress';
+import { MetricsReporter } from '../src/metrics-reporter';
 
 // A minimal Requester stand-in that records every send for assertion.
 // We use a class rather than jest.fn() so the test reads like a script.
@@ -414,5 +416,121 @@ describe('EditQueue', () => {
             jest.advanceTimersByTime(EditQueue.PARTIAL_BUILD_EDIT_TIMEOUT);
             expect(recorder.sendDocumentsCalls).toHaveLength(sendsAfterStart + 1);
         });
+    });
+});
+
+// The queue is the only place that knows when the analyser is busy and how
+// long it took, so it is where both the spinner and the reported latencies
+// come from.
+describe('EditQueue reporting', () => {
+    let recorder: RecordingRequester;
+    let watchdog: Watchdog;
+    let responseHandler: ResponseHandler;
+    let progress: { report: jest.Mock; end: jest.Mock };
+    let metrics: { report: jest.Mock };
+    let queue: EditQueue;
+
+    beforeEach(() => {
+        jest.useFakeTimers();
+
+        watchdog = new Watchdog(10000, () => {});
+        responseHandler = {
+            rejectAllAndThrow: (message: string) => { throw message; },
+        } as unknown as ResponseHandler;
+
+        progress = { report: jest.fn(), end: jest.fn() };
+        metrics = { report: jest.fn() };
+
+        recorder = new RecordingRequester();
+        queue = new EditQueue(
+            recorder as unknown as Requester,
+            responseHandler,
+            watchdog,
+            progress as unknown as ActivityProgress,
+            metrics as unknown as MetricsReporter
+        );
+    });
+
+    afterEach(() => {
+        jest.useRealTimers();
+    });
+
+    // Drive the queue to the point where the next edit timeout requests a
+    // full compile: one partial compile completed with nothing left pending.
+    function reachFullCompile() {
+        queue.reset();
+        queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+        queue.onPartialCompileDone(10);
+        jest.advanceTimersByTime(queue.full_build_timeout);
+    }
+
+    it('says the project is being checked while a full compile runs', () => {
+        reachFullCompile();
+
+        expect(recorder.sendFullCompileRequestCalls).toBe(1);
+        expect(progress.report).toHaveBeenCalledWith(
+            Activity.Compile, 'checking project', { delay_ms: SLOW_ACTIVITY_DELAY_MS });
+
+        queue.onFullCompileDone(200);
+
+        expect(progress.end).toHaveBeenCalledWith(Activity.Compile);
+    });
+
+    it('says the analyser is garbage collecting while the heap check runs', () => {
+        // The heap check is mechanism, not something the user asked for, but
+        // it can hold the analyser up — so it is named for what it costs them.
+        queue.reset();
+        jest.advanceTimersByTime(0);
+        queue.startIdleTimer();
+        jest.advanceTimersByTime(EditQueue.HEAP_CHECK_IDLE_TIMEOUT);
+
+        expect(recorder.sendHeapCheckRequestCalls).toBe(1);
+        expect(progress.report).toHaveBeenCalledWith(
+            Activity.Heap, 'garbage collecting', { delay_ms: SLOW_ACTIVITY_DELAY_MS });
+
+        queue.onHeapCheckDone();
+
+        expect(progress.end).toHaveBeenCalledWith(Activity.Heap);
+    });
+
+    it('takes the spinner down when the compiler goes away mid-compile', () => {
+        reachFullCompile();
+
+        queue.reset();
+
+        expect(progress.end).toHaveBeenCalledWith(Activity.Compile);
+        expect(progress.end).toHaveBeenCalledWith(Activity.Heap);
+    });
+
+    it('reports the first measurement as it stands', () => {
+        queue.reset();
+        queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+        queue.onPartialCompileDone(100);
+
+        expect(queue.edit_latency_ms).toBe(100);
+        expect(metrics.report).toHaveBeenLastCalledWith(100, null);
+    });
+
+    it('smooths later measurements so a single slow compile does not dominate', () => {
+        queue.reset();
+        queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+        queue.onPartialCompileDone(100);
+
+        jest.advanceTimersByTime(queue.edit_timeout);
+        queue.queueEdit3('file:///a.ghul', 2, 'u');
+        queue.sendQueued();
+        queue.onPartialCompileDone(1100);
+
+        // 100 + 0.3 * (1100 - 100)
+        expect(queue.edit_latency_ms).toBeCloseTo(400);
+    });
+
+    it('reports edit and full compile latency separately', () => {
+        reachFullCompile();
+        queue.onFullCompileDone(2000);
+
+        expect(queue.edit_latency_ms).toBe(10);
+        expect(queue.compile_latency_ms).toBe(2000);
+        expect(metrics.report).toHaveBeenLastCalledWith(10, 2000);
     });
 });

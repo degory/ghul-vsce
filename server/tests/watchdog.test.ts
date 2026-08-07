@@ -91,3 +91,62 @@ describe('Watchdog', () => {
         expect(onTimeout).not.toHaveBeenCalled();
     });
 });
+
+// The timer's lifetime is exactly "a request is outstanding", which makes it
+// the one place that knows the compiler is working on something — including
+// the on-demand recompile it does to answer a query without announcing it.
+describe('Watchdog busy signal', () => {
+    let busy: boolean[];
+
+    beforeEach(() => {
+        jest.useFakeTimers();
+        busy = [];
+    });
+
+    afterEach(() => {
+        jest.useRealTimers();
+    });
+
+    function makeWatchdog(on_timeout: () => void = () => {}) {
+        return new Watchdog(1000, on_timeout, value => busy.push(value));
+    }
+
+    it('reports busy while a request is outstanding and idle once it answers', () => {
+        const watchdog = makeWatchdog();
+
+        watchdog.startWatchdogIfNotRunning();
+        watchdog.clearWatchdog();
+
+        expect(busy).toEqual([true, false]);
+    });
+
+    it('does not re-report busy for a request sent while one is already in flight', () => {
+        const watchdog = makeWatchdog();
+
+        watchdog.startWatchdogIfNotRunning();
+        watchdog.startWatchdogIfNotRunning();
+
+        expect(busy).toEqual([true]);
+
+        watchdog.clearWatchdog();
+    });
+
+    it('reports idle when the compiler is given up on, not just when it answers', () => {
+        // Recovery kills the compiler, so no frame is coming back to clear it.
+        const watchdog = makeWatchdog();
+
+        watchdog.startWatchdogIfNotRunning();
+        jest.advanceTimersByTime(1000);
+
+        expect(busy).toEqual([true, false]);
+    });
+
+    it('reports idle when a relaunch drops the outgoing compiler\'s request', () => {
+        const watchdog = makeWatchdog();
+
+        watchdog.startWatchdogIfNotRunning();
+        watchdog.enterColdStart();
+
+        expect(busy).toEqual([true, false]);
+    });
+});

@@ -112,15 +112,16 @@ describe('language server start-up against a real compiler (no mocks, no VS Code
         expect(progressKinds[0]).toBe('begin');
         expect(progressKinds[progressKinds.length - 1]).toBe('end');
 
-        const reportMessages = client.progressNotifications
-            .filter(p => p.value.kind === 'report')
+        // The reporter is created asynchronously, so the earliest message can
+        // arrive folded into begin rather than as its own report.
+        const messages = client.progressNotifications
+            .filter(p => p.value.kind === 'begin' || p.value.kind === 'report')
             .map(p => p.value.message);
 
-        // The setup phase (#152/#154) and the first-compile phase this PR
-        // adds both have to show up — not just the setup, which used to be
-        // the only thing reported and which ends well before the analyser
-        // can answer anything.
-        expect(reportMessages).toContain('resolving project references');
-        expect(reportMessages).toContain('waiting for the compiler to analyse the project');
+        // The setup phase (#152/#154) and the first-compile phase both have
+        // to show up — not just the setup, which ends well before the
+        // analyser can answer anything.
+        expect(messages).toContain('resolving project references');
+        expect(messages).toContain('analysing project');
     });
 });

@@ -6,8 +6,7 @@ import {
     Connection,
     Disposable,
     DidChangeWatchedFilesNotification,
-    TextDocuments,
-    WorkDoneProgressServerReporter
+    TextDocuments
 } from 'vscode-languageserver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
@@ -23,6 +22,8 @@ import { ServerManager } from './server-manager';
 import { DocumentChangeTracker } from './document-change-tracker';
 import { GhulAnalyser } from './ghul-analyser';
 import { Watchdog } from './watchdog';
+import { Activity, ActivityProgress, SLOW_ACTIVITY_DELAY_MS } from './activity-progress';
+import { MetricsReporter } from './metrics-reporter';
 
 import { getGhulConfig, GhulConfig } from './ghul-config';
 import { restoreDotNetTools } from './restore-dotnet-tools';
@@ -54,6 +55,8 @@ export class WorkspaceContext {
     document_change_tracker: DocumentChangeTracker;
     ghul_analyser: GhulAnalyser;
     watchdog: Watchdog;
+    progress: ActivityProgress;
+    metrics: MetricsReporter;
 
     private connection: Connection;
     private documents: TextDocuments<TextDocument>;
@@ -62,11 +65,14 @@ export class WorkspaceContext {
 
     private missing_assembly_watch: Promise<Disposable> | null = null;
 
-    // The progress reporter finishProgress() is currently waiting to close,
-    // if any. reinitialize() (e.g. once buildMissingAssemblies() finishes)
-    // can start a fresh initialize() while an earlier one is still waiting
-    // on its own first compile; without this, both would stay open at once.
-    private active_progress: WorkDoneProgressServerReporter | null = null;
+    // Counts compiler starts, so the wait for one compiler's first compile
+    // cannot close the progress belonging to the compiler that replaced it.
+    private compiler_generation: number = 0;
+
+    // Whether a compiler start is currently being reported. A compiler that
+    // was never resolved never starts, and must not have its later lifecycle
+    // events reopen a notification nothing will close.
+    private reporting_compiler_startup: boolean = false;
 
     constructor(
         workspace_root: string,
@@ -80,16 +86,29 @@ export class WorkspaceContext {
         this.server_event_emitter = new ServerEventEmitter();
         this.config_event_emitter = new ConfigEventEmitter();
 
+        this.progress = new ActivityProgress(connection);
+        this.metrics = new MetricsReporter(connection, workspace_root);
+
         this.response_handler = new ResponseHandler(connection, this.config_event_emitter);
 
         // Created before the requester/edit_queue so they can be handed a live
         // watchdog reference; the on_timeout callback closes over `this` and
         // forwards to the server manager once it's constructed below.
-        this.watchdog = new Watchdog(10000, () => this.server_manager.recoverFromHang());
+        this.watchdog = new Watchdog(
+            10000,
+            () => this.server_manager.recoverFromHang(),
+            busy => this.reportOutstandingRequest(busy)
+        );
 
         this.requester = new Requester(this.server_event_emitter, this.response_handler, this.watchdog);
 
-        this.edit_queue = new EditQueue(this.requester, this.response_handler, this.watchdog);
+        this.edit_queue = new EditQueue(
+            this.requester,
+            this.response_handler,
+            this.watchdog,
+            this.progress,
+            this.metrics
+        );
 
         this.ghul_analyser = new GhulAnalyser(
             this.edit_queue,
@@ -113,6 +132,95 @@ export class WorkspaceContext {
 
         this.response_handler.setServerManager(this.server_manager);
         this.response_handler.setEditQueue(this.edit_queue);
+
+        this.reportCompilerStartup();
+    }
+
+    // A request has gone to the compiler and no answer has come back yet.
+    //
+    // Worth saying something about because the analyser recompiles on demand
+    // to answer a query it has no current state for, and nothing in the
+    // protocol says in advance that it is about to — so an ordinary hover can
+    // become a multi-second wait that otherwise looks like the editor
+    // ignoring the user. Delayed, because most requests answer far too
+    // quickly to be worth a spinner, and marked as a fallback so a request
+    // that belongs to something already being reported (a full compile, the
+    // heap check) keeps that more specific description.
+    private reportOutstandingRequest(busy: boolean) {
+        if (busy) {
+            this.progress.report(Activity.Request, "analysing", {
+                delay_ms: SLOW_ACTIVITY_DELAY_MS,
+                fallback: true
+            });
+        } else {
+            this.progress.end(Activity.Request);
+        }
+    }
+
+    // The compiler is not only started once. It is recycled when it has
+    // accumulated too much memory, and relaunched when it crashes or the
+    // watchdog finds it wedged — and each time it comes back with no project
+    // state, so the user is back to waiting through a cold analysis with the
+    // editor answering nothing. Reporting off the compiler's own lifecycle
+    // events rather than from initialize() means that wait is shown every
+    // time it happens, not only on the first one.
+    //
+    // The setup steps initialize() reports before this — the tool restore, the
+    // reference resolution — are not repeated on a relaunch, so a relaunch
+    // shows the part of the sequence that is actually running.
+    private reportCompilerStartup() {
+        this.server_event_emitter.onStarting(() => {
+            // A compiler that was never resolved, or one deliberately blocked,
+            // is not coming: the spawn is abandoned immediately after this
+            // event and nothing would ever close the progress.
+            if (!this.config?.compiler?.length || this.config.block) {
+                return;
+            }
+
+            this.reporting_compiler_startup = true;
+
+            this.progress.report(Activity.Compiler, "starting compiler");
+
+            this.awaitFirstAnalysis(++this.compiler_generation);
+        });
+
+        this.server_event_emitter.onListening(() => {
+            if (this.reporting_compiler_startup) {
+                this.progress.report(Activity.Compiler, "analysing project");
+            }
+        });
+    }
+
+    // Hold the compiler's progress open until it has analysed the project
+    // once — the point at which the editor starts answering — rather than
+    // ending it when the process spawns, which is the part the user cannot
+    // see and does not care about.
+    //
+    // Bounded so a compiler that never completes a compile cannot leave the
+    // status bar spinning forever. This bound is deliberately much longer than
+    // whenAnalysed's own per-query ANALYSED_WAIT_TIMEOUT_MS (requester.ts):
+    // giving up on an individual query early is the safe choice (the client
+    // just asks again later), but ending the status bar early would say
+    // "ready" while the analyser is still on its first compile, which is worse
+    // than leaving it open a while longer.
+    private awaitFirstAnalysis(generation: number) {
+        const timeout = new Promise<void>(resolve => {
+            setTimeout(resolve, FIRST_COMPILE_PROGRESS_TIMEOUT_MS).unref?.();
+        });
+
+        Promise.race([this.requester.untilFirstAnalysed(), timeout])
+            .then(() => {
+                // A later compiler has started since; its own wait owns the
+                // progress now.
+                if (this.compiler_generation != generation) {
+                    return;
+                }
+
+                this.reporting_compiler_startup = false;
+
+                this.progress.end(Activity.Compiler);
+            })
+            .catch(e => log(`could not finish reporting progress: ${e}`));
     }
 
     // Run the per-workspace setup that depends on the on-disk project layout:
@@ -128,29 +236,19 @@ export class WorkspaceContext {
     async initialize(): Promise<void> {
         let problems: string[] = [];
 
-        // A previous initialize() may still be waiting on its own first
-        // compile (see finishProgress() below) — e.g. buildMissingAssemblies()
-        // re-triggers this once a referenced assembly finishes building.
-        // That progress is now stale; close it rather than leaving two open
-        // at once.
-        this.active_progress?.done();
-
-        const progress = await this.startProgress();
-        this.active_progress = progress;
-
         // generateAssembliesJson writes .assemblies.json; getGhulConfig
         // reads it to build the -a flags for .analysis.rsp. Must run in
         // this order — on a fresh checkout the file does not yet exist,
         // so a reversed order leaves the analyser with no -a flags and
         // it falls back to a five-assembly default.
-        progress?.report("restoring .NET tools");
+        this.progress.report(Activity.Setup, "restoring .NET tools");
 
         let tools_problem = await restoreDotNetTools(this.workspace_root);
         if (tools_problem) {
             problems.push(tools_problem);
         }
 
-        progress?.report("resolving project references");
+        this.progress.report(Activity.Setup, "resolving project references");
 
         let assemblies_problem = await generateAssembliesJson(this.workspace_root);
         if (assemblies_problem) {
@@ -199,48 +297,14 @@ export class WorkspaceContext {
 
         this.watchMissingAssemblies();
 
+        // Starts the compiler, which reports its own progress from here on
+        // (see reportCompilerStartup) — so the setup activity ends into the
+        // compiler's rather than into a gap.
         this.config_event_emitter.configAvailable(this.workspace_root, this.config);
 
+        this.progress.end(Activity.Setup);
+
         this.buildMissingAssemblies();
-
-        // Deliberately not awaited: nothing downstream depends on when the
-        // status bar finally closes, and blocking initialize() on it would
-        // delay whatever a caller synchronizes on this promise for (both a
-        // fresh load and a config-triggered reinitialize await it). Caught
-        // the same way initializeDetached() catches initialize() itself: this
-        // waits up to FIRST_COMPILE_PROGRESS_TIMEOUT_MS, long enough for the
-        // connection to legitimately have gone away in the meantime, and an
-        // unhandled rejection here would take the whole server down with it.
-        this.finishProgress(progress).catch(e => log(`could not finish reporting progress: ${e}`));
-    }
-
-    // The setup above initialize() awaits is the smaller part of a cold
-    // start; the analyser's own first compile of the project is usually the
-    // greater part of it, and until now it ran with no visible progress at
-    // all — the status bar disappeared the moment the compiler spawned. Keep
-    // it open, with an updated message, through that first compile too.
-    // Bounded so a compiler that never spawns, or never completes a compile,
-    // cannot leave the status bar spinning forever. This bound is deliberately
-    // much longer than whenAnalysed's own per-query ANALYSED_WAIT_TIMEOUT_MS
-    // (requester.ts): giving up on an individual query early is the safe
-    // choice (the client just asks again later), but ending the status bar
-    // early would say "ready" while the analyser is still on its first
-    // compile, which is worse than leaving it open a while longer.
-    private async finishProgress(progress: WorkDoneProgressServerReporter | null): Promise<void> {
-        if (this.config.compiler?.length) {
-            progress?.report("waiting for the compiler to analyse the project");
-
-            await Promise.race([
-                this.requester.untilFirstAnalysed(),
-                new Promise<void>(resolve => setTimeout(resolve, FIRST_COMPILE_PROGRESS_TIMEOUT_MS).unref())
-            ]);
-        }
-
-        progress?.done();
-
-        if (this.active_progress === progress) {
-            this.active_progress = null;
-        }
     }
 
     reinitialize() {
@@ -260,26 +324,6 @@ export class WorkspaceContext {
         this.initialize().catch(e => log(`workspace initialization failed: ${e}`));
     }
 
-    // A progress notification for the setup the user would otherwise wait
-    // through with no sign anything is happening. Silently absent on a client
-    // that does not support it, and never a reason for setup to fail.
-    private async startProgress(): Promise<WorkDoneProgressServerReporter | null> {
-        if (!this.connection?.window?.createWorkDoneProgress) {
-            return null;
-        }
-
-        try {
-            const progress = await this.connection.window.createWorkDoneProgress();
-
-            progress.begin("ghūl", undefined, undefined, false);
-
-            return progress;
-        } catch (e) {
-            log(`could not create a progress reporter: ${e}`);
-            return null;
-        }
-    }
-
     // Referenced projects are not built while resolving their output paths, so
     // on a tree that has never been built those outputs are absent and the
     // analyser starts without them. Build them now, off the critical path, and
@@ -294,8 +338,14 @@ export class WorkspaceContext {
 
         this.reference_build_attempted = true;
 
+        this.progress.report(Activity.References, "building referenced projects");
+
         buildReferencedAssemblies(this.workspace_root)
-            .then(() => this.initializeDetached());
+            .then(() => {
+                this.progress.end(Activity.References);
+
+                this.initializeDetached();
+            });
     }
 
     // Backstop for the assemblies arriving by some other route than the build
