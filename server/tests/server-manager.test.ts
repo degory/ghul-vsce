@@ -980,3 +980,82 @@ describe('ServerManager (reaping does not disturb the predecessor)', () => {
         expect(predecessor.restart_attempts).toBe(0);
     });
 });
+
+describe('ServerManager (a reap that goes wrong)', () => {
+    let serverEvents: ServerEventEmitter;
+    let configEvents: ConfigEventEmitter;
+    let watchdog: Watchdog;
+    let responseHandler: ResponseHandler;
+
+    function makeManager(workspace_root: string): ServerManager {
+        const created = new ServerManager(
+            configEvents,
+            serverEvents,
+            { reset: jest.fn() } as unknown as EditQueue,
+            responseHandler,
+            { reset: jest.fn(), handleChunk: jest.fn() } as unknown as ResponseParser,
+            watchdog,
+            workspace_root,
+            { window: { showErrorMessage: jest.fn(), showWarningMessage: jest.fn() } } as any,
+        );
+
+        created.ghul_config = {
+            compiler: ['dotnet', 'ghul-compiler'],
+            arguments: [],
+            source: [],
+            block: false,
+            incremental_analysis: false,
+            want_plaintext_hover: false,
+            missing_assemblies: [],
+            problems: [],
+        };
+
+        return created;
+    }
+
+    beforeEach(() => {
+        jest.useFakeTimers();
+
+        serverEvents = new ServerEventEmitter();
+        configEvents = new ConfigEventEmitter();
+        watchdog = new Watchdog(10000, () => {});
+
+        responseHandler = {
+            resolveAllPendingPromises: jest.fn(),
+            rejectAllPendingPromises: jest.fn(),
+        } as unknown as ResponseHandler;
+
+        (writeFileSync as jest.Mock).mockClear();
+        (spawn as jest.Mock).mockClear().mockImplementation(() => makeFakeChild());
+    });
+
+    afterEach(() => {
+        watchdog.clearWatchdog();
+        jest.clearAllTimers();
+        jest.useRealTimers();
+    });
+
+    // Killing can fail — the process is already gone, or the signal is
+    // refused. Node throws an 'error' emitted with no listener attached, so
+    // stripping the owner's handler without leaving one would turn a failed
+    // reap into a crash of the language server serving every workspace.
+    it('survives an abandoned child that errors while being killed', () => {
+        const abandoned = makeFakeChild(1111);
+
+        // Asynchronously, as Node does: a synchronous emit would be caught by
+        // the try/catch around the kill and prove nothing.
+        abandoned.kill = jest.fn(() => {
+            setTimeout(() => abandoned.emit('error', new Error('kill EPERM')), 0);
+        });
+
+        (spawn as jest.Mock).mockImplementationOnce(() => abandoned);
+
+        makeManager('/test/workspace/reap-error').start();
+
+        const successor = makeManager('/test/workspace/reap-error');
+        successor.start();
+
+        expect(() => jest.runAllTimers()).not.toThrow();
+        expect(successor.child).toBeTruthy();
+    });
+});

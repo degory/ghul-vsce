@@ -144,6 +144,14 @@ export class ServerManager {
 			abandoned.removeAllListeners('exit');
 			abandoned.removeAllListeners('error');
 
+			// 'error' is replaced rather than left bare: the kill below can
+			// raise one asynchronously (the process is already gone, or the
+			// signal is refused), and an 'error' emitted with no listener at
+			// all throws out of the emitter and takes the language server down
+			// with it — every workspace, not just this reap. The try/catch
+			// around this block would not see it.
+			abandoned.on('error', e => log(`abandoned compiler PID ${abandoned.pid} errored while being killed: ${e}`));
+
 			abandoned.kill();
 		} catch (e) {
 			log("killing abandoned compiler caught: " + e);
