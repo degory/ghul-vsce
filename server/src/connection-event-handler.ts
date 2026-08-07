@@ -164,7 +164,7 @@ export class ConnectionEventHandler {
                 this.onInlayHint(params, token));
 
         connection.onCodeAction(
-            (params: CodeActionParams): (Command | CodeAction)[] =>
+            (params: CodeActionParams): Promise<(Command | CodeAction)[]> =>
                 this.onCodeAction(params));
     }
 
@@ -568,22 +568,29 @@ export class ConnectionEventHandler {
         );
     }
 
-    onCodeAction(params: CodeActionParams): (Command | CodeAction)[] {
-        const diagnostics = params.context?.diagnostics ?? [];
-
-        if (diagnostics.length === 0) {
-            return [];
-        }
-
+    async onCodeAction(params: CodeActionParams): Promise<(Command | CodeAction)[]> {
         const document = this.documents.get(params.textDocument.uri);
 
         if (!document) {
             return [];
         }
 
-        // Every quick fix arrives fully formed from the compiler with its
-        // diagnostic; the provider just validates and applies. Wire order
-        // is presentation order (removal fix first, then suppressions).
+        const workspace = this.workspaceForUri(params.textDocument.uri);
+
+        if (!workspace) {
+            return [];
+        }
+
+        // Fixes are asked for here rather than carried on the diagnostics:
+        // synthesizing them sweeps the AST of every file holding a warning,
+        // which on the edit path is the whole project on every keystroke.
+        // Wire order is presentation order (removal fix first, then
+        // suppressions).
+        const diagnostics = await workspace.requester.sendCodeActions(
+            params.textDocument.uri,
+            params.range
+        );
+
         return this.compiler_quick_fix_provider.provide(
             document,
             params.textDocument.uri,

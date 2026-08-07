@@ -25,6 +25,7 @@ class RecordingHandler {
     handleDocumentFormatting(message: any) { this.calls.push({ method: 'handleDocumentFormatting', message }); }
     handleDocumentRangeFormatting(message: any) { this.calls.push({ method: 'handleDocumentRangeFormatting', message }); }
     handleSemanticTokens(message: any) { this.calls.push({ method: 'handleSemanticTokens', message }); }
+    handleCodeActions(message: any) { this.calls.push({ method: 'handleCodeActions', message }); }
     handleRestart() { this.calls.push({ method: 'handleRestart' }); }
     handleHeapCheckDone() { this.calls.push({ method: 'handleHeapCheckDone' }); }
     handleUnexpected() { this.calls.push({ method: 'handleUnexpected' }); }
@@ -44,6 +45,14 @@ describe('ResponseParser', () => {
         recorder = new RecordingHandler();
         watchdog = new Watchdog(1000, () => {});
         parser = new ResponseParser(recorder as unknown as ResponseHandler, watchdog);
+    });
+
+    it('routes a code_actions frame to handleCodeActions', () => {
+        const message = { kind: 'code_actions', diagnostics: [] as any[] };
+
+        parser.handleChunk(line(message));
+
+        expect(recorder.calls).toEqual([{ method: 'handleCodeActions', message }]);
     });
 
     it('buffers until the line is terminated by a newline', () => {

@@ -40,7 +40,7 @@ import { GhulConfig } from './ghul-config';
 // These mirror the compiler-side DTOs in analysis-protocol/src/responses.ghul.
 // Coordinates are 1-based on the wire; the handlers convert to LSP's 0-based.
 
-interface FixEditDto {
+export interface FixEditDto {
     start_line: number;
     start_column: number;
     end_line: number;
@@ -50,13 +50,13 @@ interface FixEditDto {
     new_text: string;
 }
 
-interface QuickFixDto {
+export interface QuickFixDto {
     title: string;
     is_preferred: boolean;
     edits: FixEditDto[];
 }
 
-interface DiagnosticDto {
+export interface DiagnosticDto {
     path: string;
     start_line: number;
     start_column: number;
@@ -68,8 +68,10 @@ interface DiagnosticDto {
     // ...). Present iff the compiler raised this diagnostic with a code.
     code?: string;
     // Ready-to-apply quick fixes, in presentation order. The compiler is
-    // the sole author of fixes; they are stashed into Diagnostic.data and
-    // round-trip through the client to the code-action provider.
+    // the sole author of fixes. Populated only on a code_actions response:
+    // synthesizing fixes costs an AST sweep per file, so a compiler that
+    // advertises "code-actions" leaves them off reported diagnostics and
+    // answers for one range on demand instead.
     fixes?: QuickFixDto[] | null;
 }
 
@@ -137,6 +139,11 @@ interface DiagnosticsResponse {
     phase: string;
     elapsed_ms: number;
     compile_needed: boolean;
+}
+
+interface CodeActionsResponse {
+    kind: "code_actions";
+    diagnostics: DiagnosticDto[];
 }
 
 interface HoverResponse {
@@ -497,6 +504,13 @@ export class ResponseHandler {
     _range_formatting_promise_queue: PromiseQueue<TextEdit[]>;
     _semantic_tokens_promise_queue: PromiseQueue<SemanticTokens>;
     _inlay_hints_promise_queue: PromiseQueue<InlayHint[]>;
+    _code_actions_promise_queue: PromiseQueue<DiagnosticDto[]>;
+
+    // Whether the running compiler answers the `code_actions` request.
+    // Sent on every request would wedge the queue against a compiler that
+    // does not know the command, so the flag gates the send rather than
+    // the response.
+    code_actions_supported: boolean = false;
 
     // The full-document range to replace, one per pending format request,
     // paired FIFO with _formatting_promise_queue.
@@ -526,6 +540,7 @@ export class ResponseHandler {
         this._range_formatting_promise_queue = new PromiseQueue<TextEdit[]>("FORMATRANGE");
         this._semantic_tokens_promise_queue = new PromiseQueue<SemanticTokens>("SEMANTICTOKENS");
         this._inlay_hints_promise_queue = new PromiseQueue<InlayHint[]>("INLAYHINTS");
+        this._code_actions_promise_queue = new PromiseQueue<DiagnosticDto[]>("CODEACTIONS");
     }
 
     onConfigAvailable(_workspace: string, config: GhulConfig) {
@@ -548,6 +563,7 @@ export class ResponseHandler {
         this._range_formatting_promise_queue.resolveAll([]);
         this._semantic_tokens_promise_queue.resolveAll({ data: [] });
         this._inlay_hints_promise_queue.resolveAll([]);
+        this._code_actions_promise_queue.resolveAll([]);
         this._formatting_ranges = [];
     }
 
@@ -566,6 +582,7 @@ export class ResponseHandler {
         this._range_formatting_promise_queue.rejectAll(message);
         this._semantic_tokens_promise_queue.rejectAll(message);
         this._inlay_hints_promise_queue.rejectAll(message);
+        this._code_actions_promise_queue.rejectAll(message);
         this._formatting_ranges = [];
     }
 
@@ -608,6 +625,8 @@ export class ResponseHandler {
             );
         }
 
+        this.code_actions_supported = capabilities.includes("code-actions");
+
         this.server_manager.startListening();
     }
 
@@ -643,6 +662,16 @@ export class ResponseHandler {
 
     handleHeapCheckDone() {
         this.edit_queue.onHeapCheckDone();
+    }
+
+    expectCodeActions(): Promise<DiagnosticDto[]> {
+        return this._code_actions_promise_queue.enqueue();
+    }
+
+    handleCodeActions(response: CodeActionsResponse) {
+        let {resolve} = this._code_actions_promise_queue.dequeueAlways();
+
+        resolve(response.diagnostics ?? []);
     }
 
     expectHover(): Promise<Hover> {
@@ -1115,23 +1144,6 @@ export class ResponseHandler {
 
             if (dto.code) {
                 problem.code = dto.code;
-            }
-
-            if (dto.fixes && dto.fixes.length > 0) {
-                problem.data = {
-                    fixes: dto.fixes.map(fix => ({
-                        title: fix.title,
-                        isPreferred: fix.is_preferred,
-                        edits: fix.edits.map(edit => ({
-                            range: {
-                                start: { line: edit.start_line - 1, character: edit.start_column - 1 },
-                                end: { line: edit.end_line - 1, character: edit.end_column - 1 }
-                            },
-                            replaces: edit.replaces ?? null,
-                            newText: edit.new_text
-                        }))
-                    }))
-                };
             }
 
             problems.get(uri).push(problem);

@@ -183,6 +183,17 @@ describe('ResponseHandler', () => {
             expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('incremental_analysis'));
         });
 
+        it('records the code-actions capability when the compiler advertises it', () => {
+            responseHandler.handleListen({ capabilities: ['incremental-analysis', 'code-actions'] });
+            expect(responseHandler.code_actions_supported).toBe(true);
+        });
+
+        it('leaves code-actions unsupported when the compiler does not advertise it', () => {
+            responseHandler.code_actions_supported = true;
+            responseHandler.handleListen({ capabilities: ['incremental-analysis'] });
+            expect(responseHandler.code_actions_supported).toBe(false);
+        });
+
         it('does not warn when the setting is off, even if capability is absent', () => {
             responseHandler.incremental_analysis_requested = false;
             responseHandler.handleListen({ capabilities: [] });
@@ -759,7 +770,10 @@ describe('ResponseHandler', () => {
         expect(result.get('file:///b.ghul')![0].code).toBeUndefined();
     });
 
-    it('parseDiagnostics converts wire fixes into LSP-shaped Diagnostic.data', () => {
+    it('parseDiagnostics ignores fixes a compiler still sends with a diagnostic', () => {
+        // Fixes belong on the code_actions response. A compiler that still
+        // attaches them to reported diagnostics is not a reason to carry
+        // per-keystroke payload the code-action path no longer reads.
         const result = responseHandler.parseDiagnostics({
             kind: 'diagnostics',
             checked_paths: [],
@@ -775,39 +789,13 @@ describe('ResponseHandler', () => {
                                 { start_line: 3, start_column: 10, end_line: 3, end_column: 11, replaces: '!', new_text: '' },
                             ],
                         },
-                        {
-                            title: 'Suppress here: @suppress("redundant-unwrap")',
-                            is_preferred: false,
-                            edits: [
-                                { start_line: 3, start_column: 1, end_line: 3, end_column: 1, new_text: '        @suppress("redundant-unwrap")\n' },
-                            ],
-                        },
                     ],
                 },
-                { path: 'file:///b.ghul', start_line: 1, start_column: 1, end_line: 1, end_column: 5, severity: 1, message: 'msg' },
             ],
             phase: 'full', elapsed_ms: 0, compile_needed: false,
         } as any);
 
-        const data = result.get('file:///a.ghul')![0].data as any;
-
-        expect(data.fixes).toHaveLength(2);
-        expect(data.fixes[0]).toEqual({
-            title: "Remove redundant '!'",
-            isPreferred: true,
-            edits: [
-                {
-                    range: { start: { line: 2, character: 9 }, end: { line: 2, character: 10 } },
-                    replaces: '!',
-                    newText: '',
-                },
-            ],
-        });
-        expect(data.fixes[1].isPreferred).toBe(false);
-        expect(data.fixes[1].edits[0].replaces).toBeNull();
-        expect(data.fixes[1].edits[0].range.start).toEqual({ line: 2, character: 0 });
-
-        expect(result.get('file:///b.ghul')![0].data).toBeUndefined();
+        expect(result.get('file:///a.ghul')![0].data).toBeUndefined();
     });
 
     it('parseDiagnostics seeds an empty entry for every clean checked_paths url', () => {

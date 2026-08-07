@@ -67,6 +67,10 @@ export class ResponseParser {
             this.response_handler.handleDiagnostics(message);
             break;
 
+        case "code_actions":
+            this.response_handler.handleCodeActions(message);
+            break;
+
         case "hover":
             this.response_handler.handleHover(message);
             break;
