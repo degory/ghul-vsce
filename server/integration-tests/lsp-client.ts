@@ -60,7 +60,13 @@ export class LspClient {
     }
 
     private dispatch(message: any) {
-        if (message.id !== undefined && this.pending.has(message.id)) {
+        // A message carrying a method is a request or a notification, never a
+        // response — and the two id sequences are independent, so the server's
+        // request ids collide with this client's own as a matter of course.
+        // Matching on id first mistakes an inbound request for the response to
+        // an outbound one of the same number, which resolves the wrong promise
+        // and leaves the server's request unanswered forever.
+        if (message.method === undefined && message.id !== undefined && this.pending.has(message.id)) {
             const resolve = this.pending.get(message.id)!;
             this.pending.delete(message.id);
             resolve(message);

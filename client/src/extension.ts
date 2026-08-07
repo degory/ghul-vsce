@@ -40,10 +40,30 @@ export function activate(context: ExtensionContext) {
 	let statusBarItem = window.createStatusBarItem(StatusBarAlignment.Left);
 	context.subscriptions.push(statusBarItem);
 
+	// How long a finished activity stays on screen. Work that takes a moment
+	// and then vanishes the instant it lands is not readable — the message is
+	// gone before it can be taken in, and the status bar reads as flickering
+	// rather than as reporting. Long enough to read a few words, short enough
+	// not to still be claiming something is happening when it isn't.
+	const COMPLETED_HOLD_MS = 1500;
+
+	// Same codicon cell as the spinner it replaces, so swapping one for the
+	// other doesn't change the item's width and shove its neighbours along.
+	const RUNNING_ICON = '$(sync~spin)';
+	const COMPLETED_ICON = '$(check)';
+
+	interface ProgressEntry {
+		message: string;
+		// Set once the activity has finished and the message is only being
+		// held on screen to be read.
+		completed: boolean;
+	}
+
 	// Keyed per token so two workspace folders initialising concurrently each
 	// keep their own message: one folder finishing must not blank out or
 	// overwrite what another still-initialising folder is reporting.
-	let progressMessages = new Map<string | number, string>();
+	let progressMessages = new Map<string | number, ProgressEntry>();
+	let holdTimers = new Map<string | number, NodeJS.Timeout>();
 
 	function renderProgress() {
 		if (progressMessages.size === 0) {
@@ -51,9 +71,20 @@ export function activate(context: ExtensionContext) {
 			return;
 		}
 
-		const [, message] = [...progressMessages].pop()!;
-		statusBarItem.text = `$(sync~spin) ghūl: ${message}`;
+		const [, entry] = [...progressMessages].pop()!;
+		const icon = entry.completed ? COMPLETED_ICON : RUNNING_ICON;
+
+		statusBarItem.text = `${icon} ghūl: ${entry.message}`;
 		statusBarItem.show();
+	}
+
+	function clearHold(token: string | number) {
+		const timer = holdTimers.get(token);
+
+		if (timer) {
+			clearTimeout(timer);
+			holdTimers.delete(token);
+		}
 	}
 
 	// Map iteration order is insertion order, and re-setting an existing key
@@ -61,9 +92,33 @@ export function activate(context: ExtensionContext) {
 	// it is re-set, or renderProgress keeps showing whichever token merely
 	// began first instead of whichever most recently reported.
 	function setProgress(token: string | number, message: string) {
+		clearHold(token);
 		progressMessages.delete(token);
-		progressMessages.set(token, message);
+		progressMessages.set(token, { message, completed: false });
 		renderProgress();
+	}
+
+	// The activity is over. Whatever it last said stays up, in the past tense
+	// the server switched it to, under a completed icon — then goes. More work
+	// arriving in the meantime takes the display back immediately, via
+	// setProgress above; there is no wait to get through before the next thing
+	// can be reported.
+	function finishProgress(token: string | number) {
+		const entry = progressMessages.get(token);
+
+		if (!entry) {
+			return;
+		}
+
+		entry.completed = true;
+		renderProgress();
+
+		clearHold(token);
+		holdTimers.set(token, setTimeout(() => {
+			holdTimers.delete(token);
+			progressMessages.delete(token);
+			renderProgress();
+		}, COMPLETED_HOLD_MS));
 	}
 
 	// The two numbers that answer "is the language support keeping up?": how
@@ -141,8 +196,15 @@ export function activate(context: ExtensionContext) {
 			// styled spinner showing identical text next to this one.
 			handleWorkDoneProgress: (token, params, _next) => {
 				switch (params.kind) {
+					// A blank message means the token was granted after the
+					// work it was for had already finished. It has to be begun
+					// before it can be ended, so it arrives as an immediate
+					// begin/end pair with nothing to say — rendering it would
+					// flash an empty label in the status bar.
 					case 'begin':
-						setProgress(token, params.message ?? params.title);
+						if (params.message) {
+							setProgress(token, params.message);
+						}
 						break;
 					case 'report':
 						if (params.message) {
@@ -150,8 +212,7 @@ export function activate(context: ExtensionContext) {
 						}
 						break;
 					case 'end':
-						progressMessages.delete(token);
-						renderProgress();
+						finishProgress(token);
 						break;
 				}
 			}

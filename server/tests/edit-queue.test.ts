@@ -469,7 +469,9 @@ describe('EditQueue reporting', () => {
 
         expect(recorder.sendFullCompileRequestCalls).toBe(1);
         expect(progress.report).toHaveBeenCalledWith(
-            Activity.Compile, 'checking project', { delay_ms: SLOW_ACTIVITY_DELAY_MS });
+            Activity.Compile,
+            'checking project',
+            { delay_ms: SLOW_ACTIVITY_DELAY_MS, done_message: 'project checked' });
 
         queue.onFullCompileDone(200);
 
@@ -486,7 +488,9 @@ describe('EditQueue reporting', () => {
 
         expect(recorder.sendHeapCheckRequestCalls).toBe(1);
         expect(progress.report).toHaveBeenCalledWith(
-            Activity.Heap, 'garbage collecting', { delay_ms: SLOW_ACTIVITY_DELAY_MS });
+            Activity.Heap,
+            'garbage collecting',
+            { delay_ms: SLOW_ACTIVITY_DELAY_MS, done_message: 'garbage collected' });
 
         queue.onHeapCheckDone();
 
@@ -502,10 +506,17 @@ describe('EditQueue reporting', () => {
         expect(progress.end).toHaveBeenCalledWith(Activity.Heap);
     });
 
-    it('reports the first measurement as it stands', () => {
+    it('measures the round trip rather than taking the analyser\'s own figure', () => {
+        // What the analyser reports is a maximum of its lifetime mean and its
+        // moving average — right for sizing the timeouts, wrong as a latency
+        // readout, because a cold start keeps it high long after the project
+        // has become fast. The wire figure here (9999) must not be what shows.
         queue.reset();
         queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
-        queue.onPartialCompileDone(100);
+
+        jest.advanceTimersByTime(100);
+
+        queue.onPartialCompileDone(9999);
 
         expect(queue.edit_latency_ms).toBe(100);
         expect(metrics.report).toHaveBeenLastCalledWith(100, null);
@@ -514,23 +525,50 @@ describe('EditQueue reporting', () => {
     it('smooths later measurements so a single slow compile does not dominate', () => {
         queue.reset();
         queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
-        queue.onPartialCompileDone(100);
+        jest.advanceTimersByTime(100);
+        queue.onPartialCompileDone(10);
 
-        jest.advanceTimersByTime(queue.edit_timeout);
         queue.queueEdit3('file:///a.ghul', 2, 'u');
         queue.sendQueued();
-        queue.onPartialCompileDone(1100);
+        jest.advanceTimersByTime(1100);
+        queue.onPartialCompileDone(10);
 
         // 100 + 0.3 * (1100 - 100)
         expect(queue.edit_latency_ms).toBeCloseTo(400);
     });
 
     it('reports edit and full compile latency separately', () => {
-        reachFullCompile();
-        queue.onFullCompileDone(2000);
+        queue.reset();
+        queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+        jest.advanceTimersByTime(40);
+        queue.onPartialCompileDone(10);
 
-        expect(queue.edit_latency_ms).toBe(10);
+        jest.advanceTimersByTime(queue.full_build_timeout);
+        expect(recorder.sendFullCompileRequestCalls).toBe(1);
+
+        jest.advanceTimersByTime(2000);
+        queue.onFullCompileDone(10);
+
+        expect(queue.edit_latency_ms).toBe(40);
         expect(queue.compile_latency_ms).toBe(2000);
-        expect(metrics.report).toHaveBeenLastCalledWith(10, 2000);
+        expect(metrics.report).toHaveBeenLastCalledWith(40, 2000);
+    });
+
+    it('ignores a completion with no matching send', () => {
+        // A stray frame, or one belonging to a compiler that has since been
+        // replaced, must not be reported as the time since some unrelated
+        // request happened to go out.
+        queue.reset();
+        queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+        jest.advanceTimersByTime(40);
+        queue.onPartialCompileDone(10);
+
+        const reports = metrics.report.mock.calls.length;
+
+        queue.state = 3 as any; // DOING_PARTIAL_COMPILE
+        queue.onPartialCompileDone(10);
+
+        expect(metrics.report).toHaveBeenCalledTimes(reports);
+        expect(queue.edit_latency_ms).toBe(40);
     });
 });

@@ -60,7 +60,15 @@ export class EditQueue {
     edit_latency_ms: number | null;
     compile_latency_ms: number | null;
 
+    // When the request currently in flight was sent, so its round trip can be
+    // measured here rather than taken from the analyser's own figure. What the
+    // analyser reports is deliberately pessimistic — a maximum of its lifetime
+    // mean and its moving average — because it exists to size the timeouts
+    // below, where erring high is right. As a latency readout it is badly
+    // misleading: it is dominated by the expensive compiles just after a cold
+    // start and cannot come down to meet a project that is now fast.
     send_start_time: number;
+    compile_start_time: number;
     analyse_start_time: number;
 
     state: QueueState;
@@ -196,7 +204,10 @@ export class EditQueue {
     // with another request.
     onIdleTimeout() {
         if (this.state == QueueState.IDLE && !this.watchdog.isRunning()) {
-            this.progress?.report(Activity.Heap, "garbage collecting", { delay_ms: SLOW_ACTIVITY_DELAY_MS });
+            this.progress?.report(Activity.Heap, "garbage collecting", {
+                delay_ms: SLOW_ACTIVITY_DELAY_MS,
+                done_message: "garbage collected"
+            });
 
             this.requester.sendHeapCheckRequest();
 
@@ -225,10 +236,9 @@ export class EditQueue {
         // can now be answered against real state.
         this.requester.analysed = true;
 
-        if (milliseconds) {
-            this.edit_latency_ms = this.smooth(this.edit_latency_ms, milliseconds);
-            this.reportMetrics();
+        this.recordLatency('edit', this.send_start_time);
 
+        if (milliseconds) {
             this.edit_timeout = milliseconds * 1.5;
 
             if (this.full_build_timeout < this.edit_timeout) {
@@ -265,10 +275,9 @@ export class EditQueue {
 
         this.progress?.end(Activity.Compile);
 
-        if (milliseconds) {
-            this.compile_latency_ms = this.smooth(this.compile_latency_ms, milliseconds);
-            this.reportMetrics();
+        this.recordLatency('compile', this.compile_start_time);
 
+        if (milliseconds) {
             this.full_build_timeout = milliseconds * 1.5;
 
             if (this.full_build_timeout < this.edit_timeout) {
@@ -321,11 +330,38 @@ export class EditQueue {
     }
 
     private requestFullCompile() {
-        this.progress?.report(Activity.Compile, "checking project", { delay_ms: SLOW_ACTIVITY_DELAY_MS });
+        this.progress?.report(Activity.Compile, "checking project", {
+            delay_ms: SLOW_ACTIVITY_DELAY_MS,
+            done_message: "project checked"
+        });
+
+        this.compile_start_time = Date.now();
 
         this.requester.sendFullCompileRequest();
 
         this.state = QueueState.DOING_FULL_COMPILE;
+    }
+
+    // Fold one round trip into the reported figure. Ignores a completion with
+    // no matching send — a stray frame, or one belonging to a compiler that has
+    // since been replaced — rather than reporting the time since whenever the
+    // last unrelated request happened to go out.
+    private recordLatency(kind: 'edit' | 'compile', sent_at: number) {
+        if (!sent_at) {
+            return;
+        }
+
+        const round_trip = Date.now() - sent_at;
+
+        if (kind == 'edit') {
+            this.send_start_time = 0;
+            this.edit_latency_ms = this.smooth(this.edit_latency_ms, round_trip);
+        } else {
+            this.compile_start_time = 0;
+            this.compile_latency_ms = this.smooth(this.compile_latency_ms, round_trip);
+        }
+
+        this.reportMetrics();
     }
 
     private smooth(previous: number | null, sample: number): number {
@@ -378,6 +414,8 @@ export class EditQueue {
     start(documents: { uri: string, source: string }[]) {
         this.clearEditTimer();
         this.clearIdleTimer();
+
+        this.send_start_time = Date.now();
 
         this.state = QueueState.DOING_PARTIAL_COMPILE;
         this.sendMultiEdits(documents);

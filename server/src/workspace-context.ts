@@ -150,7 +150,8 @@ export class WorkspaceContext {
         if (busy) {
             this.progress.report(Activity.Request, "analysing", {
                 delay_ms: SLOW_ACTIVITY_DELAY_MS,
-                fallback: true
+                fallback: true,
+                done_message: "analysed"
             });
         } else {
             this.progress.end(Activity.Request);
@@ -186,7 +187,7 @@ export class WorkspaceContext {
 
         this.server_event_emitter.onListening(() => {
             if (this.reporting_compiler_startup) {
-                this.progress.report(Activity.Compiler, "analysing project");
+                this.progress.report(Activity.Compiler, "analysing project", { done_message: "project analysed" });
             }
         });
     }
@@ -248,7 +249,7 @@ export class WorkspaceContext {
             problems.push(tools_problem);
         }
 
-        this.progress.report(Activity.Setup, "resolving project references");
+        this.progress.report(Activity.Setup, "resolving project references", { done_message: "project references resolved" });
 
         let assemblies_problem = await generateAssembliesJson(this.workspace_root);
         if (assemblies_problem) {
@@ -338,7 +339,7 @@ export class WorkspaceContext {
 
         this.reference_build_attempted = true;
 
-        this.progress.report(Activity.References, "building referenced projects");
+        this.progress.report(Activity.References, "building referenced projects", { done_message: "referenced projects built" });
 
         buildReferencedAssemblies(this.workspace_root)
             .then(() => {

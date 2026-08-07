@@ -29,8 +29,19 @@ export enum Activity {
 // reads as instability rather than as information.
 export const SLOW_ACTIVITY_DELAY_MS = 500;
 
+// How long to wait for the client to answer a request for a progress token.
+//
+// Only one such request is ever in flight, so one that is never answered would
+// otherwise be the last one ever made, and every activity for the rest of the
+// session would go unreported. Giving up lets the next activity ask again;
+// nothing is lost but the one notification.
+export const CREATE_TIMEOUT_MS = 10_000;
+
 interface ReportedActivity {
     message: string;
+    // What to leave on screen once this activity is the last one to finish,
+    // phrased in the past tense. Absent means close without a closing word.
+    done_message: string | null;
     // A fallback activity is shown only when nothing more specific is. The
     // generic "a request is taking a while" is true during a full compile too,
     // but "checking project" says more, and whichever was reported last would
@@ -43,6 +54,7 @@ export interface ReportOptions {
     // ends first.
     delay_ms?: number;
     fallback?: boolean;
+    done_message?: string;
 }
 
 // One progress notification per workspace, shared by every activity that wants
@@ -82,7 +94,11 @@ export class ActivityProgress {
 
     // Show `message` for `activity`, replacing whatever it was showing before.
     report(activity: Activity, message: string, options: ReportOptions = {}) {
-        const reported = { message, fallback: options.fallback ?? false };
+        const reported = {
+            message,
+            fallback: options.fallback ?? false,
+            done_message: options.done_message ?? null
+        };
 
         // Already waiting out its delay: update what it will say when the
         // delay expires, but do not restart the clock — the wait the user is
@@ -126,7 +142,22 @@ export class ActivityProgress {
             this.waiting.delete(activity);
         }
 
+        const reported = this.activities.get(activity);
+
         if (!this.activities.delete(activity)) {
+            return;
+        }
+
+        // The last thing running, and it has a closing word: say it before the
+        // notification goes, so what the user is left with is what finished
+        // rather than whatever was on screen when it started.
+        if (this.reporter && this.activities.size == 0 && reported?.done_message) {
+            this.reporter.report(reported.done_message);
+            this.reporter.done();
+
+            this.reporter = null;
+            this.shown = null;
+
             return;
         }
 
@@ -191,24 +222,41 @@ export class ActivityProgress {
 
         this.opening = true;
 
+        const give_up = setTimeout(() => {
+            this.opening = false;
+
+            log("the client has not granted a progress token; will ask again for the next activity");
+        }, CREATE_TIMEOUT_MS);
+
+        give_up.unref?.();
+
         Promise.resolve(this.connection.window.createWorkDoneProgress()).then(
             reporter => {
+                clearTimeout(give_up);
+
                 this.opening = false;
 
                 const message = this.current();
 
-                reporter.begin("ghūl", undefined, message ?? "", false);
-
-                if (message == null) {
+                // Nothing left to announce, or a later request was granted
+                // first because this one was given up on. A token has to be
+                // begun before it can be ended, so close it with no message —
+                // the client renders nothing for a blank one.
+                if (message == null || this.reporter) {
+                    reporter.begin("ghūl", undefined, "", false);
                     reporter.done();
 
                     return;
                 }
 
+                reporter.begin("ghūl", undefined, message, false);
+
                 this.reporter = reporter;
                 this.shown = message;
             },
             e => {
+                clearTimeout(give_up);
+
                 this.opening = false;
 
                 log(`could not create a progress reporter: ${e}`);
