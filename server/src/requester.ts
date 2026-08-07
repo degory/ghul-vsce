@@ -21,7 +21,7 @@ import { normalizeFileUri } from './normalize-file-uri';
 
 import { ServerEventEmitter } from './server-event-emitter';
 
-import { ResponseHandler } from './response-handler';
+import { DiagnosticDto, ResponseHandler } from './response-handler';
 
 import { Watchdog } from './watchdog';
 
@@ -211,6 +211,30 @@ export class Requester {
             command: "set_open_files",
             paths: uris.map(uri => normalizeFileUri(uri))
         });
+    }
+
+    // Quick fixes for the diagnostics of one file overlapping one range.
+    // Gated on the compiler advertising "code-actions": an analyser that
+    // does not know the command would leave the request unanswered and
+    // wedge the queue until the watchdog killed it, so an older compiler
+    // means no quick fixes rather than a hang.
+    sendCodeActions(uri: string, range: Range, token?: CancellationToken): Promise<DiagnosticDto[]> {
+        if (!this.response_handler.code_actions_supported) {
+            return Promise.resolve([]);
+        }
+
+        return this.whenAnalysed(() => {
+            this.send({
+                command: "code_actions",
+                path: normalizeFileUri(uri),
+                start_line: range.start.line + 1,
+                start_column: range.start.character + 1,
+                end_line: range.end.line + 1,
+                end_column: range.end.character + 1
+            });
+
+            return this.response_handler.expectCodeActions();
+        }, [], token);
     }
 
     sendHover(uri: string, line: number, character: number, token?: CancellationToken): Promise<Hover> {

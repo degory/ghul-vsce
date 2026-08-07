@@ -33,6 +33,9 @@ class RecordingResponseHandler {
     expectTypeDefinition() { this.expectations.push('type_definition'); return Promise.resolve(null); }
     expectRenameRequest() { this.expectations.push('rename'); return Promise.resolve(null); }
     expectSemanticTokens() { this.expectations.push('semantic_tokens'); return Promise.resolve({ data: [] }); }
+    expectCodeActions() { this.expectations.push('code_actions'); return Promise.resolve([]); }
+
+    code_actions_supported: boolean = true;
 }
 
 function makeRunningChild(stream: CapturingStream): ChildProcess {
@@ -83,6 +86,38 @@ describe('Requester', () => {
         // send* methods arm the watchdog; if we leave the timer alive past
         // test end it fires into a torn-down test and crashes the worker.
         watchdog.clearWatchdog();
+    });
+
+    it('sendCodeActions writes the requested range in 1-based wire coordinates', async () => {
+        await requester.sendCodeActions('file:///x.ghul', {
+            start: { line: 4, character: 0 },
+            end: { line: 4, character: 12 }
+        });
+
+        expect(parseOnlyRequest(stream)).toEqual({
+            command: 'code_actions',
+            path: 'file:///x.ghul',
+            start_line: 5,
+            start_column: 1,
+            end_line: 5,
+            end_column: 13
+        });
+    });
+
+    it('sendCodeActions sends nothing to a compiler that does not advertise the capability', async () => {
+        // An analyser that does not know the command never answers it, so
+        // the promise queue would stall behind a request that can only end
+        // in a watchdog kill.
+        response.code_actions_supported = false;
+
+        const fixes = await requester.sendCodeActions('file:///x.ghul', {
+            start: { line: 0, character: 0 },
+            end: { line: 0, character: 0 }
+        });
+
+        expect(fixes).toEqual([]);
+        expect(stream.written).toEqual([]);
+        expect(response.expectations).toEqual([]);
     });
 
     it('starts un-analysed: a fresh Requester holds queries until a compile completes', () => {

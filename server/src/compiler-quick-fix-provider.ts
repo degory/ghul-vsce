@@ -9,11 +9,14 @@ import {
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
-// LSP-shaped quick fix stashed into Diagnostic.data by the response
-// handler when the compiler sends fixes with a diagnostic. The compiler
-// is the sole author of fixes; this provider applies whatever arrives
-// without any per-code knowledge, so new compiler quick fixes need no
-// extension change.
+import { DiagnosticDto } from './response-handler';
+
+import { SeverityMapper } from './severity-map';
+
+// LSP-shaped quick fix, converted from the wire DTO the compiler answers a
+// code_actions request with. The compiler is the sole author of fixes; this
+// provider applies whatever arrives without any per-code knowledge, so new
+// compiler quick fixes need no extension change.
 export interface QuickFixEdit {
     range: Range;
     // Expected current text of the range, or null to skip the check
@@ -33,12 +36,14 @@ export interface QuickFixData {
 export class CompilerQuickFixProvider {
     static readonly KIND: string = CodeActionKind.QuickFix;
 
-    provide(document: TextDocument, uri: string, diagnostics: Diagnostic[]): CodeAction[] {
+    provide(document: TextDocument, uri: string, diagnostics: DiagnosticDto[]): CodeAction[] {
         const actions: CodeAction[] = [];
         const seen = new Set<string>();
 
-        for (const diagnostic of diagnostics) {
-            for (const fix of CompilerQuickFixProvider.fixesOf(diagnostic)) {
+        for (const dto of diagnostics) {
+            const diagnostic = CompilerQuickFixProvider.toDiagnostic(dto);
+
+            for (const fix of CompilerQuickFixProvider.fixesOf(dto)) {
                 if (!CompilerQuickFixProvider.editsStillApply(document, fix.edits)) {
                     continue;
                 }
@@ -58,25 +63,58 @@ export class CompilerQuickFixProvider {
         return actions;
     }
 
-    // Diagnostic.data round-trips through the client as plain JSON, so
-    // validate the shape rather than trusting it.
-    private static fixesOf(diagnostic: Diagnostic): QuickFixData[] {
-        const data = diagnostic.data as { fixes?: unknown } | undefined;
-
-        if (!data || !Array.isArray(data.fixes)) {
+    // The wire payload is untyped JSON, so validate the shape rather than
+    // trusting it.
+    private static fixesOf(dto: DiagnosticDto): QuickFixData[] {
+        if (!Array.isArray(dto.fixes)) {
             return [];
         }
 
-        return data.fixes.filter(fix =>
-            fix &&
-            typeof fix.title === 'string' &&
-            Array.isArray(fix.edits) &&
-            fix.edits.every((edit: QuickFixEdit) =>
-                edit &&
-                edit.range &&
-                typeof edit.newText === 'string'
+        return dto.fixes
+            .filter(fix =>
+                fix &&
+                typeof fix.title === 'string' &&
+                Array.isArray(fix.edits) &&
+                fix.edits.every(edit =>
+                    edit &&
+                    typeof edit.new_text === 'string' &&
+                    typeof edit.start_line === 'number'
+                )
             )
-        );
+            .map(fix => ({
+                title: fix.title,
+                isPreferred: !!fix.is_preferred,
+                edits: fix.edits.map(edit => ({
+                    range: {
+                        start: { line: edit.start_line - 1, character: edit.start_column - 1 },
+                        end: { line: edit.end_line - 1, character: edit.end_column - 1 }
+                    },
+                    replaces: edit.replaces ?? null,
+                    newText: edit.new_text
+                }))
+            }));
+    }
+
+    // The action's own copy of the diagnostic it resolves, so the editor can
+    // tie the two together. Rebuilt from the wire rather than matched against
+    // what the client already holds: an identical range and message is what
+    // makes them the same diagnostic either way.
+    private static toDiagnostic(dto: DiagnosticDto): Diagnostic {
+        const diagnostic: Diagnostic = {
+            severity: SeverityMapper.getSeverity(dto.severity, "new"),
+            range: {
+                start: { line: dto.start_line - 1, character: dto.start_column - 1 },
+                end: { line: dto.end_line - 1, character: dto.end_column - 1 }
+            },
+            message: dto.message,
+            source: 'ghūl'
+        };
+
+        if (dto.code) {
+            diagnostic.code = dto.code;
+        }
+
+        return diagnostic;
     }
 
     private static editsStillApply(document: TextDocument, edits: QuickFixEdit[]): boolean {

@@ -1,7 +1,8 @@
-import { Diagnostic, DiagnosticSeverity, Range } from 'vscode-languageserver';
+import { DiagnosticSeverity, Range } from 'vscode-languageserver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
-import { CompilerQuickFixProvider, QuickFixData } from '../src/compiler-quick-fix-provider';
+import { CompilerQuickFixProvider } from '../src/compiler-quick-fix-provider';
+import { DiagnosticDto, QuickFixDto } from '../src/response-handler';
 
 function range(line: number, start: number, end: number): Range {
     return {
@@ -10,34 +11,40 @@ function range(line: number, start: number, end: number): Range {
     };
 }
 
-function diag(fixes?: QuickFixData[]): Diagnostic {
-    const d: Diagnostic = {
-        severity: DiagnosticSeverity.Warning,
-        range: range(0, 8, 10),
+// Wire coordinates are 1-based; the LSP ones above are 0-based.
+function diag(fixes?: QuickFixDto[]): DiagnosticDto {
+    return {
+        path: '/x.ghul',
+        start_line: 1,
+        start_column: 9,
+        end_line: 1,
+        end_column: 11,
+        severity: 2,
         message: 'a warning',
-        source: 'ghūl',
+        code: 'redundant-unwrap',
+        fixes: fixes ?? null,
     };
-
-    if (fixes !== undefined) {
-        d.data = { fixes };
-    }
-
-    return d;
 }
 
-function removalFix(): QuickFixData {
+function removalFix(): QuickFixDto {
     return {
         title: "Remove redundant '!'",
-        isPreferred: true,
-        edits: [{ range: range(0, 9, 10), replaces: '!', newText: '' }],
+        is_preferred: true,
+        edits: [{
+            start_line: 1, start_column: 10, end_line: 1, end_column: 11,
+            replaces: '!', new_text: ''
+        }],
     };
 }
 
-function suppressFix(): QuickFixData {
+function suppressFix(): QuickFixDto {
     return {
         title: 'Suppress here: @suppress("redundant-unwrap")',
-        isPreferred: false,
-        edits: [{ range: range(0, 0, 0), replaces: null, newText: '@suppress("redundant-unwrap")\n' }],
+        is_preferred: false,
+        edits: [{
+            start_line: 1, start_column: 1, end_line: 1, end_column: 1,
+            replaces: null, new_text: '@suppress("redundant-unwrap")\n'
+        }],
     };
 }
 
@@ -54,7 +61,7 @@ describe('CompilerQuickFixProvider', () => {
         provider = new CompilerQuickFixProvider();
     });
 
-    it('returns no actions for diagnostics without fix data', () => {
+    it('returns no actions for diagnostics without fixes', () => {
         const document = doc('let x = b!;\n');
 
         expect(provider.provide(document, URI, [diag()])).toEqual([]);
@@ -77,13 +84,18 @@ describe('CompilerQuickFixProvider', () => {
         expect(edits).toEqual([{ range: range(0, 9, 10), newText: '' }]);
     });
 
-    it('attaches the source diagnostic to each action', () => {
+    it('attaches the resolved diagnostic to each action', () => {
         const document = doc('let x = b!;\n');
-        const d = diag([removalFix()]);
 
-        const actions = provider.provide(document, URI, [d]);
+        const actions = provider.provide(document, URI, [diag([removalFix()])]);
 
-        expect(actions[0].diagnostics).toEqual([d]);
+        expect(actions[0].diagnostics).toEqual([{
+            severity: DiagnosticSeverity.Warning,
+            range: range(0, 8, 10),
+            message: 'a warning',
+            source: 'ghūl',
+            code: 'redundant-unwrap',
+        }]);
     });
 
     it('withholds a fix whose expected text no longer matches the buffer', () => {
@@ -117,7 +129,7 @@ describe('CompilerQuickFixProvider', () => {
         const document = doc('let x = b!;\n');
 
         const d = diag();
-        d.data = { fixes: [{ nonsense: true }, 42, null] };
+        d.fixes = [{ nonsense: true }, 42, null] as unknown as QuickFixDto[];
 
         expect(provider.provide(document, URI, [d])).toEqual([]);
     });
