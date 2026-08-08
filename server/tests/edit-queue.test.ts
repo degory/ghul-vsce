@@ -14,6 +14,7 @@ class RecordingRequester {
     sendDocumentsCalls: Array<{ uri: string; source: string }[]> = [];
     sendFullCompileRequestCalls = 0;
     sendHeapCheckRequestCalls = 0;
+    sendStatsRequestCalls = 0;
 
     // Mirrors the real Requester field the queue flips once a compile
     // round-trip completes; starts false as on a fresh compiler child.
@@ -27,6 +28,9 @@ class RecordingRequester {
     }
     sendHeapCheckRequest() {
         this.sendHeapCheckRequestCalls += 1;
+    }
+    sendStatsRequest() {
+        this.sendStatsRequestCalls += 1;
     }
 }
 
@@ -436,6 +440,7 @@ describe('EditQueue reporting', () => {
         watchdog = new Watchdog(10000, () => {});
         responseHandler = {
             rejectAllAndThrow: (message: string) => { throw message; },
+            incremental_analysis_requested: false,
         } as unknown as ResponseHandler;
 
         progress = { report: jest.fn(), end: jest.fn() };
@@ -658,7 +663,7 @@ describe('EditQueue reporting', () => {
         typeOneEdit('file:///a.ghul', 'u', 100);
 
         expect(queue.edit_latency_ms).toBe(100);
-        expect(metrics.report).toHaveBeenLastCalledWith(100, null);
+        expect(metrics.report).toHaveBeenLastCalledWith(100, null, false, null);
     });
 
     it('smooths later measurements so a single slow compile does not dominate', () => {
@@ -688,7 +693,7 @@ describe('EditQueue reporting', () => {
 
         expect(queue.edit_latency_ms).toBe(40);
         expect(queue.compile_latency_ms).toBe(2000);
-        expect(metrics.report).toHaveBeenLastCalledWith(40, 2000);
+        expect(metrics.report).toHaveBeenLastCalledWith(40, 2000, false, null);
     });
 
     it('ignores a completion with no matching send', () => {
@@ -708,5 +713,124 @@ describe('EditQueue reporting', () => {
 
         expect(metrics.report).toHaveBeenCalledTimes(reports);
         expect(queue.edit_latency_ms).toBe(40);
+    });
+});
+
+describe('EditQueue incremental statistics', () => {
+    let recorder: RecordingRequester;
+    let watchdog: Watchdog;
+    let responseHandler: ResponseHandler;
+    let metrics: { report: jest.Mock };
+    let queue: EditQueue;
+
+    beforeEach(() => {
+        jest.useFakeTimers();
+
+        watchdog = new Watchdog(10000, () => {});
+        responseHandler = {
+            rejectAllAndThrow: (message: string) => { throw message; },
+            incremental_analysis_requested: true,
+            stats_supported: true,
+        } as unknown as ResponseHandler;
+
+        metrics = { report: jest.fn() };
+
+        recorder = new RecordingRequester();
+        queue = new EditQueue(
+            recorder as unknown as Requester,
+            responseHandler,
+            watchdog,
+            { report: jest.fn(), end: jest.fn() } as unknown as ActivityProgress,
+            metrics as unknown as MetricsReporter
+        );
+    });
+
+    afterEach(() => {
+        jest.useRealTimers();
+    });
+
+    it('asks for the work counters once a compile has completed', () => {
+        // After, not before: the counters are only worth having once there is
+        // an edit to attribute, and asking on the way in would put the request
+        // in front of work the user is waiting on.
+        queue.reset();
+        queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+
+        expect(recorder.sendStatsRequestCalls).toBe(0);
+
+        queue.onPartialCompileDone(10);
+
+        expect(recorder.sendStatsRequestCalls).toBe(1);
+    });
+
+    it('does not ask again within the reporting interval', () => {
+        // Typing produces a compile every few hundred milliseconds; the figure
+        // is only shown every couple of seconds, so asking per compile would
+        // spend a round trip refreshing something nothing displays any sooner.
+        queue.reset();
+        queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+        queue.onPartialCompileDone(10);
+
+        queue.start([{ uri: 'file:///a.ghul', source: 'tt' }]);
+        queue.onPartialCompileDone(10);
+
+        expect(recorder.sendStatsRequestCalls).toBe(1);
+
+        jest.advanceTimersByTime(EditQueue.STATS_INTERVAL);
+
+        queue.start([{ uri: 'file:///a.ghul', source: 'ttt' }]);
+        queue.onPartialCompileDone(10);
+
+        expect(recorder.sendStatsRequestCalls).toBe(2);
+    });
+
+    it('asks nothing of an analyser that does not advertise the counters', () => {
+        // An analyser that does not know the command answers with an error
+        // frame, and an unrecognised frame aborts the compiler — so asking
+        // anyway would restart it on every attempt rather than simply going
+        // unanswered.
+        (responseHandler as unknown as { stats_supported: boolean }).stats_supported = false;
+
+        queue.reset();
+        queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+        queue.onPartialCompileDone(10);
+
+        expect(recorder.sendStatsRequestCalls).toBe(0);
+    });
+
+    it('reports what the analyser said it did with the edits', () => {
+        queue.onStatsReceived([
+            { name: 'edit-path-body-rewalk', count: 3, moving_average_ms: 0 },
+            { name: 'edit-path-interface-incremental', count: 1, moving_average_ms: 0 },
+            { name: 'edit-path-full-rebuild', count: 1, moving_average_ms: 0 },
+            { name: 'edit-declined-not-eligible', count: 1, moving_average_ms: 0 },
+        ]);
+
+        expect(metrics.report).toHaveBeenLastCalledWith(
+            null,
+            null,
+            true,
+            expect.objectContaining({
+                body_rewalk: 3,
+                interface_incremental: 1,
+                full_rebuild: 1,
+                total: 5,
+                top_decline_reason: 'not-eligible',
+            }));
+    });
+
+    it('drops the counters when the compiler goes away', () => {
+        // They are cumulative for one analyser's lifetime, so a set belonging
+        // to a process that has died would otherwise be reported as if it
+        // described the one that replaced it.
+        queue.onStatsReceived([
+            { name: 'edit-path-body-rewalk', count: 3, moving_average_ms: 0 },
+        ]);
+
+        queue.reset();
+        metrics.report.mockClear();
+        queue.onStatsReceived([]);
+
+        expect(metrics.report).toHaveBeenLastCalledWith(null, null, true, expect.objectContaining({ total: 0 }));
     });
 });

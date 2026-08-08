@@ -461,6 +461,16 @@ export class Requester {
         this.send({ command: "heap_check" });
     }
 
+    // Ask the analyser for its work counters. Cheap — it walks a map and
+    // writes what it finds — and nothing waits on the answer, so this is sent
+    // after a compile has already completed rather than on the latency path of
+    // one. Deliberately does not start the watchdog: a request this trivial
+    // going unanswered says nothing about the analyser's health that the
+    // compile before it has not already said.
+    sendStatsRequest() {
+        this.send({ command: "stats" });
+    }
+
     sendRestart() {
         if (this.analysed) {
             this.watchdog.startWatchdogIfNotRunning();

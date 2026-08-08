@@ -27,6 +27,8 @@ describe('MetricsReporter', () => {
             workspace: '/path/to/workspace',
             edit_ms: 100,
             compile_ms: null,
+            incremental_requested: false,
+            incremental: null,
         });
     });
 
@@ -53,6 +55,8 @@ describe('MetricsReporter', () => {
             workspace: '/path/to/workspace',
             edit_ms: 120,
             compile_ms: 900,
+            incremental_requested: false,
+            incremental: null,
         });
     });
 

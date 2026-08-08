@@ -32,6 +32,7 @@ import { SeverityMapper } from './severity-map';
 import { ServerManager } from './server-manager';
 
 import { EditQueue } from './edit-queue';
+import { StatEntry } from './incremental-stats';
 import { ConfigEventEmitter } from './config-event-emitter';
 import { GhulConfig } from './ghul-config';
 
@@ -174,6 +175,11 @@ interface InlayHintDto {
 interface InlayHintsResponse {
     kind: "inlay_hints";
     hints: InlayHintDto[];
+}
+
+interface StatsResponse {
+    kind: "stats";
+    entries: StatEntry[];
 }
 
 interface LocationsResponse {
@@ -477,6 +483,10 @@ export class ResponseHandler {
     want_plaintext_hover: boolean;
     incremental_analysis_requested: boolean = false;
 
+    // Set from the analyser's advertised capabilities on LISTEN; false until
+    // then, so nothing is sent to a compiler that has not said what it is.
+    stats_supported: boolean = false;
+
     // Set while the analyser is running without some of the assemblies the
     // project references. Every use of a type from a missing assembly fails to
     // resolve, so the diagnostics of that compile describe the incomplete
@@ -627,6 +637,18 @@ export class ResponseHandler {
 
         this.code_actions_supported = capabilities.includes("code-actions");
 
+        // The work counters are only asked for from an analyser known to have
+        // them. An analyser that does not know the `stats` command answers
+        // with an error frame, and an unrecognised frame aborts the compiler —
+        // so an ungated request would restart it on every attempt rather than
+        // simply going unanswered.
+        //
+        // Keyed off the incremental-analysis capability rather than a
+        // capability of its own: the counters that make the request worth
+        // sending arrived with that machinery, and the command itself is older
+        // still, so advertising it is a sound lower bound on support for both.
+        this.stats_supported = capabilities.includes("incremental-analysis");
+
         this.server_manager.startListening();
     }
 
@@ -662,6 +684,10 @@ export class ResponseHandler {
 
     handleHeapCheckDone() {
         this.edit_queue.onHeapCheckDone();
+    }
+
+    handleStats(response: StatsResponse) {
+        this.edit_queue.onStatsReceived(response.entries ?? []);
     }
 
     expectCodeActions(): Promise<DiagnosticDto[]> {
