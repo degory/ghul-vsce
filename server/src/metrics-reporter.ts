@@ -1,6 +1,7 @@
 import { Connection } from 'vscode-languageserver';
 
 import { log } from './log';
+import { IncrementalStats } from './incremental-stats';
 
 // The notification the status bar item in the client listens for. Not part of
 // LSP: a custom method, ignored by any other client.
@@ -16,6 +17,13 @@ export interface AnalysisMetrics {
     // Smoothed round-trip time of a full compile of the project, in
     // milliseconds; null until one has completed.
     compile_ms: number | null;
+    // Whether the extension asked the analyser for incremental analysis. What
+    // was asked for and what is happening are separate facts, and the case
+    // worth diagnosing is exactly where they disagree.
+    incremental_requested: boolean;
+    // What the analyser's own counters say it did, or null before it has been
+    // asked or if it answered nothing.
+    incremental: IncrementalStats | null;
 }
 
 // Rate at which measurements reach the status bar. Compiles complete far more
@@ -43,8 +51,19 @@ export class MetricsReporter {
         this.workspace_root = workspace_root;
     }
 
-    report(edit_ms: number | null, compile_ms: number | null) {
-        this.latest = { workspace: this.workspace_root, edit_ms, compile_ms };
+    report(
+        edit_ms: number | null,
+        compile_ms: number | null,
+        incremental_requested: boolean = false,
+        incremental: IncrementalStats | null = null
+    ) {
+        this.latest = {
+            workspace: this.workspace_root,
+            edit_ms,
+            compile_ms,
+            incremental_requested,
+            incremental
+        };
 
         if (this.timer) {
             return;

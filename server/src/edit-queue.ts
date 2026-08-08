@@ -13,6 +13,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import { Activity, ActivityProgress, ROUTINE_ANALYSIS_MESSAGE, SLOW_ACTIVITY_DELAY_MS } from './activity-progress';
 import { MetricsReporter } from './metrics-reporter';
+import { IncrementalStats, StatEntry, summariseIncrementalStats } from './incremental-stats';
 
 enum QueueState {
     START,
@@ -86,6 +87,12 @@ export class EditQueue {
     // project performing", which a single sample does not.
     static readonly LATENCY_SMOOTHING = 0.3;
 
+    // How often the analyser's work counters are asked for. Matched to the
+    // rate the metrics they travel with are reported at — asking more often
+    // would spend a round trip per edit to refresh a figure nothing shows any
+    // faster.
+    static readonly STATS_INTERVAL = 2000;
+
     constructor(
         requester: Requester,
         response_handler: ResponseHandler,
@@ -125,6 +132,11 @@ export class EditQueue {
         this.progress?.end(Activity.Edit);
         this.progress?.end(Activity.Compile);
         this.progress?.end(Activity.Heap);
+
+        // The counters belonged to the compiler that just died; the next one
+        // starts its own from zero.
+        this.incremental_stats = null;
+        this.last_stats_request_at = 0;
 
         // Drop the in-flight clocks with the request they belong to. Left
         // standing, the next compiler's whole-project analysis completes
@@ -245,6 +257,7 @@ export class EditQueue {
         this.requester.analysed = true;
 
         this.recordLatency('edit', this.send_start_time);
+        this.requestStatsIfDue();
 
         if (milliseconds) {
             this.edit_timeout = milliseconds * 1.5;
@@ -289,6 +302,7 @@ export class EditQueue {
         this.progress?.end(Activity.Compile);
 
         this.recordLatency('compile', this.compile_start_time);
+        this.requestStatsIfDue();
 
         if (milliseconds) {
             this.full_build_timeout = milliseconds * 1.5;
@@ -386,7 +400,46 @@ export class EditQueue {
     }
 
     private reportMetrics() {
-        this.metrics?.report(this.edit_latency_ms, this.compile_latency_ms);
+        this.metrics?.report(
+            this.edit_latency_ms,
+            this.compile_latency_ms,
+            this.response_handler.incremental_analysis_requested,
+            this.incremental_stats
+        );
+    }
+
+    // The analyser's counters, as of the last time they were asked for. Null
+    // until the first answer, and cleared when the compiler goes away: the
+    // counters are cumulative for one analyser's lifetime, so a set belonging
+    // to a process that has died would otherwise be reported as if it
+    // described the one that replaced it.
+    private incremental_stats: IncrementalStats | null = null;
+    private last_stats_request_at: number = 0;
+
+    onStatsReceived(entries: StatEntry[]) {
+        this.incremental_stats = summariseIncrementalStats(entries);
+
+        this.reportMetrics();
+    }
+
+    // Ask for the counters, no more often than the metrics they accompany are
+    // reported. Called only where a compile has just finished, so the request
+    // queues behind work that is already done rather than ahead of work the
+    // user is waiting on.
+    private requestStatsIfDue() {
+        if (!this.response_handler.stats_supported) {
+            return;
+        }
+
+        const now = Date.now();
+
+        if (now - this.last_stats_request_at < EditQueue.STATS_INTERVAL) {
+            return;
+        }
+
+        this.last_stats_request_at = now;
+
+        this.requester.sendStatsRequest();
     }
 
     // Self-clearing, so callers never leak a second edit timer: the queue has

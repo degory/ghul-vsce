@@ -9,10 +9,21 @@ import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } f
 // Mirrors the payload of the server's ghul/metrics notification
 // (server/src/metrics-reporter.ts). Durations are in milliseconds, and null
 // until the analyser has completed one of that kind of run.
+interface IncrementalStats {
+	body_rewalk: number;
+	interface_incremental: number;
+	full_rebuild: number;
+	total: number;
+	top_decline_reason: string | null;
+	top_decline_count: number;
+}
+
 interface AnalysisMetrics {
 	workspace: string;
 	edit_ms: number | null;
 	compile_ms: number | null;
+	incremental_requested: boolean;
+	incremental: IncrementalStats | null;
 }
 
 export function activate(context: ExtensionContext) {
@@ -65,9 +76,10 @@ export function activate(context: ExtensionContext) {
 	// Stands in the same cell as RUNNING_ICON when nothing is running.
 	// Codicons share a glyph box, so swapping one for the other never resizes
 	// the item, and nothing else in the status bar is pushed aside while the
-	// analyser works. An open ring reads as at rest, where a static $(sync)
-	// would read as a spinner that had seized.
-	const IDLE_ICON = '$(circle-large-outline)';
+	// analyser works. `blank` is a real codicon that draws nothing, so the
+	// resting state holds the width without putting a mark on screen for a
+	// state that has nothing to report.
+	const IDLE_ICON = '$(blank)';
 
 	// Contributed in package.json from images/ghul-icons.woff. It stands where
 	// the word "ghūl" used to, so the item says who is reporting without
@@ -197,8 +209,50 @@ export function activate(context: ExtensionContext) {
 		}
 
 		return [...metrics.values()]
-			.map(m => `${m.workspace}\nedit analysis: ${m.edit_ms == null ? "—" : formatDuration(m.edit_ms)}\nfull analysis: ${m.compile_ms == null ? "—" : formatDuration(m.compile_ms)}`)
+			.map(m =>
+				`${m.workspace}\n` +
+				`edit analysis: ${m.edit_ms == null ? "—" : formatDuration(m.edit_ms)}\n` +
+				`full analysis: ${m.compile_ms == null ? "—" : formatDuration(m.compile_ms)}\n` +
+				describeIncremental(m))
 			.join("\n\n");
+	}
+
+	// What the analyser did with the edits it was given, as against what it was
+	// asked to do with them. An edit served incrementally reuses the state the
+	// analyser already holds; one that isn't rebuilds the whole project, which
+	// on a large one is the difference between milliseconds and most of a
+	// second. Nothing else surfaces this, so a rate that has quietly gone to
+	// zero looks the same from outside as an analyser that has simply become
+	// slow — which is the question this line exists to answer.
+	//
+	// The reason is worth showing alongside the rate because it distinguishes
+	// the two ways of getting a low one: `not-eligible` for effectively every
+	// rebuild means the analyser is not attempting incremental analysis at all,
+	// where any other reason means it is attempting it and the edits are being
+	// refused on their merits.
+	function describeIncremental(m: AnalysisMetrics): string {
+		if (!m.incremental_requested) {
+			return "incremental analysis: off";
+		}
+
+		if (!m.incremental || m.incremental.total === 0) {
+			return "incremental analysis: on, no edits yet";
+		}
+
+		const { body_rewalk, interface_incremental, full_rebuild, total } = m.incremental;
+		const rate = Math.round(((body_rewalk + interface_incremental) / total) * 100);
+
+		let described =
+			`incremental analysis: on, ${rate}% of ${total} edit${total === 1 ? "" : "s"}\n` +
+			`  body re-walk: ${body_rewalk}\n` +
+			`  interface: ${interface_incremental}\n` +
+			`  full rebuild: ${full_rebuild}`;
+
+		if (m.incremental.top_decline_reason) {
+			described += `\n  mostly declined: ${m.incremental.top_decline_reason} (${m.incremental.top_decline_count})`;
+		}
+
+		return described;
 	}
 
 	function setMetrics(m: AnalysisMetrics) {

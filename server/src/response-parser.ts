@@ -139,6 +139,10 @@ export class ResponseParser {
             this.response_handler.handleInlayHints(message);
             break;
 
+        case "stats":
+            this.response_handler.handleStats(message);
+            break;
+
         default:
             // not a known kind, but compiler presumably still alive
             this.response_handler.handleUnexpected();
