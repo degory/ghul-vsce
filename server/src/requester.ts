@@ -22,7 +22,7 @@ import { normalizeFileUri } from './normalize-file-uri';
 import { ServerEventEmitter } from './server-event-emitter';
 
 import { DiagnosticDto, ResponseHandler } from './response-handler';
-
+import { EditDelta } from './edit-delta';
 import { Watchdog } from './watchdog';
 
 const version = require('./version') as string;
@@ -213,6 +213,17 @@ export class Requester {
                 path: normalizeFileUri(uri),
                 source: source
             }))
+        });
+    }
+
+    sendEditDeltas(deltas: EditDelta[]) {
+        this.ensure_running();
+
+        this.watchdog.startWatchdogIfNotRunning();
+
+        this.send({
+            command: "edit_delta",
+            files: deltas
         });
     }
 
