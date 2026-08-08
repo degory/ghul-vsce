@@ -13,6 +13,8 @@ export enum Activity {
     Compiler = 'compiler',
     // Building referenced projects whose output assemblies are absent.
     References = 'references',
+    // The analyser digesting the edits made since it last saw the file.
+    Edit = 'edit',
     // A full compile of the project after a lull in editing.
     Compile = 'compile',
     // The analyser sampling (and so collecting) its heap.
