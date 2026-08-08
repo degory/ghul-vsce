@@ -12,6 +12,7 @@ import { MetricsReporter } from '../src/metrics-reporter';
 // We use a class rather than jest.fn() so the test reads like a script.
 class RecordingRequester {
     sendDocumentsCalls: Array<{ uri: string; source: string }[]> = [];
+    sendEditDeltasCalls: Array<any[]> = [];
     sendFullCompileRequestCalls = 0;
     sendHeapCheckRequestCalls = 0;
     sendStatsRequestCalls = 0;
@@ -22,6 +23,9 @@ class RecordingRequester {
 
     sendDocuments(documents: { uri: string; source: string }[]) {
         this.sendDocumentsCalls.push(documents);
+    }
+    sendEditDeltas(deltas: any[]) {
+        this.sendEditDeltasCalls.push(deltas);
     }
     sendFullCompileRequest() {
         this.sendFullCompileRequestCalls += 1;
@@ -832,5 +836,104 @@ describe('EditQueue incremental statistics', () => {
         queue.onStatsReceived([]);
 
         expect(metrics.report).toHaveBeenLastCalledWith(null, null, true, expect.objectContaining({ total: 0 }));
+    });
+});
+
+describe('EditQueue edit deltas', () => {
+    let recorder: RecordingRequester;
+    let watchdog: Watchdog;
+    let responseHandler: ResponseHandler;
+    let queue: EditQueue;
+
+    beforeEach(() => {
+        jest.useFakeTimers();
+
+        watchdog = new Watchdog(10000, () => {});
+        responseHandler = {
+            rejectAllAndThrow: (message: string) => { throw message; },
+            incremental_analysis_requested: true,
+            stats_supported: true,
+            edit_deltas_supported: true,
+        } as unknown as ResponseHandler;
+
+        recorder = new RecordingRequester();
+        queue = new EditQueue(
+            recorder as unknown as Requester,
+            responseHandler,
+            watchdog,
+            { report: jest.fn(), end: jest.fn() } as unknown as ActivityProgress,
+            { report: jest.fn() } as unknown as MetricsReporter
+        );
+    });
+
+    afterEach(() => {
+        jest.useRealTimers();
+    });
+
+    function queueAndFlushEdit(uri: string, initialText: string, editText: string) {
+        queue.reset();
+        queue.start([{ uri, source: initialText }]);
+        queue.onPartialCompileDone(10);
+
+        queue.queueEdit3(uri, 2, editText);
+        jest.advanceTimersByTime(queue.edit_timeout);
+    }
+
+    it('sends a delta when the analyser supports deltas and the file was sent before', () => {
+        queueAndFlushEdit('file:///a.ghul', 'original', 'changed text');
+
+        expect(recorder.sendEditDeltasCalls).toHaveLength(1);
+        expect(recorder.sendDocumentsCalls).toHaveLength(1); // the start() seed
+    });
+
+    it('falls back to full text when the analyser does not support deltas', () => {
+        (responseHandler as unknown as { edit_deltas_supported: boolean }).edit_deltas_supported = false;
+
+        queueAndFlushEdit('file:///a.ghul', 'original', 'changed text');
+
+        expect(recorder.sendEditDeltasCalls).toHaveLength(0);
+        expect(recorder.sendDocumentsCalls).toHaveLength(2); // start + the edit
+    });
+
+    it('falls back to full text for a file it has not sent before', () => {
+        // The first time a file is edited, there is no retained text to delta
+        // against, so it goes as full text.
+        queue.reset();
+        queue.start([{ uri: 'file:///seed.ghul', source: 'seed' }]);
+        queue.onPartialCompileDone(10);
+
+        queue.queueEdit3('file:///new.ghul', 1, 'new file');
+        jest.advanceTimersByTime(queue.edit_timeout);
+
+        expect(recorder.sendDocumentsCalls).toHaveLength(2);
+        expect(recorder.sendEditDeltasCalls).toHaveLength(0);
+    });
+
+    it('sends the expected_length matching the previously sent text', () => {
+        // start() sends 'seed' (4 chars), then an edit to the same file sends
+        // a delta whose expected_length must be 4.
+        queueAndFlushEdit('file:///seed.ghul', 'seed', 'seeded');
+
+        const delta = recorder.sendEditDeltasCalls[0][0];
+        expect(delta.expected_length).toBe(4);
+        expect(delta.path).toBe('file:///seed.ghul');
+    });
+
+    it('clears retained text on reset, so start re-sends full text', () => {
+        queueAndFlushEdit('file:///a.ghul', 'original', 'changed');
+        expect(recorder.sendEditDeltasCalls).toHaveLength(1);
+
+        // Reset simulates an analyser restart: retained text is gone, so
+        // start() after reset sends full text (the second sendDocuments),
+        // and populates last_sent_text so the edit after it is a delta.
+        queue.reset();
+        queue.start([{ uri: 'file:///a.ghul', source: 'changed' }]);
+        queue.onPartialCompileDone(10);
+
+        queue.queueEdit3('file:///a.ghul', 3, 'changed again');
+        jest.advanceTimersByTime(queue.edit_timeout);
+
+        expect(recorder.sendDocumentsCalls).toHaveLength(2);
+        expect(recorder.sendEditDeltasCalls).toHaveLength(2);
     });
 });

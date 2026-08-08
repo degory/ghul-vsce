@@ -182,6 +182,13 @@ interface StatsResponse {
     entries: StatEntry[];
 }
 
+interface ErrorResponse {
+    kind: "error";
+    error_kind: string;
+    message: string;
+    path: string;
+}
+
 interface LocationsResponse {
     locations: LocationDto[];
 }
@@ -487,6 +494,12 @@ export class ResponseHandler {
     // then, so nothing is sent to a compiler that has not said what it is.
     stats_supported: boolean = false;
 
+    // Set from the analyser's advertised capabilities on LISTEN. A client
+    // must not send edit_delta without seeing this: unknown JSON members are
+    // ignored, so an older analyser would read a delta-fielded edit as empty
+    // source and blank the file.
+    edit_deltas_supported: boolean = false;
+
     // Set while the analyser is running without some of the assemblies the
     // project references. Every use of a type from a missing assembly fails to
     // resolve, so the diagnostics of that compile describe the incomplete
@@ -649,6 +662,8 @@ export class ResponseHandler {
         // still, so advertising it is a sound lower bound on support for both.
         this.stats_supported = capabilities.includes("incremental-analysis");
 
+        this.edit_deltas_supported = capabilities.includes("edit-deltas");
+
         this.server_manager.startListening();
     }
 
@@ -688,6 +703,16 @@ export class ResponseHandler {
 
     handleStats(response: StatsResponse) {
         this.edit_queue.onStatsReceived(response.entries ?? []);
+    }
+
+    // The analyser could not parse a request — typically a newer client
+    // sending a request variant the analyser does not know. The analyser
+    // sends this frame deliberately and keeps itself alive so the client can
+    // surface it, so the client must not abort. Logging and carrying on is
+    // what keeps an old analyser paired with a newer client from being
+    // restarted on every request the client tries.
+    handleError(response: ErrorResponse) {
+        log(`analyser error: ${response.error_kind}: ${response.message}`);
     }
 
     expectCodeActions(): Promise<DiagnosticDto[]> {

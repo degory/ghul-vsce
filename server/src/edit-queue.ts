@@ -14,6 +14,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { Activity, ActivityProgress, ROUTINE_ANALYSIS_MESSAGE, SLOW_ACTIVITY_DELAY_MS } from './activity-progress';
 import { MetricsReporter } from './metrics-reporter';
 import { IncrementalStats, StatEntry, summariseIncrementalStats } from './incremental-stats';
+import { EditDelta, computeSpan } from './edit-delta';
 
 enum QueueState {
     START,
@@ -54,6 +55,13 @@ export class EditQueue {
     watchdog: Watchdog;
     progress: ActivityProgress | null;
     metrics: MetricsReporter | null;
+
+    // The text the analyser is known to hold for each file, keyed by the
+    // normalised path the analyser sees. Populated on every full-text send,
+    // and used at flush time to compute the span that changed so only that
+    // span is sent rather than the whole file. Cleared on reset: a relaunched
+    // analyser holds nothing, and the client re-primes it with full text.
+    last_sent_text: Map<string, string>;
 
     // Smoothed round-trip times, in milliseconds, of the two things the user
     // waits on: an incremental analysis of an edit, and a full compile of the
@@ -114,6 +122,7 @@ export class EditQueue {
         this.compile_latency_ms = null;
 
         this.pending_changes = new Map();
+        this.last_sent_text = new Map();
 
         this.state = QueueState.START;
 
@@ -138,6 +147,10 @@ export class EditQueue {
         this.incremental_stats = null;
         this.last_stats_request_at = 0;
 
+        // The analyser holds no retained text — a fresh one starts from
+        // whatever the client sends it.
+        this.last_sent_text.clear();
+
         // Drop the in-flight clocks with the request they belong to. Left
         // standing, the next compiler's whole-project analysis completes
         // against a timestamp from the dead one's edit and reports the whole
@@ -154,6 +167,12 @@ export class EditQueue {
 
     sendMultiEdits(documents: { uri: string, source: string }[]) {
         this.requester.sendDocuments(documents);
+
+        // The analyser now holds this text; record it so the next flush can
+        // send only the span that changed.
+        for (let doc of documents) {
+            this.last_sent_text.set(normalizeFileUri(doc.uri), doc.source);
+        }
     }
 
     sendOpenFiles(uris: string[]) {
@@ -544,6 +563,55 @@ export class EditQueue {
             fallback: true
         });
 
-        this.sendMultiEdits(documents);
+        this.sendEdits(documents);
+    }
+
+    // Send edits as deltas where the analyser can take them, and as full text
+    // otherwise. One request either way — the queue expects a single response,
+    // and a mix of edit and edit_delta would produce two. So if any file lacks
+    // last-sent text the whole batch goes as full text; the common case is one
+    // file that was sent before, and that one goes as a delta.
+    sendEdits(documents: { uri: string, source: string }[]) {
+        if (!this.response_handler.edit_deltas_supported) {
+            this.sendMultiEdits(documents);
+
+            return;
+        }
+
+        const deltas: EditDelta[] = [];
+
+        for (let doc of documents) {
+            const path = normalizeFileUri(doc.uri);
+            const lastSent = this.last_sent_text.get(path);
+
+            if (!lastSent) {
+                this.sendMultiEdits(documents);
+
+                return;
+            }
+
+            const span = computeSpan(lastSent, doc.source);
+
+            if (!span) {
+                // The text did not change — an undo back to what was sent.
+                // The analyser already has it, so there is nothing to send.
+                continue;
+            }
+
+            deltas.push({ path, ...span });
+
+            this.last_sent_text.set(path, doc.source);
+        }
+
+        if (deltas.length === 0) {
+            // Every file was unchanged. Advance the state as though a compile
+            // had completed with nothing to do, so the queue does not sit
+            // waiting for a response that will never come.
+            this.onPartialCompileDone(0);
+
+            return;
+        }
+
+        this.requester.sendEditDeltas(deltas);
     }
 }

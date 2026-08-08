@@ -143,6 +143,10 @@ export class ResponseParser {
             this.response_handler.handleStats(message);
             break;
 
+        case "error":
+            this.response_handler.handleError(message);
+            break;
+
         default:
             // not a known kind, but compiler presumably still alive
             this.response_handler.handleUnexpected();
