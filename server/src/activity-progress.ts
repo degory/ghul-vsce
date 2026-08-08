@@ -26,6 +26,31 @@ export enum Activity {
     Request = 'request',
 }
 
+// What the routine analysis activities report: an edit being digested, the
+// full check that follows a lull in typing, a query outstanding long enough to
+// be worth mentioning. They are one thing as far as the user is concerned —
+// the analyser is busy — and they run constantly, so they say so in one
+// unvarying phrase rather than each in its own words. The client renders it as
+// a spinner and nothing else, which is what keeps the status bar item a fixed
+// width while the user types; the tooltip carries the timings for anyone who
+// wants the detail.
+//
+// A word rather than an opaque marker because a client that does none of that
+// rendering — the standalone language server has several — shows the message
+// as it stands, and "analysing" is true.
+//
+// The activities that are NOT routine — workspace setup, the analyser starting
+// or restarting, referenced projects being built, the heap being collected —
+// each keep their own wording. They are rare, they leave the editor degraded
+// while they run, and they are the cases where the user is owed an
+// explanation rather than a spinner.
+//
+// Every routine activity is reported as a fallback (see ReportOptions) for
+// that reason: the analyser digests edits throughout a workspace setup or a
+// restart, so on recency alone it would displace the one message that had
+// something to say with the one that has nothing.
+export const ROUTINE_ANALYSIS_MESSAGE = 'analysing';
+
 // How long an activity has to run before it is worth interrupting the user
 // with. Below this, showing and immediately hiding a spinner is a flicker that
 // reads as instability rather than as information.

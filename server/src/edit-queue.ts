@@ -11,17 +11,8 @@ import { Watchdog } from './watchdog';
 import { normalizeFileUri } from './normalize-file-uri';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
-import { Activity, ActivityProgress, SLOW_ACTIVITY_DELAY_MS } from './activity-progress';
+import { Activity, ActivityProgress, ROUTINE_ANALYSIS_MESSAGE, SLOW_ACTIVITY_DELAY_MS } from './activity-progress';
 import { MetricsReporter } from './metrics-reporter';
-
-// What the status bar says while the analyser is working: one pulse for the
-// edits made since it last looked, three for a check of the whole project.
-// No words — this happens every time the user pauses, and a phrase appearing
-// and going that often is read as flicker rather than as information, where a
-// glyph is read as the light being on. The tooltip carries the timings, and
-// names both phases, for anyone who wants to know what the pulses mean.
-export const EDIT_ANALYSIS_GLYPHS = '$(pulse)';
-export const FULL_ANALYSIS_GLYPHS = '$(pulse)$(pulse)$(pulse)';
 
 enum QueueState {
     START,
@@ -352,8 +343,9 @@ export class EditQueue {
     }
 
     private requestFullCompile() {
-        this.progress?.report(Activity.Compile, FULL_ANALYSIS_GLYPHS, {
-            delay_ms: SLOW_ACTIVITY_DELAY_MS
+        this.progress?.report(Activity.Compile, ROUTINE_ANALYSIS_MESSAGE, {
+            delay_ms: SLOW_ACTIVITY_DELAY_MS,
+            fallback: true
         });
 
         this.compile_start_time = Date.now();
@@ -494,8 +486,9 @@ export class EditQueue {
         // Delayed for the same reason every other activity is — an analysis
         // that lands inside the delay is never shown at all, which on a fast
         // project is most of them.
-        this.progress?.report(Activity.Edit, EDIT_ANALYSIS_GLYPHS, {
-            delay_ms: SLOW_ACTIVITY_DELAY_MS
+        this.progress?.report(Activity.Edit, ROUTINE_ANALYSIS_MESSAGE, {
+            delay_ms: SLOW_ACTIVITY_DELAY_MS,
+            fallback: true
         });
 
         this.sendMultiEdits(documents);

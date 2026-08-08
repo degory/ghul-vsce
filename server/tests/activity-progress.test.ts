@@ -1,6 +1,6 @@
 import { Connection } from 'vscode-languageserver';
 
-import { Activity, ActivityProgress, CREATE_TIMEOUT_MS, SLOW_ACTIVITY_DELAY_MS } from '../src/activity-progress';
+import { Activity, ActivityProgress, CREATE_TIMEOUT_MS, ROUTINE_ANALYSIS_MESSAGE, SLOW_ACTIVITY_DELAY_MS } from '../src/activity-progress';
 
 // A reporter that records what the user would see, in order.
 function makeReporter() {
@@ -241,6 +241,24 @@ describe('ActivityProgress', () => {
 
             expect(reporter.report).toHaveBeenLastCalledWith('analysing');
             expect(reporter.done).not.toHaveBeenCalled();
+        });
+
+        it('keeps an explanation up while routine analysis runs underneath it', async () => {
+            // Routine analysis says only that the analyser is busy, and it
+            // runs throughout the activities that have something to explain —
+            // a heap collection here, but equally a workspace setup or a
+            // restart. Reporting it as a fallback is what stops the message
+            // the user needs from being displaced by the one that says
+            // nothing, purely because it arrived second.
+            const reporter = makeReporter();
+            const progress = new ActivityProgress(makeConnection(reporter));
+
+            progress.report(Activity.Heap, 'garbage collecting');
+            await Promise.resolve();
+            progress.report(Activity.Edit, ROUTINE_ANALYSIS_MESSAGE, { fallback: true });
+
+            expect(reporter.begin).toHaveBeenCalledWith('ghūl', undefined, 'garbage collecting', false);
+            expect(reporter.report).not.toHaveBeenCalledWith(ROUTINE_ANALYSIS_MESSAGE);
         });
     });
 

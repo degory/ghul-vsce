@@ -24,7 +24,7 @@ import { ServerManager } from './server-manager';
 import { DocumentChangeTracker } from './document-change-tracker';
 import { GhulAnalyser } from './ghul-analyser';
 import { Watchdog } from './watchdog';
-import { Activity, ActivityProgress, SLOW_ACTIVITY_DELAY_MS } from './activity-progress';
+import { Activity, ActivityProgress, ROUTINE_ANALYSIS_MESSAGE, SLOW_ACTIVITY_DELAY_MS } from './activity-progress';
 import { MetricsReporter } from './metrics-reporter';
 
 import { EditorSettings, getGhulConfig, GhulConfig } from './ghul-config';
@@ -176,14 +176,14 @@ export class WorkspaceContext {
     // become a multi-second wait that otherwise looks like the editor
     // ignoring the user. Delayed, because most requests answer far too
     // quickly to be worth a spinner, and marked as a fallback so a request
-    // that belongs to something already being reported (a full compile, the
-    // heap check) keeps that more specific description.
+    // made while something with an explanation of its own is running (the
+    // heap check, a referenced-project build) leaves that explanation up
+    // rather than replacing it with the routine phrase on recency alone.
     private reportOutstandingRequest(busy: boolean) {
         if (busy) {
-            this.progress.report(Activity.Request, "analysing", {
+            this.progress.report(Activity.Request, ROUTINE_ANALYSIS_MESSAGE, {
                 delay_ms: SLOW_ACTIVITY_DELAY_MS,
-                fallback: true,
-                done_message: "analysed"
+                fallback: true
             });
         } else {
             this.progress.end(Activity.Request);

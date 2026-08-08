@@ -1,11 +1,11 @@
 import { TextDocumentChangeEvent } from 'vscode-languageserver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
-import { EditQueue, EDIT_ANALYSIS_GLYPHS, FULL_ANALYSIS_GLYPHS } from '../src/edit-queue';
+import { EditQueue } from '../src/edit-queue';
 import { Requester } from '../src/requester';
 import { ResponseHandler } from '../src/response-handler';
 import { Watchdog } from '../src/watchdog';
-import { Activity, ActivityProgress, SLOW_ACTIVITY_DELAY_MS } from '../src/activity-progress';
+import { Activity, ActivityProgress, ROUTINE_ANALYSIS_MESSAGE, SLOW_ACTIVITY_DELAY_MS } from '../src/activity-progress';
 import { MetricsReporter } from '../src/metrics-reporter';
 
 // A minimal Requester stand-in that records every send for assertion.
@@ -464,21 +464,21 @@ describe('EditQueue reporting', () => {
         jest.advanceTimersByTime(queue.full_build_timeout);
     }
 
-    it('shows three pulses while a full analysis runs', () => {
+    it('reports a full analysis as routine, so it shows as a spinner alone', () => {
         reachFullCompile();
 
         expect(recorder.sendFullCompileRequestCalls).toBe(1);
         expect(progress.report).toHaveBeenCalledWith(
             Activity.Compile,
-            FULL_ANALYSIS_GLYPHS,
-            { delay_ms: SLOW_ACTIVITY_DELAY_MS });
+            ROUTINE_ANALYSIS_MESSAGE,
+            { delay_ms: SLOW_ACTIVITY_DELAY_MS, fallback: true });
 
         queue.onFullCompileDone(200);
 
         expect(progress.end).toHaveBeenCalledWith(Activity.Compile);
     });
 
-    it('shows one pulse while the analyser digests an edit', () => {
+    it('reports an edit being digested, as routine', () => {
         // Nothing reported this at all before: the analyser answered every
         // keystroke with the status bar sitting at rest, so the one part of
         // its work the user is actually waiting on was the one part it never
@@ -491,15 +491,15 @@ describe('EditQueue reporting', () => {
 
         expect(progress.report).toHaveBeenCalledWith(
             Activity.Edit,
-            EDIT_ANALYSIS_GLYPHS,
-            { delay_ms: SLOW_ACTIVITY_DELAY_MS });
+            ROUTINE_ANALYSIS_MESSAGE,
+            { delay_ms: SLOW_ACTIVITY_DELAY_MS, fallback: true });
 
         queue.onPartialCompileDone(10);
 
         expect(progress.end).toHaveBeenCalledWith(Activity.Edit);
     });
 
-    it('holds the pulse up across a burst rather than blinking it per round trip', () => {
+    it('holds the indicator up across a burst rather than blinking it per round trip', () => {
         // Typing produces a partial compile every few hundred milliseconds.
         // An indicator ended with each one would strobe for as long as the
         // user kept typing, which reads as a fault rather than as progress.

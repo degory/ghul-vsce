@@ -38,11 +38,15 @@ export function activate(context: ExtensionContext) {
 	// part of a minute on a fresh checkout, so surface it ourselves via a
 	// dedicated status bar item instead.
 	//
-	// One item carries everything ghūl has to say: the logo on its own while
-	// nothing is happening, an icon and a message while something is, and the
-	// analyser timings in the tooltip rather than taking permanent width. The
-	// extension only activates on a workspace containing ghūl files, so the
-	// item is meaningful wherever it appears and never needs to be hidden.
+	// One item carries everything ghūl has to say. It is always the logo and a
+	// state glyph — a spinner while the analyser is working, a ring while it
+	// is not — with a message between them for the few activities that owe the
+	// user an explanation rather than a spinner. Routine analysis reports no
+	// words at all, so the item stays one fixed width through everything the
+	// user does to it while typing; the analyser timings live in the tooltip
+	// rather than taking permanent width. The extension only activates on a
+	// workspace containing ghūl files, so the item is meaningful wherever it
+	// appears and never needs to be hidden.
 	let statusBarItem = window.createStatusBarItem(StatusBarAlignment.Right);
 	context.subscriptions.push(statusBarItem);
 
@@ -53,25 +57,36 @@ export function activate(context: ExtensionContext) {
 	// not to still be claiming something is happening when it isn't.
 	const COMPLETED_HOLD_MS = 1500;
 
-	// Trails the message rather than leading it: the logo is what identifies
-	// the item, so it keeps the front, and the spinner reads as attached to
-	// the activity it belongs to. A finished activity already says so in the
-	// past tense, so it carries no icon and the spinner's cell simply goes.
+	// Trails whatever else the item is showing rather than leading it: the logo
+	// is what identifies the item, so it keeps the front, and the state glyph
+	// reads as attached to the activity it belongs to.
 	const RUNNING_ICON = '$(sync~spin)';
+
+	// Stands in the same cell as RUNNING_ICON when nothing is running.
+	// Codicons share a glyph box, so swapping one for the other never resizes
+	// the item, and nothing else in the status bar is pushed aside while the
+	// analyser works. An open ring reads as at rest, where a static $(sync)
+	// would read as a spinner that had seized.
+	const IDLE_ICON = '$(circle-large-outline)';
 
 	// Contributed in package.json from images/ghul-icons.woff. It stands where
 	// the word "ghūl" used to, so the item says who is reporting without
 	// spending width on it, and it takes the status bar foreground colour the
-	// same way the codicons beside it do. On its own it is also the resting
-	// state: the item is present, so ghūl support is up and has nothing to
-	// report.
+	// same way the codicons beside it do.
 	const BRAND_ICON = '$(ghul-logo)';
 
-	// An activity reported as icons rather than words is already showing that
-	// it is running — the icons are the whole message — so it gets no spinner
-	// beside them, which would otherwise read as a fourth glyph in a row of
-	// three with nothing to say which one is the activity.
-	const ICONS_ONLY = /^(?:\$\([^)]+\)\s*)+$/;
+	// The one phrase the server uses for all of its routine analysis — an edit
+	// being digested, the full check after a lull, a slow query. It stands for
+	// "the analyser is busy" and nothing more, so it is shown as the spinner
+	// alone: the words would appear and vanish several times a minute while
+	// drawing a distinction nobody asked to follow. Every other message names
+	// something rarer that leaves the editor degraded while it runs, and is
+	// shown as it stands.
+	//
+	// Kept in step with ROUTINE_ANALYSIS_MESSAGE in
+	// server/src/activity-progress.ts, which explains why it is a word rather
+	// than a marker.
+	const ROUTINE_ANALYSIS_MESSAGE = 'analysing';
 
 	interface ProgressEntry {
 		message: string;
@@ -88,12 +103,18 @@ export function activate(context: ExtensionContext) {
 
 	function render() {
 		const entries = [...progressMessages.values()];
-		const entry = entries[entries.length - 1];
+
+		// Anything still running spins, whatever it is — including routine
+		// analysis, which contributes the spinner without contributing words.
+		const running = entries.some(entry => !entry.completed);
+
+		// Of the activities that do have something to say, the most recent
+		// one says it.
+		const explained = entries.filter(entry => entry.message != ROUTINE_ANALYSIS_MESSAGE);
+		const entry = explained[explained.length - 1];
 
 		statusBarItem.text =
-			!entry ? BRAND_ICON :
-			entry.completed || ICONS_ONLY.test(entry.message) ? `${BRAND_ICON} ${entry.message}` :
-			`${BRAND_ICON} ${entry.message} ${RUNNING_ICON}`;
+			`${BRAND_ICON}${entry ? ` ${entry.message}` : ''} ${running ? RUNNING_ICON : IDLE_ICON}`;
 
 		statusBarItem.tooltip = describeMetrics();
 		statusBarItem.show();
@@ -121,13 +142,24 @@ export function activate(context: ExtensionContext) {
 
 	// The activity is over. Whatever it last said stays up, in the past tense
 	// the server switched it to, with the spinner stopped — then the item falls
-	// back to the logo on its own. More work arriving in the meantime takes the
-	// display back immediately, via setProgress above; there is no wait to get
-	// through before the next thing can be reported.
+	// back to the logo and the idle ring. More work arriving in the meantime
+	// takes the display back immediately, via setProgress above; there is no
+	// wait to get through before the next thing can be reported.
 	function finishProgress(token: string | number) {
 		const entry = progressMessages.get(token);
 
 		if (!entry) {
+			return;
+		}
+
+		// Routine analysis put no words on screen, so it has none to leave
+		// there — and it ends often enough that holding a timer open for each
+		// one would be a timer per keystroke burst for nothing to read.
+		if (entry.message == ROUTINE_ANALYSIS_MESSAGE) {
+			clearHold(token);
+			progressMessages.delete(token);
+			render();
+
 			return;
 		}
 
