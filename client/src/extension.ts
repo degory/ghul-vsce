@@ -67,6 +67,12 @@ export function activate(context: ExtensionContext) {
 	// report.
 	const BRAND_ICON = '$(ghul-logo)';
 
+	// An activity reported as icons rather than words is already showing that
+	// it is running — the icons are the whole message — so it gets no spinner
+	// beside them, which would otherwise read as a fourth glyph in a row of
+	// three with nothing to say which one is the activity.
+	const ICONS_ONLY = /^(?:\$\([^)]+\)\s*)+$/;
+
 	interface ProgressEntry {
 		message: string;
 		// Set once the activity has finished and the message is only being
@@ -86,7 +92,7 @@ export function activate(context: ExtensionContext) {
 
 		statusBarItem.text =
 			!entry ? BRAND_ICON :
-			entry.completed ? `${BRAND_ICON} ${entry.message}` :
+			entry.completed || ICONS_ONLY.test(entry.message) ? `${BRAND_ICON} ${entry.message}` :
 			`${BRAND_ICON} ${entry.message} ${RUNNING_ICON}`;
 
 		statusBarItem.tooltip = describeMetrics();

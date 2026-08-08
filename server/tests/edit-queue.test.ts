@@ -1,7 +1,7 @@
 import { TextDocumentChangeEvent } from 'vscode-languageserver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
-import { EditQueue } from '../src/edit-queue';
+import { EditQueue, EDIT_ANALYSIS_GLYPHS, FULL_ANALYSIS_GLYPHS } from '../src/edit-queue';
 import { Requester } from '../src/requester';
 import { ResponseHandler } from '../src/response-handler';
 import { Watchdog } from '../src/watchdog';
@@ -464,18 +464,55 @@ describe('EditQueue reporting', () => {
         jest.advanceTimersByTime(queue.full_build_timeout);
     }
 
-    it('says the project is being checked while a full compile runs', () => {
+    it('shows three pulses while a full analysis runs', () => {
         reachFullCompile();
 
         expect(recorder.sendFullCompileRequestCalls).toBe(1);
         expect(progress.report).toHaveBeenCalledWith(
             Activity.Compile,
-            'full analysis',
-            { delay_ms: SLOW_ACTIVITY_DELAY_MS, done_message: 'full analysis done' });
+            FULL_ANALYSIS_GLYPHS,
+            { delay_ms: SLOW_ACTIVITY_DELAY_MS });
 
         queue.onFullCompileDone(200);
 
         expect(progress.end).toHaveBeenCalledWith(Activity.Compile);
+    });
+
+    it('shows one pulse while the analyser digests an edit', () => {
+        // Nothing reported this at all before: the analyser answered every
+        // keystroke with the status bar sitting at rest, so the one part of
+        // its work the user is actually waiting on was the one part it never
+        // admitted to.
+        queue.reset();
+        progress.end.mockClear();
+
+        queue.queueEdit3('file:///a.ghul', 1, 'text');
+        jest.advanceTimersByTime(queue.edit_timeout);
+
+        expect(progress.report).toHaveBeenCalledWith(
+            Activity.Edit,
+            EDIT_ANALYSIS_GLYPHS,
+            { delay_ms: SLOW_ACTIVITY_DELAY_MS });
+
+        queue.onPartialCompileDone(10);
+
+        expect(progress.end).toHaveBeenCalledWith(Activity.Edit);
+    });
+
+    it('holds the pulse up across a burst rather than blinking it per round trip', () => {
+        // Typing produces a partial compile every few hundred milliseconds.
+        // An indicator ended with each one would strobe for as long as the
+        // user kept typing, which reads as a fault rather than as progress.
+        queue.reset();
+        progress.end.mockClear();
+
+        queue.queueEdit3('file:///a.ghul', 1, 'text');
+        jest.advanceTimersByTime(queue.edit_timeout);
+
+        queue.queueEdit3('file:///a.ghul', 2, 'more text');
+        queue.onPartialCompileDone(10);
+
+        expect(progress.end).not.toHaveBeenCalledWith(Activity.Edit);
     });
 
     it('says the analyser is garbage collecting while the heap check runs', () => {
