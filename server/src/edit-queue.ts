@@ -337,9 +337,12 @@ export class EditQueue {
     }
 
     private requestFullCompile() {
-        this.progress?.report(Activity.Compile, "checking project", {
+        // Named for the figure it produces: the round trip timed here is the
+        // one the status bar tooltip reports as "full analysis", so the two
+        // say the same word for the same thing.
+        this.progress?.report(Activity.Compile, "full analysis", {
             delay_ms: SLOW_ACTIVITY_DELAY_MS,
-            done_message: "project checked"
+            done_message: "full analysis done"
         });
 
         this.compile_start_time = Date.now();

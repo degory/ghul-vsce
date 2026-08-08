@@ -34,10 +34,10 @@ describe('ActivityProgress', () => {
         progress.report(Activity.Setup, 'restoring .NET tools');
         await settle();
 
-        progress.report(Activity.Compile, 'checking project');
+        progress.report(Activity.Compile, 'full analysis');
 
         expect(reporter.begin).toHaveBeenCalledWith('ghūl', undefined, 'restoring .NET tools', false);
-        expect(reporter.report).toHaveBeenLastCalledWith('checking project');
+        expect(reporter.report).toHaveBeenLastCalledWith('full analysis');
     });
 
     it('falls back to what is still running when an activity ends', async () => {
@@ -50,7 +50,7 @@ describe('ActivityProgress', () => {
         progress.report(Activity.References, 'building referenced projects');
         await settle();
 
-        progress.report(Activity.Compile, 'checking project');
+        progress.report(Activity.Compile, 'full analysis');
         progress.end(Activity.Compile);
 
         expect(reporter.report).toHaveBeenLastCalledWith('building referenced projects');
@@ -63,7 +63,7 @@ describe('ActivityProgress', () => {
         const reporter = makeReporter();
         const progress = new ActivityProgress(makeConnection(reporter));
 
-        progress.report(Activity.Compiler, 'starting compiler');
+        progress.report(Activity.Compiler, 'starting analyser');
         await settle();
 
         progress.report(Activity.Heap, 'garbage collecting');
@@ -81,11 +81,11 @@ describe('ActivityProgress', () => {
         progress.report(Activity.Setup, 'restoring .NET tools');
         await settle();
 
-        progress.report(Activity.Compiler, 'starting compiler');
+        progress.report(Activity.Compiler, 'starting analyser');
         progress.end(Activity.Setup);
 
         expect(reporter.report.mock.calls.map(([message]) => message))
-            .toEqual(['starting compiler']);
+            .toEqual(['starting analyser']);
     });
 
     it('closes the notification when the last activity ends', async () => {
@@ -108,11 +108,11 @@ describe('ActivityProgress', () => {
         await settle();
         progress.end(Activity.Heap);
 
-        progress.report(Activity.Compile, 'checking project');
+        progress.report(Activity.Compile, 'full analysis');
         await settle();
 
         expect(reporter.begin).toHaveBeenCalledTimes(2);
-        expect(reporter.begin).toHaveBeenLastCalledWith('ghūl', undefined, 'checking project', false);
+        expect(reporter.begin).toHaveBeenLastCalledWith('ghūl', undefined, 'full analysis', false);
     });
 
     it('does not leave a half-open notification when the activity ends mid-creation', async () => {
@@ -137,7 +137,7 @@ describe('ActivityProgress', () => {
         const progress = new ActivityProgress(makeConnection(reporter));
 
         progress.report(Activity.Setup, 'restoring .NET tools');
-        progress.report(Activity.Compile, 'checking project');
+        progress.report(Activity.Compile, 'full analysis');
         progress.report(Activity.Heap, 'garbage collecting');
         await settle();
 
@@ -211,11 +211,11 @@ describe('ActivityProgress', () => {
             const reporter = makeReporter();
             const progress = new ActivityProgress(makeConnection(reporter));
 
-            progress.report(Activity.Compile, 'checking project');
+            progress.report(Activity.Compile, 'full analysis');
             await Promise.resolve();
             progress.report(Activity.Request, 'analysing', { fallback: true });
 
-            expect(reporter.begin).toHaveBeenCalledWith('ghūl', undefined, 'checking project', false);
+            expect(reporter.begin).toHaveBeenCalledWith('ghūl', undefined, 'full analysis', false);
             expect(reporter.report).not.toHaveBeenCalledWith('analysing');
         });
 
@@ -236,7 +236,7 @@ describe('ActivityProgress', () => {
 
             progress.report(Activity.Request, 'analysing', { fallback: true });
             await Promise.resolve();
-            progress.report(Activity.Compile, 'checking project');
+            progress.report(Activity.Compile, 'full analysis');
             progress.end(Activity.Compile);
 
             expect(reporter.report).toHaveBeenLastCalledWith('analysing');
@@ -277,7 +277,7 @@ describe('ActivityProgress', () => {
             const { connection, grants } = makeDeferredConnection();
             const progress = new ActivityProgress(connection);
 
-            progress.report(Activity.Compile, 'checking project');
+            progress.report(Activity.Compile, 'full analysis');
 
             expect(grants).toHaveLength(1);
 
@@ -302,7 +302,7 @@ describe('ActivityProgress', () => {
             const { connection, grants } = makeDeferredConnection();
             const progress = new ActivityProgress(connection);
 
-            progress.report(Activity.Compile, 'checking project');
+            progress.report(Activity.Compile, 'full analysis');
             jest.advanceTimersByTime(CREATE_TIMEOUT_MS);
 
             progress.report(Activity.Heap, 'garbage collecting');

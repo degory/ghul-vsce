@@ -53,10 +53,10 @@ export function activate(context: ExtensionContext) {
 	// not to still be claiming something is happening when it isn't.
 	const COMPLETED_HOLD_MS = 1500;
 
-	// A finished activity already says so in the past tense, so it carries no
-	// icon of its own and the spinner's cell simply goes. The item is right
-	// aligned, so losing a cell from the front of the text pulls the logo in
-	// towards the message rather than moving the message itself.
+	// Trails the message rather than leading it: the logo is what identifies
+	// the item, so it keeps the front, and the spinner reads as attached to
+	// the activity it belongs to. A finished activity already says so in the
+	// past tense, so it carries no icon and the spinner's cell simply goes.
 	const RUNNING_ICON = '$(sync~spin)';
 
 	// Contributed in package.json from images/ghul-icons.woff. It stands where
@@ -87,7 +87,7 @@ export function activate(context: ExtensionContext) {
 		statusBarItem.text =
 			!entry ? BRAND_ICON :
 			entry.completed ? `${BRAND_ICON} ${entry.message}` :
-			`${BRAND_ICON} ${RUNNING_ICON} ${entry.message}`;
+			`${BRAND_ICON} ${entry.message} ${RUNNING_ICON}`;
 
 		statusBarItem.tooltip = describeMetrics();
 		statusBarItem.show();
