@@ -248,6 +248,15 @@ describe('WorkspaceContext.initialize', () => {
         expect(configAvailableSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, config);
     });
 
+    // Setup is detached from whatever asked for it and awaits several
+    // promises on the way through, so its effects land over a handful of
+    // microtask turns rather than on the next one.
+    async function settle() {
+        for (let turn = 0; turn < 10; turn++) {
+            await new Promise(resolve => setImmediate(resolve));
+        }
+    }
+
     function stubConfig(missing_assemblies: string[]): GhulConfig {
         const config = {
             compiler: ['ghul'],
@@ -264,6 +273,130 @@ describe('WorkspaceContext.initialize', () => {
 
         return config;
     }
+
+    // A tree whose referenced projects have never been built — a fresh clone,
+    // a Codespace — is where setup can be made to run several times over for
+    // one event: the build we start produces the very assembly we asked the
+    // client to watch for, so its completion and the watch fire separately
+    // for the same news.
+    describe('on a tree whose referenced assemblies are yet to be built', () => {
+        const LIB = '/path/to/workspace/lib/bin/Debug/net10.0/lib.dll';
+
+        beforeEach(() => {
+            // The change tracker debounces its re-initialize by five seconds;
+            // waiting that out for real would put five seconds on the suite.
+            // setImmediate stays real so awaiting the promises setup is built
+            // from still works.
+            jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
+        });
+
+        afterEach(() => {
+            jest.useRealTimers();
+        });
+
+        function makeRegisterableConnection(): Connection {
+            const connection = makeMockConnection();
+
+            (connection as any).client = {
+                register: jest.fn(() => Promise.resolve({ dispose: jest.fn() })),
+            };
+
+            return connection;
+        }
+
+        it('does not watch for the assemblies its own build is about to produce', async () => {
+            connection = makeRegisterableConnection();
+            context = new WorkspaceContext(WORKSPACE_ROOT, connection, documents);
+
+            stubConfig([LIB]);
+            jest.spyOn(generateAssembliesJson, 'buildReferencedAssemblies')
+                .mockReturnValue(new Promise(() => { /* still building */ }));
+
+            await context.initialize();
+
+            expect((connection as any).client.register).not.toHaveBeenCalled();
+        });
+
+        it('watches once the build has been and gone without producing them', async () => {
+            // Nothing here will produce them now, so an assembly arriving by
+            // some other route — the user building in a terminal — is the
+            // only way out, and is worth watching for.
+            connection = makeRegisterableConnection();
+            context = new WorkspaceContext(WORKSPACE_ROOT, connection, documents);
+
+            stubConfig([LIB]);
+            jest.spyOn(generateAssembliesJson, 'buildReferencedAssemblies')
+                .mockResolvedValue(null);
+
+            await context.initialize();
+            await settle();
+
+            expect((connection as any).client.register).toHaveBeenCalledTimes(1);
+        });
+
+        it('sets up once per event when the build produces what was missing', async () => {
+            // The sequence from a cold Codespace: setup starts the analyser
+            // without the assembly and kicks off a build; the build produces
+            // it and setup runs again on the complete reference set. That is
+            // one repeat, and one is all it may be — each of these steps
+            // costs the user tens of seconds and a replaced analyser.
+            connection = makeRegisterableConnection();
+            context = new WorkspaceContext(WORKSPACE_ROOT, connection, documents);
+
+            const spawn = require('child_process').spawn as jest.Mock;
+            spawn.mockClear();
+
+            const config = stubConfig([LIB]);
+
+            const restore = restoreDotNetTools.restoreDotNetTools as jest.Mock;
+            const generate = generateAssembliesJson.generateAssembliesJson as jest.Mock;
+
+            let finishBuild: (value: string | null) => void;
+
+            const build = jest.spyOn(generateAssembliesJson, 'buildReferencedAssemblies')
+                .mockReturnValue(new Promise(resolve => { finishBuild = resolve; }));
+
+            await context.initialize();
+
+            expect(restore).toHaveBeenCalledTimes(1);
+            expect(generate).toHaveBeenCalledTimes(1);
+            expect(spawn).toHaveBeenCalledTimes(1);
+
+            // The build writes the assembly. VS Code reports it whether or
+            // not we asked it to — a watch registered for an earlier folder,
+            // a client that watches more broadly than we requested — so the
+            // report itself must not be able to start a second setup for the
+            // event the build's own completion already covers.
+            context.document_change_tracker.onDidChangeWatchedFiles({
+                changes: [{ uri: 'file://' + LIB, type: 1 }],
+            });
+
+            (GetGhulConfig.getGhulConfig as jest.Mock)
+                .mockReturnValue({ ...config, missing_assemblies: [] });
+
+            finishBuild!(null);
+
+            await settle();
+
+            // Well past the change tracker's 5s debounce, so a re-initialize
+            // left pending by the report above has had every chance to fire.
+            jest.advanceTimersByTime(30_000);
+
+            await settle();
+
+            expect(restore).toHaveBeenCalledTimes(2);
+            expect(generate).toHaveBeenCalledTimes(2);
+            expect(build).toHaveBeenCalledTimes(1);
+
+            // The reference set changed, so this compiler genuinely is a
+            // different one: it is started with the assembly the first was
+            // missing.
+            expect(spawn).toHaveBeenCalledTimes(2);
+
+            expect(context.config.missing_assemblies).toEqual([]);
+            expect(context.response_handler.suppress_diagnostics).toBe(false);
+        });
+    });
 
     it('withholds diagnostics while a referenced assembly is yet to be built', async () => {
         stubConfig(['/path/to/workspace/lib/bin/Debug/net10.0/lib.dll']);
@@ -386,7 +519,7 @@ describe('WorkspaceContext.initialize', () => {
         // re-runs the tool restore and the reference resolution and then
         // replaces the compiler, so the user faces the same wait as a cold
         // start and must be shown the same sequence.
-        stubConfig([]);
+        const config = stubConfig([]);
 
         await context.initialize();
 
@@ -398,6 +531,11 @@ describe('WorkspaceContext.initialize', () => {
         progressReporter.begin.mockClear();
         progressReporter.report.mockClear();
         progressReporter.done.mockClear();
+
+        // Only a configuration that has actually changed replaces the
+        // compiler; see the test below for the unchanged case.
+        (GetGhulConfig.getGhulConfig as jest.Mock)
+            .mockReturnValue({ ...config, compiler: ['ghul', '--changed'] });
 
         context.reinitialize();
 
@@ -425,6 +563,25 @@ describe('WorkspaceContext.initialize', () => {
             'analysing project',
         ]);
         expect(progressReporter.done).not.toHaveBeenCalled();
+    });
+
+    it('keeps the running compiler when the reloaded configuration is identical', async () => {
+        // Setup runs again for all sorts of reasons that turn out to change
+        // nothing. Replacing the analyser costs the user its warm state and a
+        // full recompile before the next query can be answered, so an
+        // identical configuration leaves the one that is running alone.
+        stubConfig([]);
+
+        await context.initialize();
+
+        const spawn = require('child_process').spawn as jest.Mock;
+        const spawns_before = spawn.mock.calls.length;
+
+        context.reinitialize();
+
+        await settle();
+
+        expect(spawn.mock.calls.length).toBe(spawns_before);
     });
 
     it('does not report a compiler start that is never going to happen', async () => {

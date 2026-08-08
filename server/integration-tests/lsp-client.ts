@@ -1,4 +1,8 @@
 import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
+import { FSWatcher, existsSync, watch } from 'fs';
+import { join } from 'path';
+
+import { minimatch } from 'minimatch';
 
 // A minimal, dependency-free LSP client over stdio: just enough
 // Content-Length framing and request/notification bookkeeping to drive the
@@ -25,10 +29,92 @@ export class LspClient {
     private initializeRequestId: number | null = null;
     private readyForServerRequests = false;
 
+    // Everything the server has asked to be told about changes to. A real
+    // client watches these for the life of the registration and reports what
+    // it sees; a harness that records them and reports nothing cannot show
+    // what a watch the server should not have registered goes on to cause.
+    readonly watchedGlobPatterns: string[] = [];
+
+    private root: string;
+    private watcher: FSWatcher | null = null;
+    private reported = new Set<string>();
+    private logWaiters: { matches: (message: string) => boolean, resolve: () => void }[] = [];
+
     constructor(serverPath: string, cwd: string) {
+        this.root = cwd;
         this.child = spawn('node', [serverPath, '--stdio'], { cwd });
         this.child.stdout.on('data', chunk => this.onData(chunk));
         this.child.stderr.on('data', chunk => this.stderr.push(chunk.toString('utf8')));
+    }
+
+    // Resolves once the server has logged something `matches` accepts, taking
+    // messages already logged into account so a caller cannot miss one by
+    // asking a moment too late.
+    waitForLog(matches: (message: string) => boolean, timeout_ms: number, description: string): Promise<void> {
+        if (this.logMessages.some(matches)) {
+            return Promise.resolve();
+        }
+
+        return new Promise((resolve, reject) => {
+            const waiter = { matches, resolve: () => { clearTimeout(timer); resolve(); } };
+
+            const timer = setTimeout(() => {
+                this.logWaiters = this.logWaiters.filter(w => w != waiter);
+
+                reject(new Error(
+                    `${description} was not logged within ${timeout_ms}ms.\n` +
+                    `logs:\n${this.logMessages.join('\n')}\n` +
+                    `stderr:\n${this.stderr.join('')}`
+                ));
+            }, timeout_ms);
+
+            this.logWaiters.push(waiter);
+        });
+    }
+
+    // How many times the server has logged a message containing `fragment` —
+    // the harness's way of counting work it can see the server doing but has
+    // no other handle on.
+    countLogs(fragment: string): number {
+        return this.logMessages.filter(message => message.includes(fragment)).length;
+    }
+
+    // A watch registration is a standing instruction to report changes to the
+    // matching files, so honour it the way a real client does rather than
+    // filing it away. Registrations accumulate; one watcher over the workspace
+    // serves all of them.
+    private onWatchRegistration(registration: any) {
+        for (const watcher of registration?.registerOptions?.watchers ?? []) {
+            if (typeof watcher.globPattern == 'string') {
+                this.watchedGlobPatterns.push(watcher.globPattern);
+            }
+        }
+
+        this.watcher ??= watch(this.root, { recursive: true }, (_event, filename) => {
+            if (!filename) {
+                return;
+            }
+
+            const path = join(this.root, filename.toString());
+
+            // The editor reports a file once per change; a raw fs watch
+            // reports the same creation several times, and a client that
+            // passed all of them on would look like an event storm no real
+            // one produces.
+            if (this.reported.has(path) || !existsSync(path)) {
+                return;
+            }
+
+            if (!this.watchedGlobPatterns.some(pattern => minimatch(path, pattern))) {
+                return;
+            }
+
+            this.reported.add(path);
+
+            this.notify('workspace/didChangeWatchedFiles', {
+                changes: [{ uri: 'file://' + path, type: 1 }],
+            });
+        });
     }
 
     private onData(chunk: Buffer) {
@@ -81,6 +167,19 @@ export class LspClient {
             this.progressNotifications.push(message.params);
         } else if (message.method === 'window/logMessage') {
             this.logMessages.push(message.params.message);
+
+            for (const waiter of this.logWaiters.filter(w => w.matches(message.params.message))) {
+                this.logWaiters = this.logWaiters.filter(w => w != waiter);
+                waiter.resolve();
+            }
+        } else if (message.method === 'client/registerCapability') {
+            for (const registration of message.params?.registrations ?? []) {
+                if (registration.method === 'workspace/didChangeWatchedFiles') {
+                    this.onWatchRegistration(registration);
+                }
+            }
+
+            this.send({ jsonrpc: '2.0', id: message.id, result: null });
         } else if (message.method === 'window/workDoneProgress/create') {
             if (this.readyForServerRequests) {
                 // The server asks permission to create a progress token; a
@@ -98,9 +197,9 @@ export class LspClient {
                 });
             }
         }
-        // Other server->client requests (client/registerCapability, ...) are
-        // acknowledged implicitly by not answering — the real server does
-        // not block waiting on them for the behaviour under test here.
+        // Other server->client requests are acknowledged implicitly by not
+        // answering — the real server does not block waiting on them for the
+        // behaviour under test here.
     }
 
     private send(message: object) {
@@ -128,6 +227,9 @@ export class LspClient {
     // `shutdown` unanswered forever, and with it the compiler child too,
     // which is exactly the failure this method exists to avoid.
     async dispose() {
+        this.watcher?.close();
+        this.watcher = null;
+
         try {
             await Promise.race([
                 this.request('shutdown', null),

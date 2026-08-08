@@ -104,9 +104,35 @@ export class ServerManager {
 		// constructed with — kept here for backwards compatibility with the
 		// onConfigAvailable signature; ignored for per-workspace state.
 		config_event_source.onConfigAvailable((_workspace: string, config: GhulConfig) => {
+			// Setup can run again without anything the compiler cares about
+			// having changed — a re-read after a build, a watched file that
+			// resolved to the same configuration. Replacing a healthy analyser
+			// in that case costs the user its warm state and a full recompile
+			// to answer the next query, in exchange for an identical process.
+			if (this.isServingConfig(config)) {
+				log("configuration is unchanged: keeping the running compiler");
+				this.ghul_config = config;
+				return;
+			}
+
 			this.ghul_config = config;
 			this.start();
 		});
+	}
+
+	// Whether the compiler now running was started from this configuration.
+	// A compiler that has exited, or never started, is not serving anything —
+	// however equal the configuration is.
+	private isServingConfig(config: GhulConfig): boolean {
+		const running =
+			this.server_state == ServerState.Listening ||
+			this.server_state == ServerState.StartingUp;
+
+		if (!running || !this.child || this.child.exitCode != null) {
+			return false;
+		}
+
+		return JSON.stringify(this.ghul_config) == JSON.stringify(config);
 	}
 
 	// Entry point for a fresh configuration. A new config means the user (or

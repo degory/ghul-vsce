@@ -86,6 +86,9 @@ export class WorkspaceContext {
 
     private missing_assembly_watch: Promise<Disposable> | null = null;
 
+    private initialize_running: Promise<void> | null = null;
+    private initialize_queued: Promise<void> | null = null;
+
     // Counts compiler starts, so the wait for one compiler's first compile
     // cannot close the progress belonging to the compiler that replaced it.
     private compiler_generation: number = 0;
@@ -263,7 +266,40 @@ export class WorkspaceContext {
     // and until the response is sent the client holds back every notification
     // it has for us — so a caller that waits for this leaves the editor with
     // no language support at all and no way to say why.
-    async initialize(): Promise<void> {
+    initialize(): Promise<void> {
+        // Setup restores tools, rewrites .assemblies.json and replaces the
+        // compiler, none of which survives two runs interleaving. A caller
+        // arriving while a run is in flight waits for it and then gets one
+        // further run — one however many callers arrive, since they all want
+        // the same thing: the tree as it stands once the current run is done.
+        if (!this.initialize_running) {
+            return this.beginInitialize();
+        }
+
+        return this.initialize_queued ??= this.initialize_running
+            // A failed run must still let the queue drain, or the workspace
+            // is left with no way to pick up a later change.
+            .catch(() => { /* reported by whoever asked for that run */ })
+            .then(() => {
+                this.initialize_queued = null;
+
+                return this.beginInitialize();
+            });
+    }
+
+    // The in-flight slot is held until nothing is queued behind it, so a
+    // caller arriving in the gap between one run finishing and the queued one
+    // starting joins the queue rather than starting a run alongside it.
+    private beginInitialize(): Promise<void> {
+        return this.initialize_running = this.runInitialize()
+            .finally(() => {
+                if (!this.initialize_queued) {
+                    this.initialize_running = null;
+                }
+            });
+    }
+
+    private async runInitialize(): Promise<void> {
         let problems: string[] = [];
 
         // generateAssembliesJson writes .assemblies.json; getGhulConfig
@@ -317,6 +353,10 @@ export class WorkspaceContext {
 
         const workspace_root_munged = this.workspace_root.replace(/\\/g, '/');
 
+        // Whatever the outgoing tracker had pending is answered by this run,
+        // which has just re-read everything it would have re-read.
+        this.document_change_tracker?.dispose();
+
         this.document_change_tracker = new DocumentChangeTracker(
             this,
             this.edit_queue,
@@ -325,7 +365,17 @@ export class WorkspaceContext {
             this.config.missing_assemblies
         );
 
-        this.watchMissingAssemblies();
+        // The watch is a backstop for assemblies arriving by a route we don't
+        // control. When we are about to build them ourselves it is not that:
+        // it fires on our own build's output, for an event the build's own
+        // completion already re-initializes on, and the workspace sets itself
+        // up twice over. Register it only when nobody here is going to
+        // produce those files.
+        if (awaiting_reference_build) {
+            this.stopWatchingMissingAssemblies();
+        } else {
+            this.watchMissingAssemblies();
+        }
 
         // Starts the compiler, which reports its own progress from here on
         // (see reportCompilerStartup) — so the setup activity ends into the
@@ -435,8 +485,7 @@ export class WorkspaceContext {
     // so once they are all present nothing is registered and an ordinary
     // rebuild during editing cannot trigger anything.
     private watchMissingAssemblies() {
-        this.missing_assembly_watch?.then(watch => watch.dispose());
-        this.missing_assembly_watch = null;
+        this.stopWatchingMissingAssemblies();
 
         if (!this.config.missing_assemblies.length || !this.connection?.client?.register) {
             return;
@@ -450,6 +499,11 @@ export class WorkspaceContext {
                 ),
             }
         );
+    }
+
+    private stopWatchingMissingAssemblies() {
+        this.missing_assembly_watch?.then(watch => watch.dispose());
+        this.missing_assembly_watch = null;
     }
 
     // The set of file globs (already absolutised under workspace_root) that

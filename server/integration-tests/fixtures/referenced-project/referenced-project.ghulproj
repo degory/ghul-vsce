@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <GhulCompiler>dotnet ghul-compiler</GhulCompiler>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <GhulSources Include="src/**/*.ghul" />
+
+    <!-- The point of this fixture: a referenced project whose output assembly
+         does not exist until something builds it, which is what a fresh clone
+         or a new Codespace looks like. -->
+    <ProjectReference Include="lib/lib.ghulproj" />
+
+    <!-- See simple-project: GenerateAssembliesJson comes from ghul.runtime's
+         build/ folder, which a real repo picks up through its shared props. -->
+    <PackageReference Include="ghul.runtime" Version="5.8.2" />
+  </ItemGroup>
+</Project>
