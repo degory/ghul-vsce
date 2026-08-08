@@ -21,4 +21,11 @@ module.exports = {
     },
     moduleFileExtensions: ['ts', 'js', 'json'],
     testTimeout: 180000,
+    // One suite at a time. Suites share fixture projects, and each one cleans
+    // the fixture's build output around its own run — concurrently, that is
+    // one suite deleting the directory another is building into, which fails
+    // as an unrelated ENOENT deep in a dotnet build. They are also several
+    // real compilers' worth of work each, so running them side by side buys
+    // little even where they do not collide.
+    maxWorkers: 1,
 };

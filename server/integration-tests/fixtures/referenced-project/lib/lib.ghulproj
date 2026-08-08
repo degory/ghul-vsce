@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <GhulCompiler>dotnet ghul-compiler</GhulCompiler>
+    <GhulOptions>--library</GhulOptions>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <GhulSources Include="src/**/*.ghul" />
+
+    <PackageReference Include="ghul.runtime" Version="5.8.2" />
+  </ItemGroup>
+</Project>

@@ -2,6 +2,7 @@ import { DidChangeWatchedFilesParams, FileChangeType, TextDocuments } from "vsco
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { URI } from "vscode-uri";
 import { debounce } from "throttle-debounce";
+import type { debounce as Debounced } from "throttle-debounce";
 
 import { normalizeFileUri } from "./normalize-file-uri";
 import { EditQueue } from "./edit-queue";
@@ -23,7 +24,7 @@ export class DocumentChangeTracker {
     documents: TextDocuments<TextDocument>;
     missing_assemblies: Set<string>;
 
-    private debounced_reinitialize: () => void;
+    private debounced_reinitialize: Debounced<() => void>;
 
     constructor(
         workspace: ReinitializableWorkspace,
@@ -44,6 +45,14 @@ export class DocumentChangeTracker {
         // debounce so a save in one folder cannot rate-limit a save in
         // another.
         this.debounced_reinitialize = debounce(5000, () => { this.workspace.reinitialize(); });
+    }
+
+    // Drops any re-initialization this tracker has pending. Called when the
+    // workspace replaces the tracker: the run that replaced it has already
+    // read everything the pending one would have re-read, so letting it fire
+    // afterwards repeats the whole setup for a change that has been picked up.
+    dispose() {
+        this.debounced_reinitialize.cancel();
     }
 
     onDidChangeWatchedFiles(params: DidChangeWatchedFilesParams) {

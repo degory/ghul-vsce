@@ -1,0 +1,7 @@
+namespace Lib is
+    class THING is
+        init() is si
+
+        greeting() -> string => "hello from the library";
+    si
+si

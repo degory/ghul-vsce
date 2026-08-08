@@ -1,0 +1,13 @@
+namespace App is
+    use IO.Std.write_line;
+
+    class PROGRAM is
+        init() is si
+
+        run() -> string => Lib.THING().greeting();
+    si
+
+    entry() is
+        write_line(PROGRAM().run());
+    si
+si
