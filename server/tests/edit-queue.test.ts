@@ -470,8 +470,8 @@ describe('EditQueue reporting', () => {
         expect(recorder.sendFullCompileRequestCalls).toBe(1);
         expect(progress.report).toHaveBeenCalledWith(
             Activity.Compile,
-            'checking project',
-            { delay_ms: SLOW_ACTIVITY_DELAY_MS, done_message: 'project checked' });
+            'full analysis',
+            { delay_ms: SLOW_ACTIVITY_DELAY_MS, done_message: 'full analysis done' });
 
         queue.onFullCompileDone(200);
 

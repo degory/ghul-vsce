@@ -445,8 +445,8 @@ describe('WorkspaceContext.initialize', () => {
         ];
 
         expect(messages).toContain('resolving project references');
-        expect(messages).toContain('starting compiler');
-        expect(messages[messages.length - 1]).toBe('starting compiler');
+        expect(messages).toContain('starting analyser');
+        expect(messages[messages.length - 1]).toBe('starting analyser');
     });
 
     it('says what is being done, not what the extension is waiting for', async () => {
@@ -559,7 +559,7 @@ describe('WorkspaceContext.initialize', () => {
         expect(messages).toEqual([
             'restoring .NET tools',
             'resolving project references',
-            'starting compiler',
+            'starting analyser',
             'analysing project',
         ]);
         expect(progressReporter.done).not.toHaveBeenCalled();

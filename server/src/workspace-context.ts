@@ -212,7 +212,11 @@ export class WorkspaceContext {
 
             this.reporting_compiler_startup = true;
 
-            this.progress.report(Activity.Compiler, "starting compiler");
+            // "analyser", not "compiler": the process is the compiler, but
+            // what it does for the editor is hold the project analysed and
+            // answer questions about it. Naming the process would read as the
+            // extension shelling out to a build for every request.
+            this.progress.report(Activity.Compiler, "starting analyser");
 
             this.awaitFirstAnalysis(++this.compiler_generation);
         });

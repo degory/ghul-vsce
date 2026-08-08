@@ -44,7 +44,7 @@ interface ReportedActivity {
     done_message: string | null;
     // A fallback activity is shown only when nothing more specific is. The
     // generic "a request is taking a while" is true during a full compile too,
-    // but "checking project" says more, and whichever was reported last would
+    // but "full analysis" says more, and whichever was reported last would
     // otherwise win on recency alone.
     fallback: boolean;
 }
