@@ -306,13 +306,25 @@ export class Requester {
         }, null, token);
     }
 
-    sendCompletion(uri: string, line: number, character: number, token?: CancellationToken): Promise<CompletionItem[]> {
+    // is_member_trigger says the user typed a `.`, so the only useful answer
+    // is the members of what precedes it. An analyser that finds no member
+    // access there is holding text older than the editor's and says nothing,
+    // rather than falling back to the enclosing scope. Older analysers ignore
+    // the field and answer as they always did.
+    sendCompletion(
+        uri: string,
+        line: number,
+        character: number,
+        is_member_trigger: boolean = false,
+        token?: CancellationToken
+    ): Promise<CompletionItem[]> {
         return this.whenAnalysed(() => {
             this.send({
                 command: "complete",
                 path: normalizeFileUri(uri),
                 line: line + 1,
-                column: character + 1
+                column: character + 1,
+                is_member_trigger: is_member_trigger
             });
 
             return this.response_handler.expectCompletion();

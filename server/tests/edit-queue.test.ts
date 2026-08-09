@@ -425,6 +425,84 @@ describe('EditQueue', () => {
             expect(recorder.sendDocumentsCalls).toHaveLength(sendsAfterStart + 1);
         });
     });
+
+    // A query about a `.` means nothing unless the analyser has seen the
+    // `.`. sendQueued alone cannot promise that: it declines to flush while
+    // a round trip is in flight, and the query then goes out ahead of the
+    // edits and is answered against text the user has already moved past.
+    describe('whenFlushed', () => {
+        it('resolves immediately when the analyser is already current', async () => {
+            queue.reset();
+
+            await expect(queue.whenFlushed()).resolves.toBeUndefined();
+
+            expect(recorder.sendDocumentsCalls).toHaveLength(0);
+        });
+
+        it('flushes and resolves immediately when the queue is between round trips', async () => {
+            queue.reset();
+            queue.queueEdit3('file:///a.ghul', 1, 'a');
+
+            await expect(queue.whenFlushed()).resolves.toBeUndefined();
+
+            expect(queue.pending_changes.size).toBe(0);
+            expect(recorder.sendDocumentsCalls).toHaveLength(1);
+        });
+
+        it('waits for the in-flight round trip, then flushes before resolving', async () => {
+            queue.reset();
+            queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+            const sendsAfterStart = recorder.sendDocumentsCalls.length;
+
+            queue.queueEdit3('file:///b.ghul', 1, 'b');
+
+            let resolved = false;
+            const flushed = queue.whenFlushed().then(() => { resolved = true; });
+
+            // Still in flight: the edit has not gone out and the query is held.
+            await Promise.resolve();
+            expect(resolved).toBe(false);
+            expect(recorder.sendDocumentsCalls).toHaveLength(sendsAfterStart);
+
+            queue.onPartialCompileDone(0);
+
+            await flushed;
+
+            expect(resolved).toBe(true);
+            expect(queue.pending_changes.size).toBe(0);
+            expect(recorder.sendDocumentsCalls).toHaveLength(sendsAfterStart + 1);
+        });
+
+        it('gives up waiting rather than holding the query indefinitely', async () => {
+            queue.reset();
+            queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+
+            queue.queueEdit3('file:///b.ghul', 1, 'b');
+
+            const flushed = queue.whenFlushed();
+
+            // The round trip never lands — a compiler wedged, or one whose
+            // analysis is far slower than the wait.
+            jest.advanceTimersByTime(EditQueue.FLUSH_WAIT_TIMEOUT);
+
+            await expect(flushed).resolves.toBeUndefined();
+        });
+
+        it('releases a waiting query when the compiler is replaced', async () => {
+            queue.reset();
+            queue.start([{ uri: 'file:///a.ghul', source: 't' }]);
+
+            queue.queueEdit3('file:///b.ghul', 1, 'b');
+
+            const flushed = queue.whenFlushed();
+
+            // Nothing is going to report the in-flight request done: the
+            // compiler it belonged to is gone.
+            queue.reset();
+
+            await expect(flushed).resolves.toBeUndefined();
+        });
+    });
 });
 
 // The queue is the only place that knows when the analyser is busy and how

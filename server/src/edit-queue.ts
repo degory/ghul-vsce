@@ -63,6 +63,11 @@ export class EditQueue {
     // analyser holds nothing, and the client re-primes it with full text.
     last_sent_text: Map<string, string>;
 
+    // Queries waiting for the analyser to hold the text the editor is
+    // showing. Resolved once the pending edits have been flushed to it —
+    // see whenFlushed.
+    flushed_waiters: (() => void)[];
+
     // Smoothed round-trip times, in milliseconds, of the two things the user
     // waits on: an incremental analysis of an edit, and a full compile of the
     // project. Null until one of each has completed.
@@ -101,6 +106,13 @@ export class EditQueue {
     // faster.
     static readonly STATS_INTERVAL = 2000;
 
+    // How long a query will wait for the analyser to catch up with the
+    // editor before being sent anyway. Long enough to cover an incremental
+    // analysis of one file, which is what it is normally waiting on; short
+    // enough that a project whose round trip is much worse than that answers
+    // something rather than appearing to hang.
+    static readonly FLUSH_WAIT_TIMEOUT = 500;
+
     constructor(
         requester: Requester,
         response_handler: ResponseHandler,
@@ -123,6 +135,7 @@ export class EditQueue {
 
         this.pending_changes = new Map();
         this.last_sent_text = new Map();
+        this.flushed_waiters = [];
 
         this.state = QueueState.START;
 
@@ -157,6 +170,17 @@ export class EditQueue {
         // span between them as a keystroke's latency.
         this.send_start_time = 0;
         this.compile_start_time = 0;
+
+        // Nothing is going to land and release these — the compiler they were
+        // waiting on is gone. Let the queries through to be answered by the
+        // replacement rather than by their timeouts.
+        const waiters = this.flushed_waiters;
+
+        this.flushed_waiters = [];
+
+        for (const waiter of waiters) {
+            waiter();
+        }
 
         this.state = QueueState.IDLE;
     }
@@ -306,6 +330,8 @@ export class EditQueue {
             this.state = QueueState.WAITING_FOR_MORE_EDITS_AFTER_PARTIAL_COMPILE;
             this.startEditTimer(this.full_build_timeout);
         }
+
+        this.releaseFlushedWaiters();
     }
 
     onFullCompileDone(milliseconds: number) {
@@ -346,6 +372,8 @@ export class EditQueue {
             this.state = QueueState.IDLE;
             this.startIdleTimer();
         }
+
+        this.releaseFlushedWaiters();
     }
 
     onHeapCheckDone() {
@@ -367,6 +395,8 @@ export class EditQueue {
             // The next full compile re-arms it.
             this.state = QueueState.IDLE;
         }
+
+        this.releaseFlushedWaiters();
     }
 
     forceScheduleFullCompile() {
@@ -510,6 +540,71 @@ export class EditQueue {
 
         this.state = QueueState.DOING_PARTIAL_COMPILE;
         this.sendMultiEdits(documents);
+    }
+
+    // Resolves once the analyser holds the text the editor is showing, so a
+    // query about a position means the same thing at both ends.
+    //
+    // sendQueued below can only flush between round trips. When one is in
+    // flight the edits stay queued, and a query sent now is written to the
+    // pipe ahead of them and answered against text a keystroke or more
+    // behind. For a member completion that is not a slightly stale answer
+    // but an answer to a different question: with no `.` in the analyser's
+    // text there is no member access at the position, and the reply is the
+    // enclosing scope.
+    //
+    // So wait for the round trip to land, flush, and only then let the query
+    // go. Bounded, because a query that never arrives is worse than one
+    // answered against text that is behind.
+    whenFlushed(): Promise<void> {
+        if (this.pending_changes.size == 0) {
+            return Promise.resolve();
+        }
+
+        this.sendQueued("flush ahead of a query");
+
+        // Flushed synchronously: the edit is already written ahead of the
+        // query, and the analyser serves requests in the order it reads them.
+        if (this.pending_changes.size == 0) {
+            return Promise.resolve();
+        }
+
+        return new Promise<void>(resolve => {
+            const timer = setTimeout(() => {
+                this.flushed_waiters = this.flushed_waiters.filter(w => w !== waiter);
+
+                log("query proceeding without waiting further for the analyser to catch up");
+
+                resolve();
+            }, EditQueue.FLUSH_WAIT_TIMEOUT);
+
+            const waiter = () => {
+                clearTimeout(timer);
+
+                resolve();
+            };
+
+            this.flushed_waiters.push(waiter);
+        });
+    }
+
+    // A round trip has landed, so the queue can flush again. Release anything
+    // that was waiting for the analyser to catch up, having first given it
+    // the edits that accumulated while the round trip was out.
+    private releaseFlushedWaiters() {
+        if (this.flushed_waiters.length == 0) {
+            return;
+        }
+
+        this.sendQueued("flush for a waiting query");
+
+        const waiters = this.flushed_waiters;
+
+        this.flushed_waiters = [];
+
+        for (const waiter of waiters) {
+            waiter();
+        }
     }
 
     // Flush queued edits ahead of a query (completion / signature help) so the

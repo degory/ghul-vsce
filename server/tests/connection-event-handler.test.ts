@@ -94,6 +94,7 @@ function makeMockRequester(): Requester {
 function makeMockEditQueue(): EditQueue {
     return {
         sendQueued: jest.fn(),
+        whenFlushed: jest.fn().mockResolvedValue(undefined),
         queueEdit: jest.fn(),
     } as unknown as EditQueue;
 }
@@ -473,7 +474,7 @@ describe('ConnectionEventHandler', () => {
         // dropped when the client stops wanting the answer.
         const TOKEN = CancellationToken.None;
 
-        it('onCompletion with `.` trigger flushes the queue and routes via the URI', async () => {
+        it('onCompletion with `.` trigger waits for the analyser to catch up and routes via the URI', async () => {
             const params: CompletionParams = {
                 textDocument: { uri: URI },
                 position: { line: 1, character: 2 },
@@ -483,11 +484,14 @@ describe('ConnectionEventHandler', () => {
             await handler.onCompletion(params, TOKEN);
 
             expect(extensionState.getWorkspaceForUri).toHaveBeenCalledWith(URI);
-            expect(editQueue.sendQueued).toHaveBeenCalled();
-            expect(requester.sendCompletion).toHaveBeenCalledWith(URI, 1, 2, TOKEN);
+            expect(editQueue.whenFlushed).toHaveBeenCalled();
+
+            // the trigger travels with the query: an analyser that finds no
+            // member access at the position must not answer from scope
+            expect(requester.sendCompletion).toHaveBeenCalledWith(URI, 1, 2, true, TOKEN);
         });
 
-        it('onCompletion without `.` trigger does not flush the queue', async () => {
+        it('onCompletion without `.` trigger does not wait', async () => {
             const params: CompletionParams = {
                 textDocument: { uri: URI },
                 position: { line: 1, character: 2 },
@@ -496,8 +500,8 @@ describe('ConnectionEventHandler', () => {
 
             await handler.onCompletion(params, TOKEN);
 
-            expect(editQueue.sendQueued).not.toHaveBeenCalled();
-            expect(requester.sendCompletion).toHaveBeenCalledWith(URI, 1, 2, TOKEN);
+            expect(editQueue.whenFlushed).not.toHaveBeenCalled();
+            expect(requester.sendCompletion).toHaveBeenCalledWith(URI, 1, 2, false, TOKEN);
         });
 
         it('onHover routes via the URI', async () => {
