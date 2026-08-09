@@ -408,21 +408,28 @@ export class ConnectionEventHandler {
         }
     }
 
-    onCompletion(textDocumentPosition: CompletionParams, token?: CancellationToken): Promise<CompletionItem[]> {
+    async onCompletion(textDocumentPosition: CompletionParams, token?: CancellationToken): Promise<CompletionItem[]> {
         const workspace = this.workspaceForUri(textDocumentPosition.textDocument.uri);
 
         if (!workspace) {
-            return Promise.resolve([]);
+            return [];
         }
 
-        if (textDocumentPosition.context.triggerCharacter == '.') {
-            workspace.edit_queue.sendQueued();
+        const is_member_trigger = textDocumentPosition.context.triggerCharacter == '.';
+
+        // A member completion is about a `.` the analyser has to have seen,
+        // so it waits for the queue to catch the analyser up with the editor
+        // before asking. Any other completion is about a position that reads
+        // the same either way, and is not worth a wait.
+        if (is_member_trigger) {
+            await workspace.edit_queue.whenFlushed();
         }
 
         return workspace.requester.sendCompletion(
             textDocumentPosition.textDocument.uri,
             textDocumentPosition.position.line,
             textDocumentPosition.position.character,
+            is_member_trigger,
             token
         );
     }

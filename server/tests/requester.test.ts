@@ -172,7 +172,6 @@ describe('Requester', () => {
     it.each([
         ['sendDefinition',     'definition',      'definition'],
         ['sendDeclaration',    'declaration',     'declaration'],
-        ['sendCompletion',     'complete',        'completion'],
         ['sendSignature',      'signature',       'signature'],
         ['sendReferences',     'references',      'references'],
         ['sendImplementation', 'implementation',  'implementation'],
@@ -187,6 +186,25 @@ describe('Requester', () => {
             column: 4,
         });
         expect(response.expectations).toEqual([expectation]);
+    });
+
+    // Carries one field the other position queries do not: whether the user
+    // typed a `.`, which decides whether an analyser holding older text may
+    // answer from the enclosing scope.
+    it.each([
+        [false],
+        [true],
+    ])('sendCompletion reports is_member_trigger %s', async (is_member_trigger) => {
+        await requester.sendCompletion('file:///x.ghul', 2, 3, is_member_trigger);
+
+        expect(parseOnlyRequest(stream)).toEqual({
+            command: 'complete',
+            path: 'file:///x.ghul',
+            line: 3,
+            column: 4,
+            is_member_trigger,
+        });
+        expect(response.expectations).toEqual(['completion']);
     });
 
     it('sendDocumentSymbol writes a symbols JSON line with the uri', async () => {
