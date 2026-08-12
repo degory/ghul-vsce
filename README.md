@@ -47,7 +47,7 @@ preference.
 ## Other editors
 
 The language server this extension runs is also published on its own, for any
-editor that speaks LSP, as the `ghul-language-server` npm package and as a
+editor that speaks LSP, as the `@ghul/language-server` npm package and as a
 tarball attached to each [release](https://github.com/degory/ghul-vsce/releases).
 See [language-server/README.md](language-server/README.md) for setup.
 
