@@ -1,5 +1,5 @@
 {
-  "name": "ghul-language-server",
+  "name": "@ghul/language-server",
   "displayName": "ghūl language server",
   "description": "Language server for the ghūl programming language, for any LSP-capable editor",
   "version": "0.0.0",

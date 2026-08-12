@@ -194,17 +194,22 @@ jobs:
     # if push and branch is main
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
-    # Read at step level to gate the npm publish: the npm registry is
-    # optional, and until a token is configured the rest of the release
-    # still has to go out.
-    env:
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    # id-token lets the npm publish below authenticate to the registry as this
+    # workflow, over OIDC, instead of with a stored credential.
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
     - name: Setup NodeJS
       uses: actions/setup-node@v7
       with:
         node-version: 'lts/*'
+
+    # Trusted publishing needs npm 11.5.1 or later, which is newer than the npm
+    # bundled with some Node releases.
+    - name: Ensure npm supports trusted publishing
+      run: npm install --global npm@latest
 
     - uses: actions/checkout@v7
 
@@ -244,16 +249,17 @@ jobs:
     - name: Open VSX publish
       run: npx ovsx publish "ghul-${{ needs.version.outputs.package }}.vsix" -p ${{ secrets.OPEN_VSX_PAT }}
 
+    # A trusted publisher can only be attached to a package that already exists,
+    # so the first version has to be published by hand. Set the repository
+    # variable once that is done and every release publishes itself from here.
     - name: npm publish
-      if: ${{ env.NPM_TOKEN != '' }}
-      run: |
-        npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
-        npm publish --access public "ghul-language-server-${{ needs.version.outputs.package }}.tgz"
+      if: ${{ vars.NPM_TRUSTED_PUBLISHING == 'true' }}
+      run: npm publish --access public "ghul-language-server-${{ needs.version.outputs.package }}.tgz"
 
     - name: Skipping npm publish
-      if: ${{ env.NPM_TOKEN == '' }}
+      if: ${{ vars.NPM_TRUSTED_PUBLISHING != 'true' }}
       run: |
-        echo "NPM_TOKEN is not configured, so the language server was not published to npm"
+        echo "NPM_TRUSTED_PUBLISHING is not set, so the language server was not published to npm"
 
   create_release:
     needs: [version, unit_tests, integration_tests, publish_release_package]
