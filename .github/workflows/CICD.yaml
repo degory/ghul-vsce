@@ -206,11 +206,6 @@ jobs:
       with:
         node-version: 'lts/*'
 
-    # Trusted publishing needs npm 11.5.1 or later, which is newer than the npm
-    # bundled with some Node releases.
-    - name: Ensure npm supports trusted publishing
-      run: npm install --global npm@latest
-
     - uses: actions/checkout@v7
 
     - name: Install dependencies
@@ -252,6 +247,14 @@ jobs:
     # A trusted publisher can only be attached to a package that already exists,
     # so the first version has to be published by hand. Set the repository
     # variable once that is done and every release publishes itself from here.
+    # Trusted publishing needs npm 11.5.1 or later, which is newer than the npm
+    # bundled with some Node releases. It goes in after the installs and builds,
+    # because a current npm refuses to fetch the git dependency this project
+    # resolves to and would fail every install in the job.
+    - name: Ensure npm supports trusted publishing
+      if: ${{ vars.NPM_TRUSTED_PUBLISHING == 'true' }}
+      run: npm install --global npm@latest
+
     - name: npm publish
       if: ${{ vars.NPM_TRUSTED_PUBLISHING == 'true' }}
       run: npm publish --access public "ghul-language-server-${{ needs.version.outputs.package }}.tgz"
