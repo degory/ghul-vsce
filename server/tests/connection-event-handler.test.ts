@@ -136,6 +136,7 @@ describe('ConnectionEventHandler', () => {
             }),
             unregisterWorkspace: jest.fn(),
             setClientSupportsConfiguration: jest.fn(),
+            setClientSupportsRefresh: jest.fn(),
             allWorkspaces: jest.fn().mockReturnValue([]),
             onDidChangeWatchedFiles: jest.fn(),
         } as unknown as ExtensionState;

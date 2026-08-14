@@ -331,6 +331,68 @@ describe('ResponseHandler', () => {
         expect(partialSpy).not.toHaveBeenCalled();
     });
 
+    // The whole-document views the analyser feeds are answered from whatever
+    // it held when the request arrived, and the editor re-asks only when the
+    // document changes — so an answer computed against text a keystroke behind
+    // stays on screen once the typing stops. A compile landing with the queue
+    // drained is the point at which the client is asked to come back for the
+    // current one.
+    const refreshingConnection = () => ({
+        sendDiagnostics: () => {},
+        languages: {
+            semanticTokens: { refresh: jest.fn().mockResolvedValue(undefined) },
+            inlayHint: { refresh: jest.fn().mockResolvedValue(undefined) },
+        },
+    } as any);
+
+    const drainedQueue = (pending: boolean) => ({
+        onDiagnosticsReceived: () => {},
+        onFullCompileDone: () => {},
+        onPartialCompileDone: () => {},
+        hasPendingEdits: () => pending,
+    } as any);
+
+    it('asks the client to re-fetch tokens and hints once a compile lands with nothing queued', () => {
+        responseHandler.connection = refreshingConnection();
+        responseHandler.edit_queue = drainedQueue(false);
+        responseHandler.client_supports_refresh = true;
+
+        responseHandler.handleDiagnostics({
+            kind: 'diagnostics', checked_paths: [], diagnostics: [],
+            phase: 'partial', elapsed_ms: 5, compile_needed: true,
+        } as any);
+
+        expect(responseHandler.connection.languages.semanticTokens.refresh).toHaveBeenCalled();
+        expect(responseHandler.connection.languages.inlayHint.refresh).toHaveBeenCalled();
+    });
+
+    it('does not ask while edits are still queued, since the answer would be as stale', () => {
+        responseHandler.connection = refreshingConnection();
+        responseHandler.edit_queue = drainedQueue(true);
+        responseHandler.client_supports_refresh = true;
+
+        responseHandler.handleDiagnostics({
+            kind: 'diagnostics', checked_paths: [], diagnostics: [],
+            phase: 'partial', elapsed_ms: 5, compile_needed: true,
+        } as any);
+
+        expect(responseHandler.connection.languages.semanticTokens.refresh).not.toHaveBeenCalled();
+        expect(responseHandler.connection.languages.inlayHint.refresh).not.toHaveBeenCalled();
+    });
+
+    it('does not ask a client that has not declared it will act on the request', () => {
+        responseHandler.connection = refreshingConnection();
+        responseHandler.edit_queue = drainedQueue(false);
+
+        responseHandler.handleDiagnostics({
+            kind: 'diagnostics', checked_paths: [], diagnostics: [],
+            phase: 'full', elapsed_ms: 5, compile_needed: false,
+        } as any);
+
+        expect(responseHandler.connection.languages.semanticTokens.refresh).not.toHaveBeenCalled();
+        expect(responseHandler.connection.languages.inlayHint.refresh).not.toHaveBeenCalled();
+    });
+
     it('should enqueue and resolve hover promise on expectHover and handleHover', async () => {
         const hoverPromise = responseHandler.expectHover();
 

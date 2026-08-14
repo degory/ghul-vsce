@@ -105,6 +105,22 @@ export class ExtensionState {
         }
     }
 
+    // Whether the client will act on a request to re-fetch semantic tokens and
+    // inlay hints. Both are answered from what the analyser held when the
+    // request arrived, and the editor only re-asks when the document changes,
+    // so without this the last answer of a typing burst is the one that stays
+    // on screen even when it was computed against text the user has since
+    // moved past.
+    private client_supports_refresh: boolean = false;
+
+    public setClientSupportsRefresh(supported: boolean) {
+        this.client_supports_refresh = supported;
+
+        for (const context of this.allWorkspaces()) {
+            context.response_handler.client_supports_refresh = supported;
+        }
+    }
+
     public registerWorkspace(workspace_root: string): WorkspaceContext {
         const existing = this.workspaces.get(workspace_root);
 
@@ -115,6 +131,7 @@ export class ExtensionState {
         const context = new WorkspaceContext(workspace_root, this.connection, this.documents);
 
         context.client_supports_configuration = this.client_supports_configuration;
+        context.response_handler.client_supports_refresh = this.client_supports_refresh;
 
         this.workspaces.set(workspace_root, context);
 

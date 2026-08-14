@@ -143,6 +143,12 @@ export class EditQueue {
         this.full_build_timeout = EditQueue.FULL_BUILD_EDIT_TIMEOUT;
     }
 
+    // Whether the analyser is still behind the editor — edits queued here that
+    // it has not been given yet.
+    hasPendingEdits(): boolean {
+        return this.pending_changes.size > 0;
+    }
+
     reset() {
         this.pending_changes.clear();
         this.clearEditTimer();
