@@ -598,14 +598,14 @@ export class ResponseHandler {
     rejectAllPendingPromises(message: string) {
         this._hover_promise_queue.rejectAll(message);
         this._definition_promise_queue.rejectAll(message);
-        this._declaration_promise_queue.reject(message);
+        this._declaration_promise_queue.rejectAll(message);
         this._completion_promise_queue.rejectAll(message);
         this._signature_promise_queue.rejectAll(message);
         this._symbols_promise_queue.rejectAll(message);
         this._references_promise_queue.rejectAll(message);
         this._implementation_promise_queue.rejectAll(message);
         this._type_definition_promise_queue.rejectAll(message);
-        this._rename_promise_queue.reject(message);
+        this._rename_promise_queue.rejectAll(message);
         this._formatting_promise_queue.rejectAll(message);
         this._range_formatting_promise_queue.rejectAll(message);
         this._semantic_tokens_promise_queue.rejectAll(message);

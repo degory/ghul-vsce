@@ -125,6 +125,29 @@ describe('ResponseHandler', () => {
         });
     });
 
+    // The editor can have more than one request of a kind outstanding — a
+    // go-to-declaration issued while the previous one is still unanswered.
+    // Each queue must let go of all of them when the compiler dies, or the
+    // extras are left waiting on a process that is gone and that feature
+    // never answers again.
+    it('rejects every pending promise of a kind, not just the first', async () => {
+        const declarations = [
+            responseHandler._declaration_promise_queue.enqueue(),
+            responseHandler._declaration_promise_queue.enqueue(),
+        ];
+
+        const renames = [
+            responseHandler._rename_promise_queue.enqueue(),
+            responseHandler._rename_promise_queue.enqueue(),
+        ];
+
+        responseHandler.rejectAllPendingPromises('compiler died');
+
+        const results = await Promise.allSettled([...declarations, ...renames]);
+
+        results.forEach(result => expect(result.status).toBe('rejected'));
+    });
+
     it('should set the server manager', () => {
         const serverManager: ServerManager = {} as ServerManager;
         responseHandler.setServerManager(serverManager);
