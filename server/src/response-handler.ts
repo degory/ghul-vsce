@@ -509,6 +509,11 @@ export class ResponseHandler {
     // precede the analyser starting.
     suppress_diagnostics: boolean = false;
 
+    // Set from the client's declared capabilities. See ExtensionState: without
+    // it the client is never asked to re-fetch the views below, and a stale
+    // answer stays on screen until the document is edited again.
+    client_supports_refresh: boolean = false;
+
     server_manager: ServerManager;
     connection: Connection;
     edit_queue: EditQueue;
@@ -691,10 +696,38 @@ export class ResponseHandler {
 
         if (response.phase == "partial") {
             this.edit_queue.onPartialCompileDone(milliseconds);
+            this.refreshDerivedViews();
         } else if (response.phase == "full") {
             this.edit_queue.onFullCompileDone(milliseconds);
+            this.refreshDerivedViews();
         }
         // phase == "query": apply diagnostics only; do not drive the state machine.
+    }
+
+    // Ask the editor to re-fetch the whole-document views the analyser feeds:
+    // semantic tokens and inlay hints.
+    //
+    // Both are answered from what the analyser held when the request arrived,
+    // and the editor re-asks only when the document changes. A request that
+    // arrives while edits are still queued — the queue can only flush between
+    // round trips — is answered against text a keystroke or more behind, and
+    // once the typing stops nothing asks again, so the colouring stays behind
+    // until the file is touched. Asking here gives the analyser's own catching
+    // up the last word.
+    //
+    // Only once the queue has absorbed everything: a refresh sent with edits
+    // still pending would be answered against the same stale text and would
+    // have to be sent again anyway.
+    private refreshDerivedViews() {
+        if (!this.client_supports_refresh || this.edit_queue.hasPendingEdits()) {
+            return;
+        }
+
+        this.connection.languages.semanticTokens.refresh()
+            .catch(e => log("semantic token refresh failed: " + e));
+
+        this.connection.languages.inlayHint.refresh()
+            .catch(e => log("inlay hint refresh failed: " + e));
     }
 
     handleHeapCheckDone() {

@@ -189,6 +189,13 @@ export class ConnectionEventHandler {
             !!params.capabilities?.workspace?.configuration
         );
 
+        // Both refreshes are sent together, so both capabilities have to be
+        // there before either is used.
+        this.extension_state.setClientSupportsRefresh(
+            !!params.capabilities?.workspace?.semanticTokens?.refreshSupport &&
+            !!params.capabilities?.workspace?.inlayHint?.refreshSupport
+        );
+
         const roots = this.collectWorkspaceRoots(params);
 
         const workspaces: WorkspaceContext[] = [];
