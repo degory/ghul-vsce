@@ -38,8 +38,7 @@ export enum Activity {
 // as it stands, and "analysing" is true.
 //
 // The activities that are NOT routine — workspace setup, the analyser starting
-// or restarting, referenced projects being built, the heap being collected —
-// each keep their own wording. They are rare, they leave the editor degraded
+// or restarting, the heap being collected — each keep their own wording. They are rare, they leave the editor degraded
 // while they run, and they are the cases where the user is owed an
 // explanation rather than a spinner.
 //
@@ -85,9 +84,9 @@ export interface ReportOptions {
 // One progress notification per workspace, shared by every activity that wants
 // to say something in it.
 //
-// Activities overlap freely — a full compile can start while referenced
-// projects are still building — and LSP progress is per-token, so a reporter
-// per activity would stack several spinners saying different things at once.
+// Activities overlap freely — the analyser digests an edit while a full
+// compile is still running — and LSP progress is per-token, so a reporter per
+// activity would stack several spinners saying different things at once.
 // Instead each activity reports under its own key and the most recent one is
 // what shows; the notification opens on the first key and closes when the last
 // one ends.

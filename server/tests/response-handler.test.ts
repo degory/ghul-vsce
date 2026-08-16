@@ -263,7 +263,7 @@ describe('ResponseHandler', () => {
         expect(onDiagnosticsReceivedSpy).toHaveBeenCalled();
     });
 
-    it('handleDiagnostics publishes nothing while diagnostics are suppressed', () => {
+    it('handleDiagnostics publishes what the analyser reported', () => {
         responseHandler.connection = { sendDiagnostics: () => {} } as any;
         responseHandler.edit_queue = {
             onDiagnosticsReceived: () => {},
@@ -273,8 +273,6 @@ describe('ResponseHandler', () => {
 
         const onDiagnosticsReceivedSpy = jest.spyOn(responseHandler.edit_queue, 'onDiagnosticsReceived');
         const sendDiagnosticsSpy = jest.spyOn(responseHandler.connection, 'sendDiagnostics');
-
-        responseHandler.suppress_diagnostics = true;
 
         responseHandler.handleDiagnostics({
             kind: 'diagnostics',
@@ -287,10 +285,11 @@ describe('ResponseHandler', () => {
             compile_needed: false,
         } as any);
 
-        expect(sendDiagnosticsSpy).not.toHaveBeenCalled();
+        expect(sendDiagnosticsSpy).toHaveBeenCalledWith({
+            uri: 'file:///test.ghul',
+            diagnostics: [expect.objectContaining({ message: 'Diagnostic 1' })],
+        });
 
-        // The edit queue still has to be driven: suppression withholds the
-        // squiggles, it does not discard the compile that produced them.
         expect(onDiagnosticsReceivedSpy).toHaveBeenCalled();
     });
 

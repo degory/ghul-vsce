@@ -329,9 +329,9 @@ export class WorkspaceContext {
         // The step above builds the referenced projects, so anything still
         // absent here is a build that failed rather than one that has not been
         // run yet. Nothing is going to produce it without the user acting, so
-        // say so and let the diagnostics through, incomplete as they are.
-        this.response_handler.suppress_diagnostics = false;
-
+        // say so — and leave the diagnostics of the incomplete reference set
+        // to be published, incomplete as they are, since nothing is coming
+        // along to replace them.
         if (this.config.missing_assemblies.length) {
             problems.push(
                 `could not build ${this.config.missing_assemblies.length} referenced ` +

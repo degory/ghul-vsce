@@ -347,22 +347,19 @@ describe('WorkspaceContext.initialize', () => {
             expect(restore).toHaveBeenCalledTimes(1);
             expect(generate).toHaveBeenCalledTimes(1);
             expect(spawn).toHaveBeenCalledTimes(1);
-
-            expect(context.response_handler.suppress_diagnostics).toBe(false);
         });
     });
 
-    it('releases diagnostics and warns when a referenced assembly is absent after the build', async () => {
+    it('warns when a referenced assembly is absent after the build', async () => {
         stubConfig(['/path/to/workspace/lib/bin/Debug/net10.0/lib.dll']);
 
         // The setup build ran and the assembly still is not there, so the user
-        // now has to act: the incomplete diagnostics are better than none, and
-        // the warning explains them.
+        // now has to act, and the warning is what tells them the diagnostics
+        // they are about to read are of an incomplete reference set.
         await context.initialize();
 
         await new Promise(resolve => setImmediate(resolve));
 
-        expect(context.response_handler.suppress_diagnostics).toBe(false);
         expect(connection.window.showWarningMessage).toHaveBeenCalledWith(
             expect.stringContaining('analysis will be incomplete')
         );
@@ -553,12 +550,12 @@ describe('WorkspaceContext.initialize', () => {
         expect(context.config).toBeDefined();
     });
 
-    it('does not withhold diagnostics when every referenced assembly is present', async () => {
+    it('does not warn when every referenced assembly is present', async () => {
         stubConfig([]);
 
         await context.initialize();
 
-        expect(context.response_handler.suppress_diagnostics).toBe(false);
+        expect(connection.window.showWarningMessage).not.toHaveBeenCalled();
     });
 });
 

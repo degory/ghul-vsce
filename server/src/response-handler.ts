@@ -500,15 +500,6 @@ export class ResponseHandler {
     // source and blank the file.
     edit_deltas_supported: boolean = false;
 
-    // Set while the analyser is running without some of the assemblies the
-    // project references. Every use of a type from a missing assembly fails to
-    // resolve, so the diagnostics of that compile describe the incomplete
-    // reference set rather than the code, and publishing them would fill the
-    // editor with errors that vanish moments later. Withholding them costs
-    // nothing: diagnostics only ever arrive with a compile, and no compile can
-    // precede the analyser starting.
-    suppress_diagnostics: boolean = false;
-
     // Set from the client's declared capabilities. See ExtensionState: without
     // it the client is never asked to re-fetch the views below, and a stale
     // answer stays on screen until the document is edited again.
@@ -680,10 +671,8 @@ export class ResponseHandler {
     // phase "query", which (like the old query-miss DIAGNOSTICS frame that had
     // no following DONE) must not advance the state machine.
     handleDiagnostics(response: DiagnosticsResponse) {
-        if (!this.suppress_diagnostics) {
-            for (let [uri, diagnostics] of this.parseDiagnostics(response)) {
-                this.connection.sendDiagnostics({ uri, diagnostics });
-            }
+        for (let [uri, diagnostics] of this.parseDiagnostics(response)) {
+            this.connection.sendDiagnostics({ uri, diagnostics });
         }
 
         this.edit_queue.onDiagnosticsReceived();
