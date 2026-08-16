@@ -4,15 +4,21 @@ import { log } from './log';
 
 const COMMAND = "dotnet";
 
+// An explicit -t: replaces the default target, so this runs
+// GenerateAssembliesJson and the chain it depends on —
+// FindReferenceAssembliesForReferences, ResolveReferences,
+// ResolveProjectReferences — and stops there. CoreCompile is not in that
+// chain, so the project being analysed is resolved but never compiled, which
+// is what we want: the analyser reads that project's sources itself and has no
+// use for its output assembly.
+//
+// ResolveProjectReferences does build each referenced project, and that is
+// also what we want. A reference is only ever visible to the analyser as
+// metadata it reflects over, so an assembly that is absent or out of date is
+// not a slower start-up, it is the wrong answer: the analyser reports symbols
+// added since the last build as not found, and nothing downstream can tell
+// that from the truth.
 const ARGUMENTS = ["build", "-verbosity:minimal", "-t:GenerateAssembliesJson"];
-
-// GenerateAssembliesJson depends on FindReferenceAssembliesForReferences, which
-// pulls in ResolveProjectReferences and so builds every referenced project just
-// to learn where its output assembly will be. The paths it writes are the same
-// either way, so suppressing that build produces an identical .assemblies.json
-// at a fraction of the cost — at the price of the referenced outputs not
-// existing until something else builds them.
-const WITHOUT_REFERENCE_BUILD = [...ARGUMENTS, "-p:BuildProjectReferences=false"];
 
 function describeFailure(e: unknown): string {
     return `could not generate .assemblies.json — the ghūl project may be missing or invalid: ` +
@@ -53,18 +59,11 @@ function run(workspace: string, args: string[], description: string): Promise<st
     });
 }
 
-// Resolve the referenced assembly paths without building any of them. Returns a
-// human-readable problem description if generation failed, or null on success /
-// nothing-to-do. Never rejects: a broken .ghulproj is a degraded load to be
-// reported, not a reason to abandon the rest of the startup.
+// Build the referenced projects and write the resolved reference paths to
+// .assemblies.json. Returns a human-readable problem description if that
+// failed, or null on success / nothing-to-do. Never rejects: a broken
+// .ghulproj is a degraded load to be reported, not a reason to abandon the
+// rest of the startup.
 export function generateAssembliesJson(workspace: string): Promise<string | null> {
-    return run(workspace, WITHOUT_REFERENCE_BUILD, "generating .assemblies.json");
-}
-
-// Build the referenced projects so their output assemblies exist, and refresh
-// .assemblies.json from the result. Runs detached from whatever asked for it:
-// the analyser is already up by this point and running on the assemblies that
-// were present, so this only has to finish eventually, not promptly.
-export function buildReferencedAssemblies(workspace: string): Promise<string | null> {
-    return run(workspace, ARGUMENTS, "building referenced assemblies");
+    return run(workspace, ARGUMENTS, "building project references");
 }

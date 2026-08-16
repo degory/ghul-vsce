@@ -1,21 +1,18 @@
-import { existsSync, rmSync } from 'fs';
+import { existsSync, readFileSync, rmSync } from 'fs';
 import { join } from 'path';
 
 import { LspClient } from './lsp-client';
 
 // A workspace whose referenced projects have never been built — a fresh
-// clone, a new Codespace — is the one case where the extension can be made to
-// set itself up several times over for a single event: it builds the
-// referenced project itself, and the assembly that build produces is also the
-// thing it asked the client to watch for. Both routes then report the same
-// news, and each one restores tools, regenerates .assemblies.json and
-// replaces the analyser: tens of seconds each, and a compiler that starts
-// again from cold every time.
+// clone, a new Codespace. Setup builds them before it reads what they
+// resolved to, so the analyser it then starts is the only analyser this
+// start-up needs: one tool restore, one reference build, one compiler.
 //
-// Only reproducible against a real client and a real build, because the
-// second trigger is a file the build writes and an editor reports. Same
-// requirements as the other tests in this tier: `dotnet` on PATH, network
-// access for the tool restore, and the server built first.
+// Worth pinning end to end because the alternative is not a slower start-up
+// but a wrong one, and every part of that is invisible from inside the
+// server. Only reproducible against a real client and a real build.
+// Same requirements as the other tests in this tier: `dotnet` on PATH,
+// network access for the tool restore, and the server built first.
 
 const SERVER_PATH = join(__dirname, '..', 'out', 'server.js');
 const FIXTURE_ROOT = join(__dirname, 'fixtures', 'referenced-project');
@@ -50,7 +47,7 @@ describe('start-up on a tree whose referenced projects have never been built', (
         cleanGeneratedArtifacts();
     });
 
-    it('sets up once for the cold start and once for the assembly its build produced', async () => {
+    it('builds the reference during setup and starts one analyser on it', async () => {
         client = new LspClient(SERVER_PATH, FIXTURE_ROOT);
 
         const uri = 'file://' + SOURCE_PATH;
@@ -71,40 +68,43 @@ describe('start-up on a tree whose referenced projects have never been built', (
         client.notify('initialized', {});
 
         await client.waitForLog(
-            message => message.includes('finished building referenced assemblies'),
+            message => message.includes('finished building project references'),
             180000,
-            'the referenced project build finishing'
+            'the project reference build finishing'
         );
 
         expect(existsSync(LIBRARY_PATH)).toBe(true);
 
-        // The build's completion re-runs setup on the now-complete reference
-        // set. That is the one repeat this start-up is entitled to.
-        await client.waitForLog(
-            message => message.includes('finished generating .assemblies.json') &&
-                client.countLogs('generating .assemblies.json...') > 1,
-            120000,
-            'setup running again on the built reference set'
-        );
+        client.notify('textDocument/didOpen', {
+            textDocument: {
+                uri,
+                languageId: 'ghul',
+                version: 1,
+                text: readFileSync(SOURCE_PATH, 'utf8'),
+            },
+        });
 
-        // Long enough for a re-initialize left pending by the client's report
-        // of the new assembly to have fired: the change tracker debounces
-        // that by five seconds.
-        await new Promise(resolve => setTimeout(resolve, 15000));
-
-        expect(client.countLogs('restoring .NET tools...')).toBe(2);
-        expect(client.countLogs('generating .assemblies.json...')).toBe(2);
-        expect(client.countLogs('building referenced assemblies...')).toBe(1);
-        expect(client.countLogs('spawned compiler process')).toBe(2);
-
-        // The reference set is what changed, so the second analyser has to be
-        // the one that can see the library — otherwise setup ran twice and
-        // achieved nothing.
+        // Held until the analyser has compiled the project, so reaching an
+        // answer at all means it started on a reference set that already
+        // included the library.
         const hover = await client.request('textDocument/hover', {
             textDocument: { uri },
             position: { line: 6, character: 32 },
         });
 
         expect(JSON.stringify(hover)).toContain('THING');
+
+        // Long enough for a second setup to have started, had anything been
+        // left for one to do. The change tracker debounces its re-initialize
+        // by five seconds.
+        await new Promise(resolve => setTimeout(resolve, 15000));
+
+        // The reference was built before the reference set was read, so there
+        // is nothing left to discover afterwards and nothing to set up for a
+        // second time. Each of these repeated is tens of seconds of the
+        // user's time and an analyser thrown away and restarted from cold.
+        expect(client.countLogs('restoring .NET tools...')).toBe(1);
+        expect(client.countLogs('building project references...')).toBe(1);
+        expect(client.countLogs('spawned compiler process')).toBe(1);
     });
 });

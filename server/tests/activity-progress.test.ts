@@ -41,19 +41,19 @@ describe('ActivityProgress', () => {
     });
 
     it('falls back to what is still running when an activity ends', async () => {
-        // Overlap is normal — a full compile can start while referenced
-        // projects are still building — and the user should be told what is
-        // still happening rather than have the notification vanish.
+        // Overlap is normal — a full compile can start while the analyser is
+        // still digesting an edit — and the user should be told what is still
+        // happening rather than have the notification vanish.
         const reporter = makeReporter();
         const progress = new ActivityProgress(makeConnection(reporter));
 
-        progress.report(Activity.References, 'building referenced projects');
+        progress.report(Activity.Edit, 'digesting edits');
         await settle();
 
         progress.report(Activity.Compile, 'full analysis');
         progress.end(Activity.Compile);
 
-        expect(reporter.report).toHaveBeenLastCalledWith('building referenced projects');
+        expect(reporter.report).toHaveBeenLastCalledWith('digesting edits');
         expect(reporter.done).not.toHaveBeenCalled();
     });
 
