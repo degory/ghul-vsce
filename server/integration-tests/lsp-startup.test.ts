@@ -121,7 +121,7 @@ describe('language server start-up against a real compiler (no mocks, no VS Code
         // The setup phase (#152/#154) and the first-compile phase both have
         // to show up — not just the setup, which ends well before the
         // analyser can answer anything.
-        expect(messages).toContain('resolving project references');
+        expect(messages).toContain('building project references');
         expect(messages).toContain('analysing project');
     });
 });

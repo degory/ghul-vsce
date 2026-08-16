@@ -7,12 +7,10 @@ import { log } from './log';
 // know the project is being analysed, not that the extension is waiting on a
 // compiler to tell it so.
 export enum Activity {
-    // Per-workspace setup: tool restore, reference resolution.
+    // Per-workspace setup: tool restore, building the project's references.
     Setup = 'setup',
     // The compiler child, from spawn through its first compile of the project.
     Compiler = 'compiler',
-    // Building referenced projects whose output assemblies are absent.
-    References = 'references',
     // The analyser digesting the edits made since it last saw the file.
     Edit = 'edit',
     // A full compile of the project after a lull in editing.

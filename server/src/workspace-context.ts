@@ -29,7 +29,7 @@ import { MetricsReporter } from './metrics-reporter';
 
 import { EditorSettings, getGhulConfig, GhulConfig } from './ghul-config';
 import { restoreDotNetTools } from './restore-dotnet-tools';
-import { generateAssembliesJson, buildReferencedAssemblies } from './generate-assemblies-json';
+import { generateAssembliesJson } from './generate-assemblies-json';
 
 // How long to wait for the client to answer for its settings before falling
 // back to the project's own configuration. Setup cannot proceed without an
@@ -81,8 +81,6 @@ export class WorkspaceContext {
     // note there: a client that has not declared this never answers the
     // request, so asking one that has not would stall setup outright.
     client_supports_configuration: boolean = false;
-
-    private reference_build_attempted: boolean = false;
 
     private missing_assembly_watch: Promise<Disposable> | null = null;
 
@@ -318,7 +316,7 @@ export class WorkspaceContext {
             problems.push(tools_problem);
         }
 
-        this.progress.report(Activity.Setup, "resolving project references", { done_message: "project references resolved" });
+        this.progress.report(Activity.Setup, "building project references", { done_message: "project references built" });
 
         let assemblies_problem = await generateAssembliesJson(this.workspace_root);
         if (assemblies_problem) {
@@ -328,18 +326,13 @@ export class WorkspaceContext {
         this.config = getGhulConfig(this.workspace_root, await this.readEditorSettings());
         problems.push(...(this.config.problems ?? []));
 
-        // Missing referenced assemblies are expected right up until the build
-        // that produces them has run, and they resolve themselves without the
-        // user doing anything — so stay quiet and withhold the diagnostics
-        // they would distort. Once that build has been and gone they are a
-        // real problem the user has to act on, so say so and let the
-        // diagnostics through, incomplete as they are.
-        const awaiting_reference_build =
-            this.config.missing_assemblies.length > 0 && !this.reference_build_attempted;
+        // The step above builds the referenced projects, so anything still
+        // absent here is a build that failed rather than one that has not been
+        // run yet. Nothing is going to produce it without the user acting, so
+        // say so and let the diagnostics through, incomplete as they are.
+        this.response_handler.suppress_diagnostics = false;
 
-        this.response_handler.suppress_diagnostics = awaiting_reference_build;
-
-        if (this.config.missing_assemblies.length && !awaiting_reference_build) {
+        if (this.config.missing_assemblies.length) {
             problems.push(
                 `could not build ${this.config.missing_assemblies.length} referenced ` +
                 `assembly/assemblies; analysis will be incomplete until they are built`
@@ -369,17 +362,7 @@ export class WorkspaceContext {
             this.config.missing_assemblies
         );
 
-        // The watch is a backstop for assemblies arriving by a route we don't
-        // control. When we are about to build them ourselves it is not that:
-        // it fires on our own build's output, for an event the build's own
-        // completion already re-initializes on, and the workspace sets itself
-        // up twice over. Register it only when nobody here is going to
-        // produce those files.
-        if (awaiting_reference_build) {
-            this.stopWatchingMissingAssemblies();
-        } else {
-            this.watchMissingAssemblies();
-        }
+        this.watchMissingAssemblies();
 
         // Starts the compiler, which reports its own progress from here on
         // (see reportCompilerStartup) — so the setup activity ends into the
@@ -387,8 +370,6 @@ export class WorkspaceContext {
         this.config_event_emitter.configAvailable(this.workspace_root, this.config);
 
         this.progress.end(Activity.Setup);
-
-        this.buildMissingAssemblies();
     }
 
     // The editor's settings for this folder, with its User / Workspace /
@@ -443,11 +424,6 @@ export class WorkspaceContext {
     }
 
     reinitialize() {
-        // An external change — a project file, the tool manifest — can add or
-        // remove references, so whatever was concluded about the previous
-        // reference set no longer binds.
-        this.reference_build_attempted = false;
-
         this.initializeDetached();
     }
 
@@ -459,35 +435,12 @@ export class WorkspaceContext {
         this.initialize().catch(e => log(`workspace initialization failed: ${e}`));
     }
 
-    // Referenced projects are not built while resolving their output paths, so
-    // on a tree that has never been built those outputs are absent and the
-    // analyser starts without them. Build them now, off the critical path, and
-    // re-read the configuration once they exist.
-    //
-    // Attempted at most once per reference set: a build that fails, or that
-    // leaves an output still missing, must not re-trigger itself.
-    private buildMissingAssemblies() {
-        if (!this.config.missing_assemblies.length || this.reference_build_attempted) {
-            return;
-        }
-
-        this.reference_build_attempted = true;
-
-        this.progress.report(Activity.References, "building referenced projects", { done_message: "referenced projects built" });
-
-        buildReferencedAssemblies(this.workspace_root)
-            .then(() => {
-                this.progress.end(Activity.References);
-
-                this.initializeDetached();
-            });
-    }
-
-    // Backstop for the assemblies arriving by some other route than the build
-    // above — the user building from a terminal, a sibling tool, a git
-    // operation that restores them. Watches exactly the paths that are absent,
-    // so once they are all present nothing is registered and an ordinary
-    // rebuild during editing cannot trigger anything.
+    // Backstop for an assembly the setup build failed to produce arriving by
+    // some other route — the user fixing the referenced project and building it
+    // from a terminal, a sibling tool, a git operation that restores it.
+    // Watches exactly the paths that are absent, so once they are all present
+    // nothing is registered and an ordinary rebuild during editing cannot
+    // trigger anything.
     private watchMissingAssemblies() {
         this.stopWatchingMissingAssemblies();
 

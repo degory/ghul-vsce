@@ -304,29 +304,15 @@ describe('WorkspaceContext.initialize', () => {
             return connection;
         }
 
-        it('does not watch for the assemblies its own build is about to produce', async () => {
+        it('watches for an assembly the setup build failed to produce', async () => {
+            // Setup builds the references, so one still absent here is a
+            // failed build. Nothing will produce it without the user acting,
+            // and it arriving by some other route — them fixing the project
+            // and building in a terminal — is worth watching for.
             connection = makeRegisterableConnection();
             context = new WorkspaceContext(WORKSPACE_ROOT, connection, documents);
 
             stubConfig([LIB]);
-            jest.spyOn(generateAssembliesJson, 'buildReferencedAssemblies')
-                .mockReturnValue(new Promise(() => { /* still building */ }));
-
-            await context.initialize();
-
-            expect((connection as any).client.register).not.toHaveBeenCalled();
-        });
-
-        it('watches once the build has been and gone without producing them', async () => {
-            // Nothing here will produce them now, so an assembly arriving by
-            // some other route — the user building in a terminal — is the
-            // only way out, and is worth watching for.
-            connection = makeRegisterableConnection();
-            context = new WorkspaceContext(WORKSPACE_ROOT, connection, documents);
-
-            stubConfig([LIB]);
-            jest.spyOn(generateAssembliesJson, 'buildReferencedAssemblies')
-                .mockResolvedValue(null);
 
             await context.initialize();
             await settle();
@@ -334,91 +320,44 @@ describe('WorkspaceContext.initialize', () => {
             expect((connection as any).client.register).toHaveBeenCalledTimes(1);
         });
 
-        it('sets up once per event when the build produces what was missing', async () => {
-            // The sequence from a cold Codespace: setup starts the analyser
-            // without the assembly and kicks off a build; the build produces
-            // it and setup runs again on the complete reference set. That is
-            // one repeat, and one is all it may be — each of these steps
-            // costs the user tens of seconds and a replaced analyser.
+        it('sets up once on a tree whose references have never been built', async () => {
+            // The sequence from a cold Codespace. Setup builds the references
+            // before it reads them, so it starts one analyser, on the complete
+            // reference set — no second pass, and no analyser thrown away and
+            // started again from cold, each of which costs the user tens of
+            // seconds.
             connection = makeRegisterableConnection();
             context = new WorkspaceContext(WORKSPACE_ROOT, connection, documents);
 
             const spawn = require('child_process').spawn as jest.Mock;
             spawn.mockClear();
 
-            const config = stubConfig([LIB]);
+            stubConfig([]);
 
             const restore = restoreDotNetTools.restoreDotNetTools as jest.Mock;
             const generate = generateAssembliesJson.generateAssembliesJson as jest.Mock;
 
-            let finishBuild: (value: string | null) => void;
-
-            const build = jest.spyOn(generateAssembliesJson, 'buildReferencedAssemblies')
-                .mockReturnValue(new Promise(resolve => { finishBuild = resolve; }));
-
             await context.initialize();
+            await settle();
+
+            jest.advanceTimersByTime(30_000);
+
+            await settle();
 
             expect(restore).toHaveBeenCalledTimes(1);
             expect(generate).toHaveBeenCalledTimes(1);
             expect(spawn).toHaveBeenCalledTimes(1);
 
-            // The build writes the assembly. VS Code reports it whether or
-            // not we asked it to — a watch registered for an earlier folder,
-            // a client that watches more broadly than we requested — so the
-            // report itself must not be able to start a second setup for the
-            // event the build's own completion already covers.
-            context.document_change_tracker.onDidChangeWatchedFiles({
-                changes: [{ uri: 'file://' + LIB, type: 1 }],
-            });
-
-            (GetGhulConfig.getGhulConfig as jest.Mock)
-                .mockReturnValue({ ...config, missing_assemblies: [] });
-
-            finishBuild!(null);
-
-            await settle();
-
-            // Well past the change tracker's 5s debounce, so a re-initialize
-            // left pending by the report above has had every chance to fire.
-            jest.advanceTimersByTime(30_000);
-
-            await settle();
-
-            expect(restore).toHaveBeenCalledTimes(2);
-            expect(generate).toHaveBeenCalledTimes(2);
-            expect(build).toHaveBeenCalledTimes(1);
-
-            // The reference set changed, so this compiler genuinely is a
-            // different one: it is started with the assembly the first was
-            // missing.
-            expect(spawn).toHaveBeenCalledTimes(2);
-
-            expect(context.config.missing_assemblies).toEqual([]);
             expect(context.response_handler.suppress_diagnostics).toBe(false);
         });
     });
 
-    it('withholds diagnostics while a referenced assembly is yet to be built', async () => {
+    it('releases diagnostics and warns when a referenced assembly is absent after the build', async () => {
         stubConfig(['/path/to/workspace/lib/bin/Debug/net10.0/lib.dll']);
 
-        jest.spyOn(generateAssembliesJson, 'buildReferencedAssemblies')
-            .mockReturnValue(new Promise(() => { /* never settles */ }));
-
-        await context.initialize();
-
-        expect(context.response_handler.suppress_diagnostics).toBe(true);
-        expect(connection.window.showWarningMessage).not.toHaveBeenCalled();
-    });
-
-    it('releases diagnostics and warns when a referenced assembly is still absent after the build', async () => {
-        stubConfig(['/path/to/workspace/lib/bin/Debug/net10.0/lib.dll']);
-
-        // Resolving without the assembly appearing is the build-failed case:
-        // the user now has to act, so the incomplete diagnostics are better
-        // than none and the warning explains them.
-        jest.spyOn(generateAssembliesJson, 'buildReferencedAssemblies')
-            .mockResolvedValue(null);
-
+        // The setup build ran and the assembly still is not there, so the user
+        // now has to act: the incomplete diagnostics are better than none, and
+        // the warning explains them.
         await context.initialize();
 
         await new Promise(resolve => setImmediate(resolve));
@@ -444,7 +383,7 @@ describe('WorkspaceContext.initialize', () => {
             ...progressReporter.report.mock.calls.map(([message]) => message),
         ];
 
-        expect(messages).toContain('resolving project references');
+        expect(messages).toContain('building project references');
         expect(messages).toContain('starting analyser');
         expect(messages[messages.length - 1]).toBe('starting analyser');
     });
@@ -558,7 +497,7 @@ describe('WorkspaceContext.initialize', () => {
 
         expect(messages).toEqual([
             'restoring .NET tools',
-            'resolving project references',
+            'building project references',
             'starting analyser',
             'analysing project',
         ]);
@@ -617,12 +556,9 @@ describe('WorkspaceContext.initialize', () => {
     it('does not withhold diagnostics when every referenced assembly is present', async () => {
         stubConfig([]);
 
-        const buildSpy = jest.spyOn(generateAssembliesJson, 'buildReferencedAssemblies');
-
         await context.initialize();
 
         expect(context.response_handler.suppress_diagnostics).toBe(false);
-        expect(buildSpy).not.toHaveBeenCalled();
     });
 });
 
