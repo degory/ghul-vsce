@@ -882,6 +882,68 @@ describe('ResponseHandler', () => {
         expect(result.get('file:///a.ghul')![0].data).toBeUndefined();
     });
 
+    it('parseDiagnostics maps related locations to Diagnostic.relatedInformation', () => {
+        const result = responseHandler.parseDiagnostics({
+            kind: 'diagnostics',
+            checked_paths: [],
+            diagnostics: [
+                {
+                    path: 'file:///a.ghul', start_line: 3, start_column: 9, end_line: 3, end_column: 11,
+                    severity: 2, message: 'hides HasPropertyTest.test: int (case A)', code: 'hides-inherited',
+                    related: [
+                        {
+                            location: { file: 'file:///b.ghul', start_line: 7, start_column: 5, end_line: 7, end_column: 9 },
+                            message: 'hidden declaration',
+                        },
+                    ],
+                },
+            ],
+            phase: 'full', elapsed_ms: 0, compile_needed: false,
+        } as any);
+
+        const related = result.get('file:///a.ghul')![0].relatedInformation!;
+        expect(related).toHaveLength(1);
+        expect(related[0].message).toBe('hidden declaration');
+        expect(related[0].location.uri).toBe('file:///b.ghul');
+        expect(related[0].location.range).toEqual({
+            start: { line: 6, character: 4 },
+            end: { line: 6, character: 8 },
+        });
+    });
+
+    it('parseDiagnostics drops a related location under internal/reflected, keeping the diagnostic', () => {
+        const result = responseHandler.parseDiagnostics({
+            kind: 'diagnostics',
+            checked_paths: [],
+            diagnostics: [
+                {
+                    path: 'file:///a.ghul', start_line: 1, start_column: 1, end_line: 1, end_column: 5,
+                    severity: 2, message: 'msg', code: 'hides-inherited',
+                    related: [
+                        { location: { file: 'internal', start_line: 1, start_column: 1, end_line: 1, end_column: 1 }, message: 'built-in' },
+                    ],
+                },
+            ],
+            phase: 'full', elapsed_ms: 0, compile_needed: false,
+        } as any);
+
+        expect(result.get('file:///a.ghul')).toHaveLength(1);
+        expect(result.get('file:///a.ghul')![0].relatedInformation).toBeUndefined();
+    });
+
+    it('parseDiagnostics tolerates a response with no related field (older compiler)', () => {
+        const result = responseHandler.parseDiagnostics({
+            kind: 'diagnostics',
+            checked_paths: [],
+            diagnostics: [
+                { path: 'file:///a.ghul', start_line: 1, start_column: 1, end_line: 1, end_column: 5, severity: 2, message: 'msg' },
+            ],
+            phase: 'full', elapsed_ms: 0, compile_needed: false,
+        } as any);
+
+        expect(result.get('file:///a.ghul')![0].relatedInformation).toBeUndefined();
+    });
+
     it('parseDiagnostics seeds an empty entry for every clean checked_paths url', () => {
         // The diagnostics "clear errors for a clean file" signal is now
         // explicit: a path that appears in checked_paths but carries no
