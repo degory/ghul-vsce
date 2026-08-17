@@ -21,6 +21,7 @@ import {
     TextEdit,
     Range,
     Diagnostic,
+    DiagnosticRelatedInformation,
 } from 'vscode-languageserver';
 
 import { log } from './log';
@@ -74,6 +75,11 @@ export interface DiagnosticDto {
     // advertises "code-actions" leaves them off reported diagnostics and
     // answers for one range on demand instead.
     fixes?: QuickFixDto[] | null;
+    // Other locations this diagnostic refers to (a prior declaration, an
+    // overridden member, ...). `message` already says in prose whatever
+    // this adds, so an older server talking to this client - or an older
+    // client reading this field - just doesn't render the extra link.
+    related?: RelatedLocationDto[] | null;
 }
 
 interface LocationDto {
@@ -82,6 +88,11 @@ interface LocationDto {
     start_column: number;
     end_line: number;
     end_column: number;
+}
+
+interface RelatedLocationDto {
+    location: LocationDto;
+    message: string;
 }
 
 interface SemanticTokenDto {
@@ -1228,6 +1239,33 @@ export class ResponseHandler {
 
             if (dto.code) {
                 problem.code = dto.code;
+            }
+
+            if (dto.related && dto.related.length > 0) {
+                let relatedInformation: DiagnosticRelatedInformation[] = [];
+
+                for (let r of dto.related) {
+                    let relatedUri = toUri(r.location.file);
+
+                    if (relatedUri == null) {
+                        continue;
+                    }
+
+                    relatedInformation.push({
+                        location: {
+                            uri: relatedUri,
+                            range: {
+                                start: { line: r.location.start_line - 1, character: r.location.start_column - 1 },
+                                end: { line: r.location.end_line - 1, character: r.location.end_column - 1 }
+                            }
+                        },
+                        message: r.message
+                    });
+                }
+
+                if (relatedInformation.length > 0) {
+                    problem.relatedInformation = relatedInformation;
+                }
             }
 
             problems.get(uri).push(problem);
