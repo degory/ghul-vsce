@@ -23,6 +23,10 @@ enum QueueState {
     DOING_PARTIAL_COMPILE,
     WAITING_FOR_MORE_EDITS_AFTER_PARTIAL_COMPILE,
     DOING_FULL_COMPILE,
+    // A full compile is running and the edit that supersedes it has already
+    // been written. Two responses are outstanding: the compile's, which the
+    // analyser cuts short, and then the edit's.
+    DOING_FULL_COMPILE_SUPERSEDED,
     DOING_HEAP_CHECK,
 }
 
@@ -238,7 +242,17 @@ export class EditQueue {
 
             this.startEditTimer(this.edit_timeout);
         } else if (this.state == QueueState.DOING_FULL_COMPILE) {
-            // do nothing, wait for full compiler to complete
+            // The analyser stops a compile as soon as it sees an edit
+            // waiting, so debounce this one as usual and then write it
+            // rather than holding it until the compile answers. Without
+            // that the compile runs on computing diagnostics this edit has
+            // already made stale.
+            if (this.response_handler.compile_abort_supported) {
+                this.startEditTimer(this.edit_timeout);
+            }
+        } else if (this.state == QueueState.DOING_FULL_COMPILE_SUPERSEDED) {
+            // do nothing: the compile has already been superseded, and the
+            // edit that did it is in flight
         } else if (this.state == QueueState.DOING_HEAP_CHECK) {
             // do nothing, wait for the heap check to complete
         } else {
@@ -259,6 +273,8 @@ export class EditQueue {
             } else {
                 this.requestFullCompile();
             }
+        } else if (this.state == QueueState.DOING_FULL_COMPILE) {
+            this.sendSupersedingEdit();
         } else {
             log("timer expired but not waiting for edits: " + QueueState[this.state] + " (" + this.state + ")");
         }
@@ -341,6 +357,18 @@ export class EditQueue {
     }
 
     onFullCompileDone(milliseconds: number) {
+        if (this.state == QueueState.DOING_FULL_COMPILE_SUPERSEDED) {
+            // The compile the analyser cut short. Its diagnostics are
+            // whatever it managed before stopping, which is why it sends
+            // none; the edit that superseded it is still in flight and its
+            // response is what the queue is now waiting for.
+            this.progress?.end(Activity.Compile);
+
+            this.state = QueueState.DOING_PARTIAL_COMPILE;
+
+            return;
+        }
+
         if (this.state != QueueState.DOING_FULL_COMPILE) {
             // A stray FULL DONE — drop it rather than transitioning from a
             // state that never requested a full compile.
@@ -664,7 +692,48 @@ export class EditQueue {
             fallback: true
         });
 
-        this.sendEdits(documents);
+        if (!this.sendEdits(documents)) {
+            // Every file was an undo back to text the analyser already
+            // holds. Advance the state as though a compile had completed
+            // with nothing to do, so the queue does not sit waiting for a
+            // response that will never come.
+            this.onPartialCompileDone(0);
+        }
+    }
+
+    // Write the queued edits while a full compile is running, so the analyser
+    // stops that compile at its next file boundary instead of finishing a
+    // walk this edit has already invalidated. Two responses then come back:
+    // the compile's, and this edit's.
+    private sendSupersedingEdit() {
+        if (this.pending_changes.size == 0) {
+            return;
+        }
+
+        this.clearEditTimer();
+
+        const documents = <{ uri: string, source: string}[]>[];
+
+        for (const change of this.pending_changes.values()) {
+            documents.push({uri: change.uri, source: change.text});
+        }
+
+        this.pending_changes.clear();
+
+        if (!this.sendEdits(documents)) {
+            // Nothing actually went out, so the compile is not superseded
+            // and is left to finish.
+            return;
+        }
+
+        this.send_start_time = Date.now();
+
+        this.state = QueueState.DOING_FULL_COMPILE_SUPERSEDED;
+
+        this.progress?.report(Activity.Edit, ROUTINE_ANALYSIS_MESSAGE, {
+            delay_ms: SLOW_ACTIVITY_DELAY_MS,
+            fallback: true
+        });
     }
 
     // Send edits as deltas where the analyser can take them, and as full text
@@ -672,11 +741,15 @@ export class EditQueue {
     // and a mix of edit and edit_delta would produce two. So if any file lacks
     // last-sent text the whole batch goes as full text; the common case is one
     // file that was sent before, and that one goes as a delta.
-    sendEdits(documents: { uri: string, source: string }[]) {
+    //
+    // Returns whether a request went out. It does not when every file turned
+    // out to be unchanged — an undo back to what the analyser already holds —
+    // and the caller then has no response to wait for.
+    sendEdits(documents: { uri: string, source: string }[]): boolean {
         if (!this.response_handler.edit_deltas_supported) {
             this.sendMultiEdits(documents);
 
-            return;
+            return true;
         }
 
         const deltas: EditDelta[] = [];
@@ -688,7 +761,7 @@ export class EditQueue {
             if (!lastSent) {
                 this.sendMultiEdits(documents);
 
-                return;
+                return true;
             }
 
             const span = computeSpan(lastSent, doc.source);
@@ -705,14 +778,11 @@ export class EditQueue {
         }
 
         if (deltas.length === 0) {
-            // Every file was unchanged. Advance the state as though a compile
-            // had completed with nothing to do, so the queue does not sit
-            // waiting for a response that will never come.
-            this.onPartialCompileDone(0);
-
-            return;
+            return false;
         }
 
         this.requester.sendEditDeltas(deltas);
+
+        return true;
     }
 }

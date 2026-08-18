@@ -1015,3 +1015,115 @@ describe('EditQueue edit deltas', () => {
         expect(recorder.sendEditDeltasCalls).toHaveLength(2);
     });
 });
+
+// An edit made while a full compile is running is written to the analyser
+// rather than held until the compile answers. The analyser stops the compile
+// at its next file boundary, so the queue then has two responses coming: the
+// shortened compile's, and the edit's.
+describe('EditQueue superseding a full compile', () => {
+    let recorder: RecordingRequester;
+    let watchdog: Watchdog;
+    let responseHandler: ResponseHandler;
+    let queue: EditQueue;
+
+    beforeEach(() => {
+        jest.useFakeTimers();
+
+        watchdog = new Watchdog(10000, () => {});
+        responseHandler = {
+            rejectAllAndThrow: (message: string) => { throw message; },
+            compile_abort_supported: true,
+        } as unknown as ResponseHandler;
+
+        recorder = new RecordingRequester();
+        queue = new EditQueue(
+            recorder as unknown as Requester,
+            responseHandler,
+            watchdog,
+            { report: jest.fn(), end: jest.fn() } as unknown as ActivityProgress
+        );
+    });
+
+    afterEach(() => {
+        jest.useRealTimers();
+    });
+
+    // Leaves the queue in DOING_FULL_COMPILE with the compile request sent.
+    function startFullCompile() {
+        queue.reset();
+        queue.forceScheduleFullCompile();
+        jest.advanceTimersByTime(EditQueue.FULL_BUILD_EDIT_TIMEOUT);
+
+        expect(recorder.sendFullCompileRequestCalls).toBe(1);
+    }
+
+    it('writes an edit made during a full compile once the debounce expires', () => {
+        startFullCompile();
+
+        queue.queueEdit3('file:///a.ghul', 1, 'edited');
+
+        expect(recorder.sendDocumentsCalls).toHaveLength(0);
+
+        jest.advanceTimersByTime(queue.edit_timeout);
+
+        expect(recorder.sendDocumentsCalls).toEqual([
+            [{ uri: 'file:///a.ghul', source: 'edited' }]
+        ]);
+        expect(queue.pending_changes.size).toBe(0);
+    });
+
+    it('holds the edit when the analyser cannot abandon a compile', () => {
+        (responseHandler as unknown as { compile_abort_supported: boolean })
+            .compile_abort_supported = false;
+
+        startFullCompile();
+
+        queue.queueEdit3('file:///a.ghul', 1, 'edited');
+        jest.advanceTimersByTime(10_000);
+
+        expect(recorder.sendDocumentsCalls).toHaveLength(0);
+        expect(queue.pending_changes.size).toBe(1);
+    });
+
+    it('waits for the edit response after the shortened compile answers', () => {
+        startFullCompile();
+
+        queue.queueEdit3('file:///a.ghul', 1, 'edited');
+        jest.advanceTimersByTime(queue.edit_timeout);
+
+        // The compile's own response. It is the first of two, so it must not
+        // return the queue to IDLE or arm a timer.
+        queue.onFullCompileDone(100);
+
+        jest.advanceTimersByTime(10_000);
+
+        expect(recorder.sendFullCompileRequestCalls).toBe(1);
+        expect(recorder.sendDocumentsCalls).toHaveLength(1);
+
+        // The edit's response completes the round trip and the queue carries
+        // on as it does after any edit.
+        queue.onPartialCompileDone(10);
+
+        expect(recorder.analysed).toBe(true);
+    });
+
+    it('further edits during the superseded compile wait for the round trip', () => {
+        startFullCompile();
+
+        queue.queueEdit3('file:///a.ghul', 1, 'edited');
+        jest.advanceTimersByTime(queue.edit_timeout);
+
+        queue.queueEdit3('file:///b.ghul', 1, 'also edited');
+        jest.advanceTimersByTime(10_000);
+
+        expect(recorder.sendDocumentsCalls).toHaveLength(1);
+        expect(queue.pending_changes.size).toBe(1);
+
+        queue.onFullCompileDone(100);
+        queue.onPartialCompileDone(10);
+
+        jest.advanceTimersByTime(queue.edit_timeout);
+
+        expect(recorder.sendDocumentsCalls).toHaveLength(2);
+    });
+});
