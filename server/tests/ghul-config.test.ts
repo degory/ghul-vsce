@@ -273,6 +273,59 @@ describe('getGhulConfig', () => {
         expect(cfg.arguments).toEqual(['--warn-as-hint', 'presence-test-non-optional', '-A']);
     });
 
+    it('reads flags from .ghul-options.json and skips the <GhulOptions> XML fallback', () => {
+        const workspace = ws();
+        const proj = `<?xml version="1.0"?>
+<Project Sdk="Ghul.Sdk">
+    <PropertyGroup>
+        <GhulCompiler>ghul-compiler</GhulCompiler>
+    </PropertyGroup>
+    <ItemGroup>
+        <GhulSources Include="src/**/*.ghul" />
+        <GhulOptions Include="--should-be-ignored" />
+    </ItemGroup>
+</Project>`;
+        writeFileSync(join(workspace, 'test.ghulproj'), proj);
+        writeJson(workspace, '.ghul-options.json', {
+            options: '--underscore-access legacy --suppress "null-deref,impure-function-value"',
+        });
+
+        const cfg = getGhulConfig(workspace);
+        expect(cfg.arguments).toEqual([
+            '--underscore-access', 'legacy',
+            '--suppress', 'null-deref,impure-function-value',
+            '-A',
+        ]);
+        expect(cfg.arguments).not.toContain('--should-be-ignored');
+    });
+
+    it('falls back to the <GhulOptions> XML forwarding when .ghul-options.json is absent', () => {
+        const workspace = ws();
+        const proj = `<?xml version="1.0"?>
+<Project Sdk="Ghul.Sdk">
+    <ItemGroup>
+        <GhulSources Include="src/**/*.ghul" />
+        <GhulOptions Include="--warn-as-hint presence-test-non-optional" />
+    </ItemGroup>
+</Project>`;
+        writeFileSync(join(workspace, 'test.ghulproj'), proj);
+        // No .ghul-options.json — the project's ghul.runtime pin predates
+        // GenerateGhulOptionsJson (< 14.1.0).
+
+        const cfg = getGhulConfig(workspace);
+        expect(cfg.arguments).toEqual(['--warn-as-hint', 'presence-test-non-optional', '-A']);
+    });
+
+    it('records a problem for malformed .ghul-options.json instead of throwing', () => {
+        const workspace = ws();
+        writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['src'] });
+        writeFileSync(join(workspace, '.ghul-options.json'), 'not json at all');
+
+        let cfg!: ReturnType<typeof getGhulConfig>;
+        expect(() => { cfg = getGhulConfig(workspace); }).not.toThrow();
+        expect(cfg.problems.some(p => p.includes('.ghul-options.json'))).toBe(true);
+    });
+
     it('ignores .ghulproj contents when multiple are present', () => {
         const workspace = ws();
         const proj = `<?xml version="1.0"?>

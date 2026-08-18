@@ -88,5 +88,6 @@ language-server/LICENSE
 server/integration-tests/fixtures/**/bin/
 server/integration-tests/fixtures/**/obj/
 server/integration-tests/fixtures/**/.assemblies.json
+server/integration-tests/fixtures/**/.ghul-options.json
 server/integration-tests/fixtures/**/.analysis.rsp
 server/integration-tests/fixtures/**/.build.rsp

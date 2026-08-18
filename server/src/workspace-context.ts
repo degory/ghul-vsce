@@ -30,6 +30,7 @@ import { MetricsReporter } from './metrics-reporter';
 import { EditorSettings, getGhulConfig, GhulConfig } from './ghul-config';
 import { restoreDotNetTools } from './restore-dotnet-tools';
 import { generateAssembliesJson } from './generate-assemblies-json';
+import { generateGhulOptionsJson } from './generate-ghul-options-json';
 
 // How long to wait for the client to answer for its settings before falling
 // back to the project's own configuration. Setup cannot proceed without an
@@ -322,6 +323,13 @@ export class WorkspaceContext {
         if (assemblies_problem) {
             problems.push(assemblies_problem);
         }
+
+        // Same ordering requirement as .assemblies.json above: getGhulConfig
+        // reads .ghul-options.json if generateGhulOptionsJson produced one.
+        // Best-effort and never contributes a problem — a project on an
+        // older ghul.runtime pin has no GenerateGhulOptionsJson target, and
+        // getGhulConfig falls back to hand-parsing the .ghulproj.
+        await generateGhulOptionsJson(this.workspace_root);
 
         this.config = getGhulConfig(this.workspace_root, await this.readEditorSettings());
         problems.push(...(this.config.problems ?? []));
