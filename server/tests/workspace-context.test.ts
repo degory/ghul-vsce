@@ -7,6 +7,7 @@ import { GhulConfig } from '../src/ghul-config';
 import * as GetGhulConfig from '../src/ghul-config';
 import * as restoreDotNetTools from '../src/restore-dotnet-tools';
 import * as generateAssembliesJson from '../src/generate-assemblies-json';
+import * as generateGhulOptionsJson from '../src/generate-ghul-options-json';
 
 // initialize() fires configAvailable, which wakes the ServerManager and makes
 // it write .analysis.rsp and spawn the compiler. We're not exercising that
@@ -167,6 +168,30 @@ describe('WorkspaceContext.initialize', () => {
         expect(restoreDotNetToolsSpy).toHaveBeenCalledWith(WORKSPACE_ROOT);
         expect(generateAssembliesJsonSpy).toHaveBeenCalledWith(WORKSPACE_ROOT);
         expect(getGhulConfigSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, expect.anything());
+    });
+
+    it('generates .ghul-options.json before reading it via getGhulConfig', async () => {
+        // Same ordering requirement as .assemblies.json above: getGhulConfig
+        // reads .ghul-options.json if generateGhulOptionsJson wrote one.
+        jest.spyOn(restoreDotNetTools, 'restoreDotNetTools').mockResolvedValue(null);
+        jest.spyOn(generateAssembliesJson, 'generateAssembliesJson').mockResolvedValue(null);
+        const generateGhulOptionsJsonSpy = jest.spyOn(generateGhulOptionsJson, 'generateGhulOptionsJson').mockResolvedValue(undefined);
+        const getGhulConfigSpy = jest.spyOn(GetGhulConfig, 'getGhulConfig').mockReturnValue({
+            compiler: ['ghul'],
+            source: ['test.ghul'],
+            arguments: [],
+            want_plaintext_hover: false,
+            missing_assemblies: [],
+            problems: [],
+        } as GhulConfig);
+
+        await context.initialize();
+
+        const generateOrder = generateGhulOptionsJsonSpy.mock.invocationCallOrder[0];
+        const configOrder = getGhulConfigSpy.mock.invocationCallOrder[0];
+
+        expect(generateOrder).toBeLessThan(configOrder);
+        expect(generateGhulOptionsJsonSpy).toHaveBeenCalledWith(WORKSPACE_ROOT);
     });
 
     it('surfaces a warning when the config loaded with problems but is still runnable', async () => {

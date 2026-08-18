@@ -29,6 +29,10 @@ export interface GhulConfig {
 	problems: string[],
 }
 
+interface GhulOptionsFileJson {
+	options?: string
+}
+
 interface GhulConfigJson {
 	compiler?: string[] | string,
 	source?: string[],
@@ -139,6 +143,31 @@ export function getGhulConfig(workspace: string, settings: EditorSettings = {}):
 		args = parse(args as string).map(e => e.toString());
 	}
 
+	// .ghul-options.json (ghul.runtime 14.1.0+'s GenerateGhulOptionsJson
+	// target, see degory/ghul#2090) carries the compiler flags the build
+	// itself resolved - conditions applied, properties evaluated - so it
+	// replaces the hand-rolled <GhulOptions> forwarding below wherever it is
+	// present. A project on an older ghul.runtime pin has no such file;
+	// resolved_options stays false and the XML fallback runs as before.
+	let resolved_options = false;
+
+	if (existsSync(workspace + "/.ghul-options.json")) {
+		try {
+			let buffer = ('' + readFileSync(workspace + "/.ghul-options.json", "utf-8")).replace(/^\uFEFF/, '');
+			let { options } = JSON.parse(buffer) as GhulOptionsFileJson;
+
+			if (options) {
+				args.push(...parse(options).map(e => e.toString()));
+			}
+
+			resolved_options = true;
+		} catch (e) {
+			let problem = `could not load .ghul-options.json: ${describeError(e)}`;
+			log(problem);
+			problems.push(problem);
+		}
+	}
+
 	let projects = globSync(workspace + "/*.ghulproj");
 
 	if (projects.length == 1) {
@@ -196,11 +225,19 @@ export function getGhulConfig(workspace: string, settings: EditorSettings = {}):
 						config.source = config.source.map(directory => directory + "/**/*.ghul");
 					}
 
-					// Forward unconditioned <GhulOptions Include="…" /> so the
-					// analyser tracks the command-line build (e.g. --warn-as-hint).
-					// Condition-guarded options (e.g. CI-only --define) are skipped
-					// so the analyser matches a local build rather than a CI build.
-					if (projectXml.Project.ItemGroup) {
+					// Fallback for a project on a ghul.runtime older than
+					// 14.1.0, where .ghul-options.json was never written:
+					// forward unconditioned <GhulOptions Include="…" /> so
+					// the analyser tracks the command-line build (e.g.
+					// --warn-as-hint). Condition-guarded options (e.g.
+					// CI-only --define) are skipped so the analyser matches
+					// a local build rather than a CI build - the same
+					// Condition-blindness .ghul-options.json exists to fix
+					// (it cannot see a Condition on the enclosing ItemGroup,
+					// GhulOptions in property form, or a $(...) reference),
+					// so this path is deliberately left as-is rather than
+					// hardened further.
+					if (!resolved_options && projectXml.Project.ItemGroup) {
 						projectXml.Project.ItemGroup
 							.filter(ig => ig.GhulOptions)
 							.map(ig => ig.GhulOptions)

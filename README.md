@@ -35,9 +35,14 @@ workspace folder:
 - `ghul.plaintextHover` — render hovers as plain text rather than markdown.
 
 How the *project* is built stays in the project file: `<GhulCompiler>`,
-`<GhulSources>` and `<GhulOptions>` in the `.ghulproj` are read by the
-extension and by an ordinary build alike, so the editor analyses what a build
-compiles.
+`<GhulSources>` and `<GhulOptions>` in the `.ghulproj` govern an ordinary
+build. Diagnostics options (`<GhulOptions>`, `<GhulUnderscoreAccess>` and
+friends) reach the extension the same way, but not by re-reading the XML: on
+a ghul.runtime 14.1.0+ project, the extension asks MSBuild to resolve them
+first and reads the answer from `.ghul-options.json`, so it sees what the
+build actually resolved rather than a guess at it - conditions applied,
+properties evaluated. A project on an older `ghul.runtime` pin falls back to
+a direct (best-effort) reading of the unconditioned `<GhulOptions>` entries.
 
 A `ghul.json` in the workspace root is still read, and still sets
 `incremental_analysis` and `want_plaintext_hover` for a project that already
