@@ -281,10 +281,22 @@ describe('ServerManager (state helpers)', () => {
             expect(spawn).toHaveBeenCalledTimes(1);
             const [head, args, options] = (spawn as jest.Mock).mock.calls[0];
             expect(head).toBe('dotnet');
-            // @.analysis.rsp stays workspace-relative — the cwd is what
-            // anchors it to the right per-workspace file:
-            expect(args).toEqual(['tool', 'run', 'ghul-compiler', '@.analysis.rsp']);
+            // `--` ends dotnet's own argument parsing for the tool-run
+            // spelling, so its MSBuild-style response-file expansion leaves
+            // @.analysis.rsp for the compiler instead of expanding the
+            // single-line rsp into one giant argument. The rsp stays
+            // workspace-relative — the cwd is what anchors it to the right
+            // per-workspace file:
+            expect(args).toEqual(['tool', 'run', 'ghul-compiler', '--', '@.analysis.rsp']);
             expect(options).toEqual({ cwd: TEST_WORKSPACE_ROOT });
+        });
+
+        it('adds no -- for the direct dotnet-ghul-compiler spelling', () => {
+            manager.ghul_config = { ...baseConfig, compiler: ['dotnet', 'ghul-compiler'] };
+            manager.start();
+
+            const [, args] = (spawn as jest.Mock).mock.calls[0];
+            expect(args).toEqual(['ghul-compiler', '@.analysis.rsp']);
         });
 
         it('emits starting then running, with the spawned child', () => {
