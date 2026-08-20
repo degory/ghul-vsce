@@ -245,9 +245,22 @@ export class ServerManager {
 
 		log(`compiler is "${quote(ghul_compiler)}"`);
 
+		// `dotnet tool run` parses the rest of its command line itself,
+		// MSBuild-style - including `@file` response-file expansion, one
+		// argument per line. The .analysis.rsp is a single line, so that
+		// expansion would hand the compiler the whole file as one argument
+		// and the analysis flag would never be seen. `--` ends dotnet's own
+		// parsing, letting the response file reach the compiler untouched.
+		// The direct `dotnet ghul-compiler` spelling needs no separator:
+		// the first token already tells dotnet to pass everything through.
+		const is_tool_run =
+			ghul_compiler[0] === "dotnet" &&
+			ghul_compiler[1] === "tool" &&
+			ghul_compiler[2] === "run";
+
 		this.child = spawn(
 			ghul_compiler[0],
-			[...ghul_compiler.slice(1), "@.analysis.rsp"],
+			[...ghul_compiler.slice(1), ...(is_tool_run ? ["--"] : []), "@.analysis.rsp"],
 			{ cwd: this.workspace_root }
 		);
 
