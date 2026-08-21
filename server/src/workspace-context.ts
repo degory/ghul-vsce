@@ -1,8 +1,6 @@
-import * as path from 'path';
-
 import { pathToFileURL } from 'url';
 
-import { readdirSync } from 'fs';
+import { existsSync, readdirSync } from 'fs';
 
 import {
     Connection,
@@ -31,6 +29,8 @@ import { EditorSettings, getGhulConfig, GhulConfig } from './ghul-config';
 import { restoreDotNetTools } from './restore-dotnet-tools';
 import { generateAssembliesJson } from './generate-assemblies-json';
 import { generateGhulOptionsJson } from './generate-ghul-options-json';
+import { generateResponseFile } from './generate-response-file';
+import { TempDirectory } from './temp-directory';
 
 // How long to wait for the client to answer for its settings before falling
 // back to the project's own configuration. Setup cannot proceed without an
@@ -78,6 +78,8 @@ export class WorkspaceContext {
     private connection: Connection;
     private documents: TextDocuments<TextDocument>;
 
+    private temp_directory: TempDirectory;
+
     // Set by ExtensionState from the client's declared capabilities. See the
     // note there: a client that has not declared this never answers the
     // request, so asking one that has not would stall setup outright.
@@ -105,6 +107,8 @@ export class WorkspaceContext {
         this.workspace_root = workspace_root;
         this.connection = connection;
         this.documents = documents;
+
+        this.temp_directory = new TempDirectory();
 
         this.server_event_emitter = new ServerEventEmitter();
         this.config_event_emitter = new ConfigEventEmitter();
@@ -158,6 +162,7 @@ export class WorkspaceContext {
             this.response_parser,
             this.watchdog,
             workspace_root,
+            this.analysisResponseFilePath(),
             connection
         );
 
@@ -305,11 +310,11 @@ export class WorkspaceContext {
     private async runInitialize(): Promise<void> {
         let problems: string[] = [];
 
-        // generateAssembliesJson writes .assemblies.json; getGhulConfig
-        // reads it to build the -a flags for .analysis.rsp. Must run in
-        // this order — on a fresh checkout the file does not yet exist,
-        // so a reversed order leaves the analyser with no -a flags and
-        // it falls back to a five-assembly default.
+        // The build writes the response file; getGhulConfig reads it to build
+        // the analyser's -a flags. Must run in this order — on a fresh
+        // checkout there is no such file yet, so a reversed order leaves the
+        // analyser with no -a flags and it falls back to a five-assembly
+        // default.
         this.progress.report(Activity.Setup, "restoring .NET tools");
 
         let tools_problem = await restoreDotNetTools(this.workspace_root);
@@ -319,19 +324,36 @@ export class WorkspaceContext {
 
         this.progress.report(Activity.Setup, "building project references", { done_message: "project references built" });
 
-        let assemblies_problem = await generateAssembliesJson(this.workspace_root);
-        if (assemblies_problem) {
-            problems.push(assemblies_problem);
+        let response_file: string | null = this.responseFilePath();
+        let response_file_problem = await generateResponseFile(this.workspace_root, response_file);
+
+        if (!existsSync(response_file)) {
+            // Most often this means the project is pinned to a ghul.runtime
+            // older than 14.3.0, which has no GenerateGhulResponseFile target
+            // — ordinary rather than broken, and the overwhelmingly common
+            // case, so it must not warn. Nothing here can tell that apart
+            // from the target failing on a project that does have it, so the
+            // fallback runs either way and reports for itself. Anything
+            // generateResponseFile complained about is in the log whichever
+            // it was, so a failure that the fallback then papers over is
+            // still there to be found.
+            response_file = null;
+
+            let assemblies_problem = await generateAssembliesJson(this.workspace_root);
+            if (assemblies_problem) {
+                problems.push(assemblies_problem);
+            }
+
+            // Best-effort and never contributes a problem — a project on a
+            // runtime older still has no GenerateGhulOptionsJson target
+            // either, and getGhulConfig falls back to hand-parsing the
+            // .ghulproj.
+            await generateGhulOptionsJson(this.workspace_root);
+        } else if (response_file_problem) {
+            problems.push(response_file_problem);
         }
 
-        // Same ordering requirement as .assemblies.json above: getGhulConfig
-        // reads .ghul-options.json if generateGhulOptionsJson produced one.
-        // Best-effort and never contributes a problem — a project on an
-        // older ghul.runtime pin has no GenerateGhulOptionsJson target, and
-        // getGhulConfig falls back to hand-parsing the .ghulproj.
-        await generateGhulOptionsJson(this.workspace_root);
-
-        this.config = getGhulConfig(this.workspace_root, await this.readEditorSettings());
+        this.config = getGhulConfig(this.workspace_root, await this.readEditorSettings(), response_file);
         problems.push(...(this.config.problems ?? []));
 
         // The step above builds the referenced projects, so anything still
@@ -478,11 +500,27 @@ export class WorkspaceContext {
         return this.document_change_tracker?.globs ?? [];
     }
 
-    // Absolute path to this workspace's .analysis.rsp file; per-workspace so
-    // multiple compilers cannot stomp on each other when they share an
-    // extension host.
+    // Absolute path to the response file the build writes this workspace's
+    // resolved options and references to.
+    responseFilePath(): string {
+        return this.temp_directory.path('project.rsp');
+    }
+
+    // Absolute path to the response file the analyser is launched with. Both
+    // this and the build's live in a directory of this workspace's own, so two
+    // editors opened on one project cannot overwrite each other's, and neither
+    // is left behind in the checkout.
     analysisResponseFilePath(): string {
-        return path.join(this.workspace_root, '.analysis.rsp');
+        return this.temp_directory.path('analysis.rsp');
+    }
+
+    // Everything this workspace owns outside its own process: the analyser,
+    // and the generated files it was launched from.
+    dispose() {
+        this.server_manager?.kill();
+        this.document_change_tracker?.dispose();
+        this.stopWatchingMissingAssemblies();
+        this.temp_directory.dispose();
     }
 
     // True when the folder contains at least one .ghulproj or a ghul.json.

@@ -14,8 +14,8 @@ export interface GhulConfig {
 	arguments: string[],
 	want_plaintext_hover: boolean,
 	incremental_analysis: boolean,
-	// Referenced assemblies named in .assemblies.json that do not exist on
-	// disk yet — typically the build outputs of ProjectReference'd projects in
+	// Referenced assemblies the build named that do not exist on disk yet —
+	// typically the build outputs of ProjectReference'd projects in
 	// a tree that has never been built. They are withheld from the -a flags
 	// because the analyser reads each one eagerly and would die on the first
 	// missing file. Analysis is correspondingly incomplete until they appear,
@@ -105,7 +105,72 @@ function prefer(setting: boolean | null | undefined, from_json: boolean | undefi
 	return setting ?? from_json ?? false;
 }
 
-export function getGhulConfig(workspace: string, settings: EditorSettings = {}): GhulConfig {
+// One line of the build's response file, tokenized. A line is one flag with
+// its argument - `-a "/path/to/thing.dll"`, `--suppress null-deref` - so the
+// tokens of a line are read together and never across lines.
+function tokenizeResponseFile(text: string): string[][] {
+	return text
+		.split(/\r?\n/)
+		.map(line => line.trim())
+		.filter(line => line.length > 0)
+		.map(line => parse(line).map(token => token.toString()));
+}
+
+// Read what the build resolved - the compiler options and one -a flag per
+// reference - out of the response file GenerateGhulResponseFile wrote, into
+// the argument list the analyser will be launched with.
+//
+// The compiler follows a nested @<path> itself, so this could have been a
+// single argument naming the file. It is read instead because a reference the
+// build could not produce has to be withheld: the analyser reads each -a
+// eagerly and stops at the first one that is not there, and keeping it up
+// through a half-built tree is the whole reason analysis mode is separate.
+function readResponseFile(
+	response_file: string,
+	args: string[],
+	missing_assemblies: string[],
+	problems: string[]
+): boolean {
+	if (!existsSync(response_file)) {
+		return false;
+	}
+
+	try {
+		let text = ('' + readFileSync(response_file, "utf-8")).replace(/^\uFEFF/, '');
+
+		for (let tokens of tokenizeResponseFile(text)) {
+			if (tokens[0] === "-a" && tokens.length > 1) {
+				if (!existsSync(tokens[1])) {
+					missing_assemblies.push(tokens[1]);
+					continue;
+				}
+			}
+
+			args.push(...tokens);
+		}
+
+		if (missing_assemblies.length) {
+			log(
+				`${missing_assemblies.length} referenced assembly/assemblies not present yet, ` +
+				`analysis will be incomplete until they are built: ${missing_assemblies.join(", ")}`
+			);
+		}
+
+		return true;
+	} catch (e) {
+		let problem = `could not load ${response_file}: ${describeError(e)}`;
+		log(problem);
+		problems.push(problem);
+
+		return false;
+	}
+}
+
+export function getGhulConfig(
+	workspace: string,
+	settings: EditorSettings = {},
+	response_file: string | null = null
+): GhulConfig {
 	let problems: string[] = [];
 
 	let config: GhulConfigJson = {};
@@ -143,15 +208,28 @@ export function getGhulConfig(workspace: string, settings: EditorSettings = {}):
 		args = parse(args as string).map(e => e.toString());
 	}
 
-	// .ghul-options.json (ghul.runtime 14.1.0+'s GenerateGhulOptionsJson
-	// target, see degory/ghul#2090) carries the compiler flags the build
-	// itself resolved - conditions applied, properties evaluated - so it
-	// replaces the hand-rolled <GhulOptions> forwarding below wherever it is
-	// present. A project on an older ghul.runtime pin has no such file;
-	// resolved_options stays false and the XML fallback runs as before.
+	// Whether the compiler flags came from the build itself - conditions
+	// applied, properties evaluated - rather than from the hand-rolled
+	// <GhulOptions> forwarding below, which cannot see a Condition on the
+	// item's enclosing ItemGroup, a property-form GhulOptions, or a $(...)
+	// reference inside one. Either the response file or, on a runtime too old
+	// to write one, .ghul-options.json (ghul.runtime 14.1.0+'s
+	// GenerateGhulOptionsJson target, see degory/ghul#2090) supplies them.
+	// Older still and there is neither, so the XML fallback runs as before.
 	let resolved_options = false;
+	let missing_assemblies: string[] = [];
 
-	if (existsSync(workspace + "/.ghul-options.json")) {
+	// ghul.runtime 14.3.0+'s GenerateGhulResponseFile (degory/ghul#2132)
+	// carries the resolved options and the resolved references together, as
+	// response-file text. Where it has been written it is the whole answer,
+	// and neither of the two JSON files it replaced is consulted.
+	let resolved_from_response_file =
+		response_file != null &&
+		readResponseFile(response_file, args as string[], missing_assemblies, problems);
+
+	if (resolved_from_response_file) {
+		resolved_options = true;
+	} else if (existsSync(workspace + "/.ghul-options.json")) {
 		try {
 			let buffer = ('' + readFileSync(workspace + "/.ghul-options.json", "utf-8")).replace(/^\uFEFF/, '');
 			let { options } = JSON.parse(buffer) as GhulOptionsFileJson;
@@ -332,9 +410,7 @@ export function getGhulConfig(workspace: string, settings: EditorSettings = {}):
 		}
 	}
 
-	let missing_assemblies: string[] = [];
-
-	if (existsSync(workspace + "/.assemblies.json")) {
+	if (!resolved_from_response_file && existsSync(workspace + "/.assemblies.json")) {
 		try {
 			let buffer = ('' + readFileSync(workspace + "/.assemblies.json", "utf-8")).replace(/^\uFEFF/, '');
 

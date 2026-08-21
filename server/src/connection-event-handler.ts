@@ -391,7 +391,7 @@ export class ConnectionEventHandler {
         log("language extension: shutting down...");
 
         for (const workspace of this.extension_state.allWorkspaces()) {
-            workspace.server_manager.kill();
+            workspace.dispose();
         }
     }
 

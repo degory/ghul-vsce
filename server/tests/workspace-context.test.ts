@@ -8,6 +8,7 @@ import * as GetGhulConfig from '../src/ghul-config';
 import * as restoreDotNetTools from '../src/restore-dotnet-tools';
 import * as generateAssembliesJson from '../src/generate-assemblies-json';
 import * as generateGhulOptionsJson from '../src/generate-ghul-options-json';
+import * as generateResponseFile from '../src/generate-response-file';
 
 // initialize() fires configAvailable, which wakes the ServerManager and makes
 // it write .analysis.rsp and spawn the compiler. We're not exercising that
@@ -112,7 +113,7 @@ describe('WorkspaceContext.initialize', () => {
         expect(getGhulConfigSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, {
             incremental_analysis: true,
             want_plaintext_hover: null,
-        });
+        }, null);
     });
 
     it('treats a client that cannot answer as no preference expressed', async () => {
@@ -124,7 +125,7 @@ describe('WorkspaceContext.initialize', () => {
 
         await context.initialize();
 
-        expect(getGhulConfigSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, {});
+        expect(getGhulConfigSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, {}, null);
         expect(context.config).toBeDefined();
     });
 
@@ -137,6 +138,52 @@ describe('WorkspaceContext.initialize', () => {
 
         expect(connection.workspace.getConfiguration).not.toHaveBeenCalled();
         expect(context.config).toBeDefined();
+    });
+
+    it('resolves the project into a response file and reads the config from it', async () => {
+        // The build writes the options and the references together; nothing
+        // reads the two JSON files that used to carry them separately.
+        // fs is mocked at the module boundary above, so the real functions
+        // have to be reached for explicitly to leave a file the code under
+        // test can actually find.
+        const { existsSync, writeFileSync } = jest.requireActual('fs');
+
+        jest.spyOn(restoreDotNetTools, 'restoreDotNetTools').mockResolvedValue(null);
+        const generateResponseFileSpy = jest.spyOn(generateResponseFile, 'generateResponseFile')
+            .mockImplementation(async (_workspace, response_file) => {
+                writeFileSync(response_file, '-a /path/to/A.dll\n');
+                return null;
+            });
+        const generateAssembliesJsonSpy = jest.spyOn(generateAssembliesJson, 'generateAssembliesJson').mockResolvedValue(null);
+        const generateGhulOptionsJsonSpy = jest.spyOn(generateGhulOptionsJson, 'generateGhulOptionsJson').mockResolvedValue(undefined);
+        const getGhulConfigSpy = jest.spyOn(GetGhulConfig, 'getGhulConfig').mockReturnValue({
+            compiler: ['ghul'],
+            source: ['test.ghul'],
+            arguments: [],
+            want_plaintext_hover: false,
+            missing_assemblies: [],
+            problems: [],
+        } as GhulConfig);
+
+        await context.initialize();
+
+        expect(generateResponseFileSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, expect.any(String));
+        expect(generateAssembliesJsonSpy).not.toHaveBeenCalled();
+        expect(generateGhulOptionsJsonSpy).not.toHaveBeenCalled();
+
+        const response_file = generateResponseFileSpy.mock.calls[0][1];
+        const [, , passed] = getGhulConfigSpy.mock.calls[0];
+
+        expect(passed).toBe(response_file);
+
+        // It is written outside the project, so nothing accumulates in the
+        // checkout, and it goes away with the workspace that owns it.
+        expect(response_file.startsWith(WORKSPACE_ROOT)).toBe(false);
+        expect(existsSync(response_file)).toBe(true);
+
+        context.dispose();
+
+        expect(existsSync(response_file)).toBe(false);
     });
 
     it('generates .assemblies.json before reading it via getGhulConfig', async () => {
@@ -167,7 +214,7 @@ describe('WorkspaceContext.initialize', () => {
         expect(generateOrder).toBeLessThan(configOrder);
         expect(restoreDotNetToolsSpy).toHaveBeenCalledWith(WORKSPACE_ROOT);
         expect(generateAssembliesJsonSpy).toHaveBeenCalledWith(WORKSPACE_ROOT);
-        expect(getGhulConfigSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, expect.anything());
+        expect(getGhulConfigSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, expect.anything(), null);
     });
 
     it('generates .ghul-options.json before reading it via getGhulConfig', async () => {

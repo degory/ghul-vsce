@@ -12,6 +12,7 @@ import { Watchdog, COLD_START_TIMEOUT_MILLISECONDS } from '../src/watchdog';
 import { GhulConfig } from '../src/ghul-config';
 
 const TEST_WORKSPACE_ROOT = '/test/workspace';
+const TEST_RESPONSE_FILE = '/tmp/ghul-lsp-test/analysis.rsp';
 
 // jest.mock calls are hoisted above the imports so writeFileSync and spawn
 // resolve to the mocks even when imported normally:
@@ -75,6 +76,7 @@ describe('ServerManager (state helpers)', () => {
             {} as ResponseParser,
             watchdog,
             TEST_WORKSPACE_ROOT,
+            TEST_RESPONSE_FILE,
             connection,
         );
     });
@@ -230,14 +232,15 @@ describe('ServerManager (state helpers)', () => {
             jest.useRealTimers();
         });
 
-        it('writes .analysis.rsp inside the workspace root with shell-quoted arguments', () => {
+        it('writes the response file it was given, with shell-quoted arguments', () => {
             manager.start();
 
             expect(writeFileSync).toHaveBeenCalledTimes(1);
             const [path, contents] = (writeFileSync as jest.Mock).mock.calls[0];
-            // Per-workspace .analysis.rsp so multiple compilers in the same
-            // host don't stomp on each other:
-            expect(path).toBe(`${TEST_WORKSPACE_ROOT}/.analysis.rsp`);
+            // A response file of this workspace's own, outside the project, so
+            // multiple compilers in the same host don't stomp on each other
+            // and nothing is left behind in the checkout:
+            expect(path).toBe(TEST_RESPONSE_FILE);
             // shell-quote joins with spaces; full argument list must round-trip:
             expect(contents).toBe('-a /path/to/A.dll -a /path/to/B.dll -A');
         });
@@ -275,7 +278,7 @@ describe('ServerManager (state helpers)', () => {
             expect(parse(contents)).toEqual(['-a', '/path with spaces/A.dll', '-A']);
         });
 
-        it('spawns the compiler head with the rest of its args plus @.analysis.rsp, anchored to the workspace cwd', () => {
+        it('spawns the compiler head with the rest of its args plus the response file, anchored to the workspace cwd', () => {
             manager.start();
 
             expect(spawn).toHaveBeenCalledTimes(1);
@@ -283,11 +286,10 @@ describe('ServerManager (state helpers)', () => {
             expect(head).toBe('dotnet');
             // `--` ends dotnet's own argument parsing for the tool-run
             // spelling, so its MSBuild-style response-file expansion leaves
-            // @.analysis.rsp for the compiler instead of expanding the
-            // single-line rsp into one giant argument. The rsp stays
-            // workspace-relative — the cwd is what anchors it to the right
-            // per-workspace file:
-            expect(args).toEqual(['tool', 'run', 'ghul-compiler', '--', '@.analysis.rsp']);
+            // the response file for the compiler instead of expanding the
+            // single-line rsp into one giant argument. The rsp is named
+            // absolutely, since it no longer sits under the cwd:
+            expect(args).toEqual(['tool', 'run', 'ghul-compiler', '--', `@${TEST_RESPONSE_FILE}`]);
             expect(options).toEqual({ cwd: TEST_WORKSPACE_ROOT });
         });
 
@@ -296,7 +298,7 @@ describe('ServerManager (state helpers)', () => {
             manager.start();
 
             const [, args] = (spawn as jest.Mock).mock.calls[0];
-            expect(args).toEqual(['ghul-compiler', '@.analysis.rsp']);
+            expect(args).toEqual(['ghul-compiler', `@${TEST_RESPONSE_FILE}`]);
         });
 
         it('emits starting then running, with the spawned child', () => {
@@ -604,6 +606,7 @@ describe('ServerManager (idle exit)', () => {
             { reset: jest.fn(), handleChunk: jest.fn() } as unknown as ResponseParser,
             watchdog,
             workspace_root,
+            `${workspace_root}/analysis.rsp`,
             { window: { showErrorMessage: jest.fn(), showWarningMessage: jest.fn() } } as any,
         );
 
@@ -731,6 +734,7 @@ describe('ServerManager (abandoned compiler reap)', () => {
             { reset: jest.fn(), handleChunk: jest.fn() } as unknown as ResponseParser,
             watchdog,
             workspace_root,
+            `${workspace_root}/analysis.rsp`,
             { window: { showErrorMessage: jest.fn(), showWarningMessage: jest.fn() } } as any,
         );
 
@@ -852,6 +856,7 @@ describe('ServerManager (announced exit that never happens)', () => {
             { reset: jest.fn(), handleChunk: jest.fn() } as unknown as ResponseParser,
             watchdog,
             '/test/workspace/stale-intent',
+            '/tmp/ghul-lsp-test/stale-intent.rsp',
             { window: { showErrorMessage: jest.fn(), showWarningMessage: jest.fn() } } as any,
         );
 
@@ -927,6 +932,7 @@ describe('ServerManager (reaping does not disturb the predecessor)', () => {
             { reset: jest.fn(), handleChunk: jest.fn() } as unknown as ResponseParser,
             watchdog,
             workspace_root,
+            `${workspace_root}/analysis.rsp`,
             { window: { showErrorMessage: jest.fn(), showWarningMessage: jest.fn() } } as any,
         );
 
@@ -1008,6 +1014,7 @@ describe('ServerManager (a reap that goes wrong)', () => {
             { reset: jest.fn(), handleChunk: jest.fn() } as unknown as ResponseParser,
             watchdog,
             workspace_root,
+            `${workspace_root}/analysis.rsp`,
             { window: { showErrorMessage: jest.fn(), showWarningMessage: jest.fn() } } as any,
         );
 

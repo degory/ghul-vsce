@@ -9,11 +9,16 @@
     <GhulSources Include="src/**/*.ghul" />
 
     <!-- GenerateAssembliesJson (the MSBuild target that resolves the
-         analyser's -a flags) is imported from ghul.runtime's build/ folder
+         analyser's -a flags on a runtime this old) is imported from
+         ghul.runtime's build/ folder
          via NuGet, not from the compiler tool — a real ghūl project always
          gets this transitively via its repo's Directory.Build.props. This
          fixture has no such shared props file, so it references the package
-         directly instead. -->
+         directly instead.
+
+         Deliberately older than 14.3.0, which is where
+         GenerateGhulResponseFile arrived: a project pinned this far back is
+         still supported, and this fixture is what covers the fallback. -->
     <PackageReference Include="ghul.runtime" Version="5.8.2" />
   </ItemGroup>
 </Project>

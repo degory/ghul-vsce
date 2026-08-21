@@ -402,6 +402,96 @@ describe('getGhulConfig', () => {
             expect(cfg.problems.some(p => p.includes('compiler'))).toBe(true);
         });
     });
+
+    describe('the build\'s response file', () => {
+        // ghul.runtime 14.3.0+ resolves the options and the references
+        // together and writes them as response-file text, which is what the
+        // compiler wants anyway. It supersedes .ghul-options.json and
+        // .assemblies.json, which carried the same two things as JSON.
+        it('takes both options and -a entries from it', () => {
+            const workspace = ws();
+            writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['src'] });
+
+            const a = join(workspace, 'A.dll');
+            const b = join(workspace, 'B.dll');
+
+            writeFileSync(a, '');
+            writeFileSync(b, '');
+
+            const response_file = join(workspace, 'project.rsp');
+            writeFileSync(response_file, `--suppress null-deref\n-a "${a}"\n-a "${b}"\n`);
+
+            const cfg = getGhulConfig(workspace, {}, response_file);
+
+            expect(cfg.arguments).toEqual([
+                '--suppress', 'null-deref',
+                '-a', a,
+                '-a', b,
+                '-A',
+            ]);
+            expect(cfg.missing_assemblies).toEqual([]);
+        });
+
+        // Same reason the .assemblies.json path withholds them: the analyser
+        // reads every -a path eagerly and dies on the first one it cannot
+        // open, and a referenced project's output is named here before
+        // anything has built it.
+        it('withholds -a entries for assemblies that do not exist yet', () => {
+            const workspace = ws();
+            writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['src'] });
+
+            const present = join(workspace, 'Present.dll');
+            writeFileSync(present, '');
+
+            const absent = join(workspace, 'bin', 'Absent.dll');
+
+            const response_file = join(workspace, 'project.rsp');
+            writeFileSync(response_file, `-a "${present}"\n-a "${absent}"\n`);
+
+            const cfg = getGhulConfig(workspace, {}, response_file);
+
+            expect(cfg.arguments).toEqual(['-a', present, '-A']);
+            expect(cfg.missing_assemblies).toEqual([absent]);
+        });
+
+        it('leaves the JSON files it supersedes unread', () => {
+            const workspace = ws();
+            writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['src'] });
+
+            const from_response_file = join(workspace, 'FromResponseFile.dll');
+            const from_json = join(workspace, 'FromJson.dll');
+
+            writeFileSync(from_response_file, '');
+            writeFileSync(from_json, '');
+
+            writeJson(workspace, '.assemblies.json', { assemblies: [from_json] });
+            writeJson(workspace, '.ghul-options.json', { options: '--warn-as-hint null-deref' });
+
+            const response_file = join(workspace, 'project.rsp');
+            writeFileSync(response_file, `-a "${from_response_file}"\n`);
+
+            const cfg = getGhulConfig(workspace, {}, response_file);
+
+            expect(cfg.arguments).toEqual(['-a', from_response_file, '-A']);
+        });
+
+        // A runtime older than 14.3.0 has no target to write one, and the
+        // caller passes null; a build that failed leaves the path named but
+        // nothing at it. Either way the JSON files are still the answer.
+        it('falls back to the JSON files when it was never written', () => {
+            const workspace = ws();
+            writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['src'] });
+
+            const a = join(workspace, 'A.dll');
+            writeFileSync(a, '');
+
+            writeJson(workspace, '.assemblies.json', { assemblies: [a] });
+
+            const cfg = getGhulConfig(workspace, {}, join(workspace, 'never-written.rsp'));
+
+            expect(cfg.arguments).toEqual(['-a', a, '-A']);
+        });
+    });
 });
 
 // Settings that govern how the extension behaves belong to the editor, where

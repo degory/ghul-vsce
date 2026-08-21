@@ -104,7 +104,7 @@ describe('start-up on a tree whose referenced projects have never been built', (
         // second time. Each of these repeated is tens of seconds of the
         // user's time and an analyser thrown away and restarted from cold.
         expect(client.countLogs('restoring .NET tools...')).toBe(1);
-        expect(client.countLogs('building project references...')).toBe(1);
+        expect(client.countLogs('building project references and resolving compiler options...')).toBe(1);
         expect(client.countLogs('spawned compiler process')).toBe(1);
     });
 });
