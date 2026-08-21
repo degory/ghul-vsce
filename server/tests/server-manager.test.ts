@@ -76,7 +76,7 @@ describe('ServerManager (state helpers)', () => {
             {} as ResponseParser,
             watchdog,
             TEST_WORKSPACE_ROOT,
-            TEST_RESPONSE_FILE,
+            () => TEST_RESPONSE_FILE,
             connection,
         );
     });
@@ -606,7 +606,7 @@ describe('ServerManager (idle exit)', () => {
             { reset: jest.fn(), handleChunk: jest.fn() } as unknown as ResponseParser,
             watchdog,
             workspace_root,
-            `${workspace_root}/analysis.rsp`,
+            () => `${workspace_root}/analysis.rsp`,
             { window: { showErrorMessage: jest.fn(), showWarningMessage: jest.fn() } } as any,
         );
 
@@ -734,7 +734,7 @@ describe('ServerManager (abandoned compiler reap)', () => {
             { reset: jest.fn(), handleChunk: jest.fn() } as unknown as ResponseParser,
             watchdog,
             workspace_root,
-            `${workspace_root}/analysis.rsp`,
+            () => `${workspace_root}/analysis.rsp`,
             { window: { showErrorMessage: jest.fn(), showWarningMessage: jest.fn() } } as any,
         );
 
@@ -856,7 +856,7 @@ describe('ServerManager (announced exit that never happens)', () => {
             { reset: jest.fn(), handleChunk: jest.fn() } as unknown as ResponseParser,
             watchdog,
             '/test/workspace/stale-intent',
-            '/tmp/ghul-lsp-test/stale-intent.rsp',
+            () => '/tmp/ghul-lsp-test/stale-intent.rsp',
             { window: { showErrorMessage: jest.fn(), showWarningMessage: jest.fn() } } as any,
         );
 
@@ -932,7 +932,7 @@ describe('ServerManager (reaping does not disturb the predecessor)', () => {
             { reset: jest.fn(), handleChunk: jest.fn() } as unknown as ResponseParser,
             watchdog,
             workspace_root,
-            `${workspace_root}/analysis.rsp`,
+            () => `${workspace_root}/analysis.rsp`,
             { window: { showErrorMessage: jest.fn(), showWarningMessage: jest.fn() } } as any,
         );
 
@@ -1014,7 +1014,7 @@ describe('ServerManager (a reap that goes wrong)', () => {
             { reset: jest.fn(), handleChunk: jest.fn() } as unknown as ResponseParser,
             watchdog,
             workspace_root,
-            `${workspace_root}/analysis.rsp`,
+            () => `${workspace_root}/analysis.rsp`,
             { window: { showErrorMessage: jest.fn(), showWarningMessage: jest.fn() } } as any,
         );
 

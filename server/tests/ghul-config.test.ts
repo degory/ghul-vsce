@@ -232,6 +232,27 @@ describe('getGhulConfig', () => {
         expect(cfg.arguments).toEqual(['-A']);
     });
 
+    // The convention across this ecosystem is a shared Directory.Build.props
+    // carrying <GhulSources>, so the project file names none of its own. Read
+    // as "this project has no sources", that left the analyser compiling only
+    // whatever the editor had open, and every symbol declared in an unopened
+    // file reported as not defined.
+    it('falls back to the default glob when the project file names no sources', () => {
+        const workspace = ws();
+        writeFileSync(join(workspace, 'test.ghulproj'), `<?xml version="1.0"?>
+<Project Sdk="Ghul.Sdk">
+    <PropertyGroup>
+        <GhulCompiler>ghul-compiler</GhulCompiler>
+    </PropertyGroup>
+    <ItemGroup>
+        <None Include="README.md" />
+    </ItemGroup>
+</Project>`);
+
+        const cfg = getGhulConfig(workspace);
+        expect(cfg.source).toEqual(['./**/*.ghul']);
+    });
+
     it('reads compiler and sources from a .ghulproj when ghul.json is silent', () => {
         const workspace = ws();
         const proj = `<?xml version="1.0"?>

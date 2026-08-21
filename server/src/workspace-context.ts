@@ -162,7 +162,10 @@ export class WorkspaceContext {
             this.response_parser,
             this.watchdog,
             workspace_root,
-            this.analysisResponseFilePath(),
+            // Lazily, so constructing a context - which happens for every
+            // folder a multi-root workspace holds, ghūl project or not - does
+            // not make a directory the folder may never have a use for.
+            () => this.analysisResponseFilePath(),
             connection
         );
 

@@ -140,6 +140,21 @@ describe('WorkspaceContext.initialize', () => {
         expect(context.config).toBeDefined();
     });
 
+    // A multi-root workspace constructs one of these per folder, ghūl project
+    // or not, and most of them never spawn an analyser.
+    it('makes no temporary directory until something needs one', () => {
+        const { readdirSync } = jest.requireActual('fs');
+        const { tmpdir } = jest.requireActual('os');
+
+        const before = readdirSync(tmpdir()).filter((n: string) => n.startsWith('ghul-lsp-')).length;
+
+        new WorkspaceContext(WORKSPACE_ROOT, connection, documents);
+
+        const after = readdirSync(tmpdir()).filter((n: string) => n.startsWith('ghul-lsp-')).length;
+
+        expect(after).toBe(before);
+    });
+
     it('resolves the project into a response file and reads the config from it', async () => {
         // The build writes the options and the references together; nothing
         // reads the two JSON files that used to carry them separately.
