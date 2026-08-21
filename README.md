@@ -38,11 +38,18 @@ How the *project* is built stays in the project file: `<GhulCompiler>`,
 `<GhulSources>` and `<GhulOptions>` in the `.ghulproj` govern an ordinary
 build. Diagnostics options (`<GhulOptions>`, `<GhulUnderscoreAccess>` and
 friends) reach the extension the same way, but not by re-reading the XML: on
-a ghul.runtime 14.1.0+ project, the extension asks MSBuild to resolve them
-first and reads the answer from `.ghul-options.json`, so it sees what the
-build actually resolved rather than a guess at it - conditions applied,
-properties evaluated. A project on an older `ghul.runtime` pin falls back to
-a direct (best-effort) reading of the unconditioned `<GhulOptions>` entries.
+a ghul.runtime 14.3.0+ project, the extension asks MSBuild to resolve them
+first, along with the project's references, and reads the answer out of the
+response file the build writes, so it sees what the build actually resolved
+rather than a guess at it - conditions applied, properties evaluated. A
+project on an older `ghul.runtime` pin falls back to the two JSON files that
+runtime publishes instead, or, on one older still, to a direct (best-effort)
+reading of the unconditioned `<GhulOptions>` entries.
+
+Nothing generated is written into the project. The response file the build
+writes, and the one the analyser is launched with, both live in a directory
+of the extension's own under the system temporary directory, and go away with
+the workspace that owns them.
 
 A `ghul.json` in the workspace root is still read, and still sets
 `incremental_analysis` and `want_plaintext_hover` for a project that already

@@ -8,6 +8,6 @@
   <ItemGroup>
     <GhulSources Include="src/**/*.ghul" />
 
-    <PackageReference Include="ghul.runtime" Version="5.8.2" />
+    <PackageReference Include="ghul.runtime" Version="14.3.0" />
   </ItemGroup>
 </Project>

@@ -453,18 +453,18 @@ describe('ConnectionEventHandler', () => {
     });
 
     describe('onShutdown', () => {
-        it('kills the server manager of every registered workspace', () => {
-            const killA = jest.fn();
-            const killB = jest.fn();
+        it('disposes every registered workspace', () => {
+            const disposeA = jest.fn();
+            const disposeB = jest.fn();
             (extensionState.allWorkspaces as jest.Mock).mockReturnValue([
-                { server_manager: { kill: killA } },
-                { server_manager: { kill: killB } },
+                { dispose: disposeA },
+                { dispose: disposeB },
             ]);
 
             handler.onShutdown();
 
-            expect(killA).toHaveBeenCalled();
-            expect(killB).toHaveBeenCalled();
+            expect(disposeA).toHaveBeenCalled();
+            expect(disposeB).toHaveBeenCalled();
         });
     });
 

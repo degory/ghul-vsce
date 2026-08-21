@@ -13,8 +13,13 @@
          or a new Codespace looks like. -->
     <ProjectReference Include="lib/lib.ghulproj" />
 
-    <!-- See simple-project: GenerateAssembliesJson comes from ghul.runtime's
-         build/ folder, which a real repo picks up through its shared props. -->
-    <PackageReference Include="ghul.runtime" Version="5.8.2" />
+    <!-- See simple-project: the target that resolves the analyser's -a flags
+         comes from ghul.runtime's build/ folder, which a real repo picks up
+         through its shared props.
+
+         Pinned new enough to have GenerateGhulResponseFile, so this fixture
+         covers the response-file path end to end while simple-project, which
+         stays on an old runtime, covers the fallback to the JSON targets. -->
+    <PackageReference Include="ghul.runtime" Version="14.3.0" />
   </ItemGroup>
 </Project>

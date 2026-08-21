@@ -1,4 +1,3 @@
-import * as path from 'path';
 import { writeFileSync } from 'fs';
 import { quote } from 'shell-quote';
 
@@ -72,6 +71,7 @@ export class ServerManager {
 	server_state: ServerState;
 	ghul_config: GhulConfig;
 	workspace_root: string;
+	analysis_response_file: string;
 	edit_queue: EditQueue;
 	response_handler: ResponseHandler;
 	response_parser: ResponseParser;
@@ -88,6 +88,7 @@ export class ServerManager {
 		response_parser: ResponseParser,
 		watchdog: Watchdog,
 		workspace_root: string,
+		analysis_response_file: string,
 		connection?: Connection
 	) {
 		this.event_emitter = event_emitter;
@@ -96,6 +97,7 @@ export class ServerManager {
 		this.response_parser = response_parser;
 		this.watchdog = watchdog;
 		this.workspace_root = workspace_root;
+		this.analysis_response_file = analysis_response_file;
 		this.connection = connection;
 
 		this.restart_attempts = 0;
@@ -236,18 +238,19 @@ export class ServerManager {
 			return;
 		}
 
-		// Per-workspace .analysis.rsp so multiple compilers in the same
-		// extension host don't stomp on each other; the compiler reads the
-		// file relative to its working directory, which we anchor to the
-		// workspace root for the same reason.
-		const rsp_path = path.join(this.workspace_root, '.analysis.rsp');
+		// A response file of this workspace's own, outside the project, so
+		// multiple compilers in the same extension host don't stomp on each
+		// other and nothing is left behind in the checkout. Named absolutely
+		// because the compiler resolves an @path relative to its working
+		// directory, which is the workspace root rather than here.
+		const rsp_path = this.analysis_response_file;
 		writeFileSync(rsp_path, quote(this.ghul_config.arguments));
 
 		log(`compiler is "${quote(ghul_compiler)}"`);
 
 		// `dotnet tool run` parses the rest of its command line itself,
 		// MSBuild-style - including `@file` response-file expansion, one
-		// argument per line. The .analysis.rsp is a single line, so that
+		// argument per line. The response file is a single line, so that
 		// expansion would hand the compiler the whole file as one argument
 		// and the analysis flag would never be seen. `--` ends dotnet's own
 		// parsing, letting the response file reach the compiler untouched.
@@ -260,7 +263,7 @@ export class ServerManager {
 
 		this.child = spawn(
 			ghul_compiler[0],
-			[...ghul_compiler.slice(1), ...(is_tool_run ? ["--"] : []), "@.analysis.rsp"],
+			[...ghul_compiler.slice(1), ...(is_tool_run ? ["--"] : []), `@${rsp_path}`],
 			{ cwd: this.workspace_root }
 		);
 

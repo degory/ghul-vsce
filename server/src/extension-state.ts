@@ -145,7 +145,7 @@ export class ExtensionState {
             return;
         }
 
-        context.server_manager?.kill();
+        context.dispose();
         this.workspaces.delete(workspace_root);
     }
 
