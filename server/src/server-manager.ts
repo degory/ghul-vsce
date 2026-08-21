@@ -71,7 +71,7 @@ export class ServerManager {
 	server_state: ServerState;
 	ghul_config: GhulConfig;
 	workspace_root: string;
-	analysis_response_file: string;
+	analysis_response_file: () => string;
 	edit_queue: EditQueue;
 	response_handler: ResponseHandler;
 	response_parser: ResponseParser;
@@ -88,7 +88,7 @@ export class ServerManager {
 		response_parser: ResponseParser,
 		watchdog: Watchdog,
 		workspace_root: string,
-		analysis_response_file: string,
+		analysis_response_file: () => string,
 		connection?: Connection
 	) {
 		this.event_emitter = event_emitter;
@@ -243,7 +243,7 @@ export class ServerManager {
 		// other and nothing is left behind in the checkout. Named absolutely
 		// because the compiler resolves an @path relative to its working
 		// directory, which is the workspace root rather than here.
-		const rsp_path = this.analysis_response_file;
+		const rsp_path = this.analysis_response_file();
 		writeFileSync(rsp_path, quote(this.ghul_config.arguments));
 
 		log(`compiler is "${quote(ghul_compiler)}"`);

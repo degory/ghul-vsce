@@ -283,7 +283,7 @@ export function getGhulConfig(
 					}
 
 					if (!config.source?.length && projectXml.Project.ItemGroup) {
-						config.source = [];
+						let patterns: string[] = [];
 
 						projectXml.Project.ItemGroup
 							.filter(ig => ig.GhulSources)
@@ -295,10 +295,25 @@ export function getGhulConfig(
 									.map(pattern => pattern["$"]?.Include)
 
 									.forEach(pattern => {
-										config.source.push(pattern)
+										patterns.push(pattern)
 									})
 								}
 							);
+
+						// Only when the project file actually named some. A
+						// project that keeps its <GhulSources> in a shared
+						// Directory.Build.props - the convention across this
+						// ecosystem - has none to find here, and taking that
+						// for "this project has no sources" left the analyser
+						// with nothing to compile but the files the editor
+						// happened to have open, so every symbol declared in
+						// an unopened file reported as not defined. Leaving
+						// config.source unset falls through to the same
+						// default a project file with no ItemGroup at all
+						// already gets.
+						if (patterns.length) {
+							config.source = patterns;
+						}
 					} else if(config.source) {
 						config.source = config.source.map(directory => directory + "/**/*.ghul");
 					}
