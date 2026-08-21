@@ -328,13 +328,15 @@ export class WorkspaceContext {
         let response_file_problem = await generateResponseFile(this.workspace_root, response_file);
 
         if (!existsSync(response_file)) {
-            // No file and no complaint means the project is pinned to a
-            // ghul.runtime older than 14.3.0, which has no
-            // GenerateGhulResponseFile target — ordinary rather than broken.
-            // Fall back to the two JSON targets that runtime does have, and
-            // let that path report for itself: a project genuinely broken
-            // enough to produce nothing will say so there too, and saying it
-            // twice helps nobody.
+            // Most often this means the project is pinned to a ghul.runtime
+            // older than 14.3.0, which has no GenerateGhulResponseFile target
+            // — ordinary rather than broken, and the overwhelmingly common
+            // case, so it must not warn. Nothing here can tell that apart
+            // from the target failing on a project that does have it, so the
+            // fallback runs either way and reports for itself. Anything
+            // generateResponseFile complained about is in the log whichever
+            // it was, so a failure that the fallback then papers over is
+            // still there to be found.
             response_file = null;
 
             let assemblies_problem = await generateAssembliesJson(this.workspace_root);

@@ -46,12 +46,12 @@ function hasProject(workspace: string): boolean {
     try {
         files = readdirSync(workspace);
     } catch (e) {
-        log(`could not read ${workspace}: cannot resolve references and options`);
+        log(`could not read ${workspace}: cannot build references or resolve options`);
         return false;
     }
 
     if (!files.find(file => file.endsWith(".ghulproj"))) {
-        log("no .ghulproj found: cannot resolve references and options");
+        log("no .ghulproj found: cannot build references or resolve options");
         return false;
     }
 
@@ -76,7 +76,7 @@ export function generateResponseFile(workspace: string, response_file: string): 
     // it, rather than whether some earlier one did.
     rmSync(response_file, { force: true });
 
-    log("resolving project references and compiler options...");
+    log("building project references and resolving compiler options...");
 
     return new Promise(resolve => {
         execFile(COMMAND, argumentsFor(response_file), { cwd: workspace }, (error, stdout) => {
@@ -88,7 +88,7 @@ export function generateResponseFile(workspace: string, response_file: string): 
             }
 
             log(stdout);
-            log("finished resolving project references and compiler options");
+            log("finished building project references and resolving compiler options");
             resolve(null);
         });
     });
