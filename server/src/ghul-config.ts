@@ -166,10 +166,37 @@ function readResponseFile(
 	}
 }
 
+// The glob patterns the build says this project's sources are found by, as
+// written rather than as expanded - the form a filesystem watcher needs - or
+// null when the build published none.
+function readSourceGlobs(source_globs_file: string, problems: string[]): string[] | null {
+	if (!existsSync(source_globs_file)) {
+		return null;
+	}
+
+	try {
+		let text = ('' + readFileSync(source_globs_file, "utf-8")).replace(/^\uFEFF/, '');
+
+		let globs = text
+			.split(/\r?\n/)
+			.map(line => line.trim())
+			.filter(line => line.length > 0);
+
+		return globs.length ? globs : null;
+	} catch (e) {
+		let problem = `could not load ${source_globs_file}: ${describeError(e)}`;
+		log(problem);
+		problems.push(problem);
+
+		return null;
+	}
+}
+
 export function getGhulConfig(
 	workspace: string,
 	settings: EditorSettings = {},
-	response_file: string | null = null
+	response_file: string | null = null,
+	source_globs_file: string | null = null
 ): GhulConfig {
 	let problems: string[] = [];
 
@@ -462,7 +489,13 @@ export function getGhulConfig(
 		args.push("--incremental-analysis");
 	}
 
-	let source = [...(config.source ?? ["./**/*.ghul"])];
+	// What the build said, then what the project file parse found, then the
+	// default. The build is preferred because it sees a Directory.Build.props
+	// and the parse does not, and because its patterns are what the build
+	// actually compiles rather than this reader's guess at them.
+	let published_globs = source_globs_file ? readSourceGlobs(source_globs_file, problems) : null;
+
+	let source = [...(published_globs ?? config.source ?? ["./**/*.ghul"])];
 
     return {
 		block,

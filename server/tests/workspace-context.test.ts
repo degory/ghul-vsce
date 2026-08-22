@@ -113,7 +113,7 @@ describe('WorkspaceContext.initialize', () => {
         expect(getGhulConfigSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, {
             incremental_analysis: true,
             want_plaintext_hover: null,
-        }, null);
+        }, null, expect.any(String));
     });
 
     it('treats a client that cannot answer as no preference expressed', async () => {
@@ -125,7 +125,7 @@ describe('WorkspaceContext.initialize', () => {
 
         await context.initialize();
 
-        expect(getGhulConfigSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, {}, null);
+        expect(getGhulConfigSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, {}, null, expect.any(String));
         expect(context.config).toBeDefined();
     });
 
@@ -182,7 +182,7 @@ describe('WorkspaceContext.initialize', () => {
 
         await context.initialize();
 
-        expect(generateResponseFileSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, expect.any(String));
+        expect(generateResponseFileSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, expect.any(String), expect.any(String));
         expect(generateAssembliesJsonSpy).not.toHaveBeenCalled();
         expect(generateGhulOptionsJsonSpy).not.toHaveBeenCalled();
 
@@ -190,6 +190,7 @@ describe('WorkspaceContext.initialize', () => {
         const [, , passed] = getGhulConfigSpy.mock.calls[0];
 
         expect(passed).toBe(response_file);
+        expect(getGhulConfigSpy.mock.calls[0][3]).toBe(generateResponseFileSpy.mock.calls[0][2]);
 
         // It is written outside the project, so nothing accumulates in the
         // checkout, and it goes away with the workspace that owns it.
@@ -229,7 +230,7 @@ describe('WorkspaceContext.initialize', () => {
         expect(generateOrder).toBeLessThan(configOrder);
         expect(restoreDotNetToolsSpy).toHaveBeenCalledWith(WORKSPACE_ROOT);
         expect(generateAssembliesJsonSpy).toHaveBeenCalledWith(WORKSPACE_ROOT);
-        expect(getGhulConfigSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, expect.anything(), null);
+        expect(getGhulConfigSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, expect.anything(), null, expect.any(String));
     });
 
     it('generates .ghul-options.json before reading it via getGhulConfig', async () => {

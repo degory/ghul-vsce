@@ -328,7 +328,8 @@ export class WorkspaceContext {
         this.progress.report(Activity.Setup, "building project references", { done_message: "project references built" });
 
         let response_file: string | null = this.responseFilePath();
-        let response_file_problem = await generateResponseFile(this.workspace_root, response_file);
+        let source_globs_file = this.temp_directory.path('source-globs.txt');
+        let response_file_problem = await generateResponseFile(this.workspace_root, response_file, source_globs_file);
 
         if (!existsSync(response_file)) {
             // Most often this means the project is pinned to a ghul.runtime
@@ -356,7 +357,7 @@ export class WorkspaceContext {
             problems.push(response_file_problem);
         }
 
-        this.config = getGhulConfig(this.workspace_root, await this.readEditorSettings(), response_file);
+        this.config = getGhulConfig(this.workspace_root, await this.readEditorSettings(), response_file, source_globs_file);
         problems.push(...(this.config.problems ?? []));
 
         // The step above builds the referenced projects, so anything still

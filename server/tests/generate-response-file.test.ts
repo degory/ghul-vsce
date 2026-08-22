@@ -15,10 +15,12 @@ jest.mock('child_process', () => ({
 describe('generateResponseFile', () => {
     let workspace: string;
     let response_file: string;
+    let source_globs_file: string;
 
     beforeEach(() => {
         workspace = mkdtempSync(join(tmpdir(), 'ghul-vsce-rsp-'));
         response_file = join(workspace, 'project.rsp');
+        source_globs_file = join(workspace, 'source-globs.txt');
         (execFile as unknown as jest.Mock).mockClear();
     });
 
@@ -34,7 +36,7 @@ describe('generateResponseFile', () => {
     it('builds the referenced projects while resolving their paths', async () => {
         writeFileSync(join(workspace, 'test.ghulproj'), '<Project/>');
 
-        await expect(generateResponseFile(workspace, response_file)).resolves.toBeNull();
+        await expect(generateResponseFile(workspace, response_file, source_globs_file)).resolves.toBeNull();
 
         expect(execFile).toHaveBeenCalledTimes(1);
         expect(execFile).toHaveBeenCalledWith(
@@ -43,7 +45,8 @@ describe('generateResponseFile', () => {
                 'build',
                 '-verbosity:minimal',
                 '-t:GenerateGhulResponseFile',
-                `-p:GhulResponseFile=${response_file}`
+                `-p:GhulResponseFile=${response_file}`,
+                `-p:GhulSourceGlobsFile=${source_globs_file}`
             ],
             { cwd: workspace },
             expect.any(Function)
@@ -54,20 +57,22 @@ describe('generateResponseFile', () => {
         expect(args).not.toContain('-p:BuildProjectReferences=false');
     });
 
-    // Whether the file is there afterwards is how the caller tells a runtime
-    // with the target from one without it, so a file left by an earlier run
+    // Whether each file is there afterwards is how the caller tells a runtime
+    // with the target from one without it, so files left by an earlier run
     // would answer for a run that wrote nothing.
-    it('removes any file left by an earlier run before building', async () => {
+    it('removes any files left by an earlier run before building', async () => {
         writeFileSync(join(workspace, 'test.ghulproj'), '<Project/>');
         writeFileSync(response_file, '-a /stale.dll');
+        writeFileSync(source_globs_file, '/stale/**/*.ghul');
 
-        await generateResponseFile(workspace, response_file);
+        await generateResponseFile(workspace, response_file, source_globs_file);
 
         expect(existsSync(response_file)).toBe(false);
+        expect(existsSync(source_globs_file)).toBe(false);
     });
 
     it('does nothing when no .ghulproj is present', async () => {
-        await expect(generateResponseFile(workspace, response_file)).resolves.toBeNull();
+        await expect(generateResponseFile(workspace, response_file, source_globs_file)).resolves.toBeNull();
 
         expect(execFile).not.toHaveBeenCalled();
     });
@@ -76,7 +81,7 @@ describe('generateResponseFile', () => {
         writeFileSync(join(workspace, 'other.csproj'), '<Project/>');
         writeFileSync(join(workspace, 'README.md'), '');
 
-        await expect(generateResponseFile(workspace, response_file)).resolves.toBeNull();
+        await expect(generateResponseFile(workspace, response_file, source_globs_file)).resolves.toBeNull();
 
         expect(execFile).not.toHaveBeenCalled();
     });
@@ -88,6 +93,6 @@ describe('generateResponseFile', () => {
             (_command, _args, _options, callback) => callback(new Error('MSB1009'), '', '')
         );
 
-        await expect(generateResponseFile(workspace, response_file)).resolves.toContain('MSB1009');
+        await expect(generateResponseFile(workspace, response_file, source_globs_file)).resolves.toContain('MSB1009');
     });
 });

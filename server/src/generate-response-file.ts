@@ -25,12 +25,13 @@ const COMMAND = "dotnet";
 // not a slower start-up, it is the wrong answer: the analyser reports symbols
 // added since the last build as not found, and nothing downstream can tell
 // that from the truth.
-function argumentsFor(response_file: string): string[] {
+function argumentsFor(response_file: string, source_globs_file: string): string[] {
     return [
         "build",
         "-verbosity:minimal",
         "-t:GenerateGhulResponseFile",
-        `-p:GhulResponseFile=${response_file}`
+        `-p:GhulResponseFile=${response_file}`,
+        `-p:GhulSourceGlobsFile=${source_globs_file}`
     ];
 }
 
@@ -59,27 +60,36 @@ function hasProject(workspace: string): boolean {
 }
 
 // Build the referenced projects and write the resolved options and reference
-// paths to response_file. Returns a human-readable problem description if that
-// failed, or null on success / nothing-to-do. Never rejects: a broken
-// .ghulproj is a degraded load to be reported, not a reason to abandon the
-// rest of the startup.
+// paths to response_file, and this project's source globs - the patterns, as
+// written rather than as expanded - to source_globs_file. Returns a
+// human-readable problem description if that failed, or null on success /
+// nothing-to-do. Never rejects: a broken .ghulproj is a degraded load to be
+// reported, not a reason to abandon the rest of the startup.
 //
 // The caller decides what a run that reports no problem but leaves no file
 // behind means — on a project pinned to a ghul.runtime older than 14.3.0 it
-// means the target is not there, which is ordinary rather than broken.
-export function generateResponseFile(workspace: string, response_file: string): Promise<string | null> {
+// means the target is not there, which is ordinary rather than broken. The
+// globs file is separately absent on a runtime older than 14.4.0, and on one
+// whose GhulSources declarations are all conditional, which the target
+// deliberately does not try to evaluate.
+export function generateResponseFile(
+    workspace: string,
+    response_file: string,
+    source_globs_file: string
+): Promise<string | null> {
     if (!hasProject(workspace)) {
         return Promise.resolve(null);
     }
 
-    // So that whether the file is there afterwards says whether this run wrote
-    // it, rather than whether some earlier one did.
+    // So that whether each file is there afterwards says whether this run
+    // wrote it, rather than whether some earlier one did.
     rmSync(response_file, { force: true });
+    rmSync(source_globs_file, { force: true });
 
     log("building project references and resolving compiler options...");
 
     return new Promise(resolve => {
-        execFile(COMMAND, argumentsFor(response_file), { cwd: workspace }, (error, stdout) => {
+        execFile(COMMAND, argumentsFor(response_file, source_globs_file), { cwd: workspace }, (error, stdout) => {
             if (error) {
                 let problem = describeFailure(error);
                 log(problem);
