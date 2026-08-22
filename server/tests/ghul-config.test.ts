@@ -232,6 +232,36 @@ describe('getGhulConfig', () => {
         expect(cfg.arguments).toEqual(['-A']);
     });
 
+    describe('the source globs the build publishes', () => {
+        // ghul.runtime 14.4.0+'s GenerateGhulResponseFile writes the project's
+        // GhulSources patterns as written, wherever they were declared - which
+        // a parse of the .ghulproj alone cannot see.
+        it('prefers them over everything else', () => {
+            const workspace = ws();
+            writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['from-ghul-json'] });
+
+            const response_file = join(workspace, 'project.rsp');
+            const globs_file = join(workspace, 'source-globs.txt');
+            writeFileSync(globs_file, 'src/**/*.ghul\nextra/*.ghul\n');
+
+            const cfg = getGhulConfig(workspace, {}, response_file, globs_file);
+
+            expect(cfg.source).toEqual(['src/**/*.ghul', 'extra/*.ghul']);
+        });
+
+        it('falls back to the usual sources when none were published', () => {
+            // An older runtime has no such target; an all-conditional project
+            // gets nothing from the one that exists. Either way the previous
+            // resolution stands.
+            const workspace = ws();
+            writeJson(workspace, 'ghul.json', { compiler: ['c'], source: ['from-ghul-json'] });
+
+            const cfg = getGhulConfig(workspace, {}, join(workspace, 'project.rsp'), join(workspace, 'never-written.txt'));
+
+            expect(cfg.source).toEqual(['from-ghul-json']);
+        });
+    });
+
     // The convention across this ecosystem is a shared Directory.Build.props
     // carrying <GhulSources>, so the project file names none of its own. Read
     // as "this project has no sources", that left the analyser compiling only
