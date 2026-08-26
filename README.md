@@ -4,7 +4,7 @@
 [![Visual Studio Marketplace](https://img.shields.io/visual-studio-marketplace/v/degory.ghul)](https://marketplace.visualstudio.com/items?itemName=degory.ghul)
 [![Release](https://img.shields.io/github/v/release/degory/ghul-vsce?label=release)](https://github.com/degory/ghul-vsce/releases)
 [![Release Date](https://img.shields.io/github/release-date/degory/ghul-vsce)](https://github.com/degory/ghul-vsce/releases)
-[![Issues](https://img.shields.io/github/issues/degory/ghul-vsce)](https://github.com/degory/ghul-vsce/issues)
+[![Issues](https://img.shields.io/github/issues-search/degory/ghul?query=is%3Aopen%20is%3Aissue%20label%3Aghul-vsce&label=issues)](https://github.com/degory/ghul/issues?q=is%3Aopen+is%3Aissue+label%3Aghul-vsce)
 [![License](https://img.shields.io/github/license/degory/ghul-vsce)](https://github.com/degory/ghul-vsce/blob/main/LICENSE)
 [![ghūl](https://img.shields.io/badge/gh%C5%ABl-100%25!-information)](https://ghul.dev)
 
