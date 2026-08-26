@@ -64,3 +64,7 @@ tarball attached to each [release](https://github.com/degory/ghul-vsce/releases)
 See [language-server/README.md](language-server/README.md) for setup.
 
 
+
+## issues
+
+[View open issues](https://github.com/degory/ghul/issues?q=is%3Aopen+is%3Aissue+label%3Aghul-vsce) or [raise a new one](https://github.com/degory/ghul/issues/new?labels=ghul-vsce).
