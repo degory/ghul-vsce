@@ -29,6 +29,16 @@
         ["'", "'"],
         ["/*", "*/"]
     ],
+    // named collapsible regions, opened by `// a name >>>` and closed by
+    // `// <<<`. The name is free text and the closing marker need not repeat
+    // it; regions nest, and an unmatched marker is ignored rather than
+    // reported.
+    "folding": {
+        "markers": {
+            "start": "^\\s*//.*>>>\\s*$",
+            "end": "^\\s*//.*<<<\\s*$"
+        }
+    },
     "indentationRules": {
         "increaseIndentPattern":
             "(\\bis\\b$|\\bthen\\b$|\\bdo\\b$|\\bval\\b$|^\\s+try$|^\\s+catch\\s|^\\s+finally$|^\\s+else$|^\\s+case\\s|^\\s+when\\s.*\\bthen\\b$)",
