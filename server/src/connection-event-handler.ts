@@ -36,6 +36,7 @@ import {
     WorkspaceSymbolParams,
     CancellationToken,
     Range,
+    DidCloseTextDocumentParams,
 } from 'vscode-languageserver';
 
 import { URI } from 'vscode-uri';
@@ -98,6 +99,9 @@ export class ConnectionEventHandler {
 
         connection.onDidChangeWatchedFiles((change: DidChangeWatchedFilesParams) =>
             this.extension_state.onDidChangeWatchedFiles(change));
+
+        connection.onDidCloseTextDocument((params: DidCloseTextDocumentParams) =>
+            this.onDidCloseTextDocument(params));
 
         // onDidChangeWorkspaceFolders is NOT registered here — its getter
         // throws "Client doesn't support sending workspace folder change
@@ -633,6 +637,7 @@ export class ConnectionEventHandler {
     // previous set is a better answer than an empty one, and VS Code keeps
     // the rendered hints until a response arrives, so returning the cache
     // re-affirms what is already on screen.
+    // Evicted on didClose so the map stays bounded by currently-open documents.
     private last_inlay_hints = new Map<string, InlayHint[]>();
 
     async onInlayHint(params: InlayHintParams, token?: CancellationToken): Promise<InlayHint[]> {
@@ -672,6 +677,10 @@ export class ConnectionEventHandler {
             && (h.position.line < range.end.line
                 || (h.position.line == range.end.line
                     && h.position.character < range.end.character)));
+    }
+
+    onDidCloseTextDocument(params: DidCloseTextDocumentParams) {
+        this.last_inlay_hints.delete(params.textDocument.uri);
     }
 
     onDocumentRangeFormatting(params: DocumentRangeFormattingParams): Promise<TextEdit[]> {
