@@ -669,6 +669,15 @@ export class ConnectionEventHandler {
         const hints =
             await workspace.requester.sendInlayHints(params.textDocument.uri, params.range, token);
 
+        // A request withdrawn while the analyser was still coming up, or one
+        // that timed out waiting for it, resolves to the empty fallback
+        // rather than to an answer about the document. Remembering that would
+        // overwrite real hints with nothing and leave the next fallback for
+        // this range empty, which is the reflow the cache exists to prevent.
+        if (token?.isCancellationRequested) {
+            return this.cachedInlayHints(params.textDocument.uri, params.range);
+        }
+
         this.rememberInlayHints(params.textDocument.uri, params.range, hints);
 
         return hints;

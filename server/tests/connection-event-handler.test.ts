@@ -815,6 +815,33 @@ describe('ConnectionEventHandler', () => {
                 .toEqual([hint(3, 'after')]);
         });
 
+        // whenAnalysed resolves a cancelled or timed-out request with its
+        // empty fallback rather than an answer about the document, so
+        // remembering it would replace real hints with nothing.
+        it('does not cache the empty answer a cancelled request resolves to', async () => {
+            (requester.sendInlayHints as jest.Mock).mockResolvedValue([hint(3, 'real')]);
+            await handler.onInlayHint({ textDocument: { uri }, range: range(0, 10) } as any);
+
+            const cancelled = { isCancellationRequested: false } as any;
+
+            (requester.sendInlayHints as jest.Mock).mockImplementation(async () => {
+                cancelled.isCancellationRequested = true;
+
+                return [];
+            });
+
+            const result = await handler.onInlayHint(
+                { textDocument: { uri }, range: range(0, 10) } as any, cancelled);
+
+            expect(result).toEqual([hint(3, 'real')]);
+
+            (editQueue.whenFlushed as jest.Mock).mockResolvedValue(false);
+
+            expect(await handler.onInlayHint(
+                { textDocument: { uri }, range: range(0, 10) } as any))
+                .toEqual([hint(3, 'real')]);
+        });
+
         it('forgets a document\'s hints when it closes', async () => {
             (requester.sendInlayHints as jest.Mock).mockResolvedValue([hint(3, 'first')]);
             await handler.onInlayHint({ textDocument: { uri }, range: range(0, 10) } as any);
