@@ -430,12 +430,28 @@ export class Requester {
         }, null, token);
     }
 
-    sendInlayHints(uri: string, token?: CancellationToken): Promise<InlayHint[]> {
+    sendInlayHints(uri: string, range: Range, token?: CancellationToken): Promise<InlayHint[]> {
         return this.whenAnalysed(() => {
-            this.send({
+            // The analyser filters the answer to the range — the editor's
+            // viewport — so a kind with a hint on nearly every line does not
+            // pay transport and parsing for a whole file. 1-based, end
+            // position exclusive, matching every other range on the wire.
+            let request: any = {
                 command: "inlay_hints",
                 path: normalizeFileUri(uri)
-            });
+            };
+
+            if (this.response_handler.inlay_hint_ranges_supported) {
+                request = {
+                    ...request,
+                    start_line: range.start.line + 1,
+                    start_column: range.start.character + 1,
+                    end_line: range.end.line + 1,
+                    end_column: range.end.character + 1,
+                };
+            }
+
+            this.send(request);
 
             return this.response_handler.expectInlayHints();
         }, [], token);

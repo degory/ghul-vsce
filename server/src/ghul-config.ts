@@ -93,6 +93,9 @@ function describeError(e: unknown): string {
 export interface EditorSettings {
 	incremental_analysis?: boolean | null,
 	want_plaintext_hover?: boolean | null,
+	inlay_narrowing?: boolean | null,
+	inlay_definition_virtuality?: boolean | null,
+	inlay_terminators?: boolean | null,
 }
 
 // Settings that govern how the extension behaves rather than how the project
@@ -487,6 +490,24 @@ export function getGhulConfig(
 
 	if (incremental_analysis) {
 		args.push("--incremental-analysis");
+	}
+
+	// Inlay-kind settings are editor-only: unset defers to the compiler's
+	// own defaults (narrowing and definition-virtuality on, terminators
+	// off), so the flags are sent only for an explicit choice. A disabled
+	// kind is never collected by the analyser, so it costs nothing there
+	// either. Settings become launch flags, so a change restarts the
+	// analyser — the ordinary reinitialize path.
+	for (const [setting, kind] of [
+		[settings.inlay_narrowing, "narrowing"],
+		[settings.inlay_definition_virtuality, "definition-virtuality"],
+		[settings.inlay_terminators, "terminator"],
+	] as const) {
+		if (setting === true) {
+			args.push("--inlay", kind);
+		} else if (setting === false) {
+			args.push("--no-inlay", kind);
+		}
 	}
 
 	// What the build said, then what the project file parse found, then the

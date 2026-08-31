@@ -35,6 +35,7 @@ import {
     WorkspaceFolder,
     WorkspaceSymbolParams,
     CancellationToken,
+    Range,
 } from 'vscode-languageserver';
 
 import { URI } from 'vscode-uri';
@@ -626,18 +627,51 @@ export class ConnectionEventHandler {
         return workspace.requester.sendSemanticTokens(params.textDocument.uri, token);
     }
 
-    onInlayHint(params: InlayHintParams, token?: CancellationToken): Promise<InlayHint[]> {
+    // The most recent successful hint set per document. Inlay hints occupy
+    // horizontal space, so a set that appears and disappears reflows the
+    // lines it sits on; while the analyser is busy catching up on edits, the
+    // previous set is a better answer than an empty one, and VS Code keeps
+    // the rendered hints until a response arrives, so returning the cache
+    // re-affirms what is already on screen.
+    private last_inlay_hints = new Map<string, InlayHint[]>();
+
+    async onInlayHint(params: InlayHintParams, token?: CancellationToken): Promise<InlayHint[]> {
         const workspace = this.workspaceForUri(params.textDocument.uri);
 
         if (!workspace) {
             return Promise.resolve([]);
         }
 
-        // Flush queued edits so the analyser's inlay data reflects the
-        // current document text before we ask for hints.
-        workspace.edit_queue.sendQueued();
+        // Inlay hints are the least latency-sensitive query the analyser
+        // serves, so wait for the edit queue to reach a lull rather than
+        // forcing a flush ahead of the ask — a forced flush pre-empted the
+        // queue's own debounce, so inlay polling drove compiles while
+        // typing. Bounded: if the lull does not arrive because a long
+        // compile is running, answer from the cache rather than holding.
+        const flushed = await workspace.edit_queue.whenFlushed();
 
-        return workspace.requester.sendInlayHints(params.textDocument.uri, token);
+        if (!flushed || token?.isCancellationRequested) {
+            return this.cachedInlayHints(params.textDocument.uri, params.range);
+        }
+
+        const hints =
+            await workspace.requester.sendInlayHints(params.textDocument.uri, params.range, token);
+
+        this.last_inlay_hints.set(params.textDocument.uri, hints);
+
+        return hints;
+    }
+
+    // The cached set narrowed to the requested range, under the same
+    // start-inclusive / end-exclusive convention the analyser filters by.
+    private cachedInlayHints(uri: string, range: Range): InlayHint[] {
+        return (this.last_inlay_hints.get(uri) ?? []).filter(h =>
+            (h.position.line > range.start.line
+                || (h.position.line == range.start.line
+                    && h.position.character >= range.start.character))
+            && (h.position.line < range.end.line
+                || (h.position.line == range.end.line
+                    && h.position.character < range.end.character)));
     }
 
     onDocumentRangeFormatting(params: DocumentRangeFormattingParams): Promise<TextEdit[]> {

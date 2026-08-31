@@ -549,6 +549,12 @@ export class ResponseHandler {
     // the response.
     code_actions_supported: boolean = false;
 
+    // The analyser can answer inlay_hints with only the hints inside a
+    // range. An analyser without the capability ignores the range fields
+    // and answers whole-file — correct, just wasteful — so the flag gates
+    // whether they are sent at all.
+    inlay_hint_ranges_supported: boolean = false;
+
     // The full-document range to replace, one per pending format request,
     // paired FIFO with _formatting_promise_queue.
     _formatting_ranges: Range[] = [];
@@ -663,6 +669,8 @@ export class ResponseHandler {
         }
 
         this.code_actions_supported = capabilities.includes("code-actions");
+
+        this.inlay_hint_ranges_supported = capabilities.includes("inlay-hint-ranges");
 
         // The work counters are only asked for from an analyser known to have
         // them. An analyser that does not know the `stats` command answers
