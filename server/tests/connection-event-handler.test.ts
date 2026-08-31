@@ -45,6 +45,7 @@ const hooks = [
     'onDocumentFormatting',
     'onDocumentRangeFormatting',
     'onCodeAction',
+    'onDidCloseTextDocument',
 ] as const;
 
 function makeMockConnection(): Connection {
