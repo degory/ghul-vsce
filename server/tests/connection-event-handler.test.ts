@@ -89,13 +89,14 @@ function makeMockRequester(): Requester {
         sendSemanticTokens: jest.fn().mockResolvedValue({ data: [] }),
         sendDocumentFormatting: jest.fn().mockResolvedValue([]),
         sendDocumentRangeFormatting: jest.fn().mockResolvedValue([]),
+        sendInlayHints: jest.fn().mockResolvedValue([]),
     } as unknown as Requester;
 }
 
 function makeMockEditQueue(): EditQueue {
     return {
         sendQueued: jest.fn(),
-        whenFlushed: jest.fn().mockResolvedValue(undefined),
+        whenFlushed: jest.fn().mockResolvedValue(true),
         queueEdit: jest.fn(),
     } as unknown as EditQueue;
 }
@@ -731,6 +732,100 @@ describe('ConnectionEventHandler', () => {
             const result = await handler.onWorkspaceSymbol();
 
             expect(result).toEqual([{ name: 'B' }]);
+        });
+    });
+    describe('onInlayHint', () => {
+        const uri = 'file:///a.ghul';
+
+        function range(startLine: number, endLine: number) {
+            return {
+                start: { line: startLine, character: 0 },
+                end: { line: endLine, character: 0 },
+            };
+        }
+
+        function hint(line: number, label: string) {
+            return { position: { line, character: 4 }, label } as any;
+        }
+
+        it('asks the analyser for the requested range', async () => {
+            await handler.onInlayHint({ textDocument: { uri }, range: range(0, 10) } as any);
+
+            expect(requester.sendInlayHints).toHaveBeenCalledWith(uri, range(0, 10), undefined);
+        });
+
+        it('waits for the edit queue to reach a lull rather than forcing a flush', async () => {
+            await handler.onInlayHint({ textDocument: { uri }, range: range(0, 10) } as any);
+
+            expect(editQueue.whenFlushed).toHaveBeenCalled();
+            expect(editQueue.sendQueued).not.toHaveBeenCalled();
+        });
+
+        it('answers from the cache when the queue does not reach a lull', async () => {
+            (requester.sendInlayHints as jest.Mock).mockResolvedValue([hint(3, 'first')]);
+
+            await handler.onInlayHint({ textDocument: { uri }, range: range(0, 10) } as any);
+
+            (editQueue.whenFlushed as jest.Mock).mockResolvedValue(false);
+
+            const result = await handler.onInlayHint(
+                { textDocument: { uri }, range: range(0, 10) } as any);
+
+            expect(result).toEqual([hint(3, 'first')]);
+            expect(requester.sendInlayHints).toHaveBeenCalledTimes(1);
+        });
+
+        // A fetch answers one range, so a cache that replaced its contents
+        // each time would hold only the last range asked about — and the
+        // fallback for a viewport that has since scrolled elsewhere would
+        // come back empty, dropping hints from the screen, which is the
+        // reflow this cache exists to prevent.
+        it('keeps hints from ranges fetched earlier when the viewport moves', async () => {
+            (requester.sendInlayHints as jest.Mock).mockResolvedValue([hint(3, 'top')]);
+            await handler.onInlayHint({ textDocument: { uri }, range: range(0, 10) } as any);
+
+            (requester.sendInlayHints as jest.Mock).mockResolvedValue([hint(53, 'bottom')]);
+            await handler.onInlayHint({ textDocument: { uri }, range: range(50, 60) } as any);
+
+            (editQueue.whenFlushed as jest.Mock).mockResolvedValue(false);
+
+            expect(await handler.onInlayHint(
+                { textDocument: { uri }, range: range(0, 10) } as any))
+                .toEqual([hint(3, 'top')]);
+
+            expect(await handler.onInlayHint(
+                { textDocument: { uri }, range: range(50, 60) } as any))
+                .toEqual([hint(53, 'bottom')]);
+        });
+
+        // A re-fetch of a range is the analyser's current answer for it, so a
+        // hint it no longer reports must not survive in the cache.
+        it('replaces a range rather than accumulating stale hints within it', async () => {
+            (requester.sendInlayHints as jest.Mock)
+                .mockResolvedValue([hint(3, 'before'), hint(4, 'also before')]);
+            await handler.onInlayHint({ textDocument: { uri }, range: range(0, 10) } as any);
+
+            (requester.sendInlayHints as jest.Mock).mockResolvedValue([hint(3, 'after')]);
+            await handler.onInlayHint({ textDocument: { uri }, range: range(0, 10) } as any);
+
+            (editQueue.whenFlushed as jest.Mock).mockResolvedValue(false);
+
+            expect(await handler.onInlayHint(
+                { textDocument: { uri }, range: range(0, 10) } as any))
+                .toEqual([hint(3, 'after')]);
+        });
+
+        it('forgets a document\'s hints when it closes', async () => {
+            (requester.sendInlayHints as jest.Mock).mockResolvedValue([hint(3, 'first')]);
+            await handler.onInlayHint({ textDocument: { uri }, range: range(0, 10) } as any);
+
+            handler.onDidCloseTextDocument({ textDocument: { uri } } as any);
+
+            (editQueue.whenFlushed as jest.Mock).mockResolvedValue(false);
+
+            expect(await handler.onInlayHint(
+                { textDocument: { uri }, range: range(0, 10) } as any))
+                .toEqual([]);
         });
     });
 });

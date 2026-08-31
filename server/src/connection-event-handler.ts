@@ -631,12 +631,19 @@ export class ConnectionEventHandler {
         return workspace.requester.sendSemanticTokens(params.textDocument.uri, token);
     }
 
-    // The most recent successful hint set per document. Inlay hints occupy
-    // horizontal space, so a set that appears and disappears reflows the
-    // lines it sits on; while the analyser is busy catching up on edits, the
-    // previous set is a better answer than an empty one, and VS Code keeps
-    // the rendered hints until a response arrives, so returning the cache
-    // re-affirms what is already on screen.
+    // Every hint fetched for a document, accumulated across the ranges the
+    // editor has asked about. Inlay hints occupy horizontal space, so a set
+    // that appears and disappears reflows the lines it sits on; while the
+    // analyser is busy catching up on edits, the previous hints are a better
+    // answer than an empty one, and VS Code keeps the rendered hints until a
+    // response arrives, so answering from here re-affirms what is on screen.
+    //
+    // Accumulated rather than replaced because a fetch answers one range: a
+    // viewport that has moved since the last fetch would otherwise find the
+    // cache scoped to the range before it and go empty exactly where the
+    // fallback is meant to hold the previous hints steady. A later fetch of a
+    // range replaces that range's entries, so a hint the analyser has dropped
+    // does not survive a re-fetch covering it.
     // Evicted on didClose so the map stays bounded by currently-open documents.
     private last_inlay_hints = new Map<string, InlayHint[]>();
 
@@ -662,21 +669,36 @@ export class ConnectionEventHandler {
         const hints =
             await workspace.requester.sendInlayHints(params.textDocument.uri, params.range, token);
 
-        this.last_inlay_hints.set(params.textDocument.uri, hints);
+        this.rememberInlayHints(params.textDocument.uri, params.range, hints);
 
         return hints;
     }
 
-    // The cached set narrowed to the requested range, under the same
-    // start-inclusive / end-exclusive convention the analyser filters by.
+    // Fold a freshly-fetched range into the document's hints: drop what the
+    // cache held for that range, keep everything outside it, and add what
+    // came back.
+    private rememberInlayHints(uri: string, range: Range, hints: InlayHint[]) {
+        const outside = (this.last_inlay_hints.get(uri) ?? [])
+            .filter(h => !ConnectionEventHandler.withinRange(h, range));
+
+        this.last_inlay_hints.set(uri, [...outside, ...hints]);
+    }
+
+    // The document's accumulated hints narrowed to the requested range.
     private cachedInlayHints(uri: string, range: Range): InlayHint[] {
-        return (this.last_inlay_hints.get(uri) ?? []).filter(h =>
-            (h.position.line > range.start.line
-                || (h.position.line == range.start.line
-                    && h.position.character >= range.start.character))
-            && (h.position.line < range.end.line
-                || (h.position.line == range.end.line
-                    && h.position.character < range.end.character)));
+        return (this.last_inlay_hints.get(uri) ?? [])
+            .filter(h => ConnectionEventHandler.withinRange(h, range));
+    }
+
+    // Start-inclusive, end-exclusive, the same convention the analyser
+    // filters ranges by.
+    private static withinRange(hint: InlayHint, range: Range): boolean {
+        return (hint.position.line > range.start.line
+                || (hint.position.line == range.start.line
+                    && hint.position.character >= range.start.character))
+            && (hint.position.line < range.end.line
+                || (hint.position.line == range.end.line
+                    && hint.position.character < range.end.character));
     }
 
     onDidCloseTextDocument(params: DidCloseTextDocumentParams) {
