@@ -100,7 +100,7 @@ describe('WorkspaceContext.initialize', () => {
         stubConfig([]);
         context.client_supports_configuration = true;
         (connection.workspace.getConfiguration as jest.Mock)
-            .mockResolvedValue([true, null]);
+            .mockResolvedValue([true, null, null, null, null]);
 
         await context.initialize();
 
@@ -109,10 +109,16 @@ describe('WorkspaceContext.initialize', () => {
         expect(sections).toEqual([
             { scopeUri: `file://${WORKSPACE_ROOT}`, section: 'ghul.incrementalAnalysis' },
             { scopeUri: `file://${WORKSPACE_ROOT}`, section: 'ghul.plaintextHover' },
+            { scopeUri: `file://${WORKSPACE_ROOT}`, section: 'ghul.inlayHints.narrowing' },
+            { scopeUri: `file://${WORKSPACE_ROOT}`, section: 'ghul.inlayHints.definitionVirtuality' },
+            { scopeUri: `file://${WORKSPACE_ROOT}`, section: 'ghul.inlayHints.terminators' },
         ]);
         expect(getGhulConfigSpy).toHaveBeenCalledWith(WORKSPACE_ROOT, {
             incremental_analysis: true,
             want_plaintext_hover: null,
+            inlay_narrowing: null,
+            inlay_definition_virtuality: null,
+            inlay_terminators: null,
         }, null, expect.any(String));
     });
 

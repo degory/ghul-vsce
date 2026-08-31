@@ -434,7 +434,7 @@ describe('EditQueue', () => {
         it('resolves immediately when the analyser is already current', async () => {
             queue.reset();
 
-            await expect(queue.whenFlushed()).resolves.toBeUndefined();
+            await expect(queue.whenFlushed()).resolves.toBe(true);
 
             expect(recorder.sendDocumentsCalls).toHaveLength(0);
         });
@@ -443,7 +443,7 @@ describe('EditQueue', () => {
             queue.reset();
             queue.queueEdit3('file:///a.ghul', 1, 'a');
 
-            await expect(queue.whenFlushed()).resolves.toBeUndefined();
+            await expect(queue.whenFlushed()).resolves.toBe(true);
 
             expect(queue.pending_changes.size).toBe(0);
             expect(recorder.sendDocumentsCalls).toHaveLength(1);
@@ -485,7 +485,7 @@ describe('EditQueue', () => {
             // analysis is far slower than the wait.
             jest.advanceTimersByTime(EditQueue.FLUSH_WAIT_TIMEOUT);
 
-            await expect(flushed).resolves.toBeUndefined();
+            await expect(flushed).resolves.toBe(false);
         });
 
         it('releases a waiting query when the compiler is replaced', async () => {
@@ -500,7 +500,7 @@ describe('EditQueue', () => {
             // compiler it belonged to is gone.
             queue.reset();
 
-            await expect(flushed).resolves.toBeUndefined();
+            await expect(flushed).resolves.toBe(true);
         });
     });
 });

@@ -35,6 +35,8 @@ import {
     WorkspaceFolder,
     WorkspaceSymbolParams,
     CancellationToken,
+    Range,
+    DidCloseTextDocumentParams,
 } from 'vscode-languageserver';
 
 import { URI } from 'vscode-uri';
@@ -97,6 +99,9 @@ export class ConnectionEventHandler {
 
         connection.onDidChangeWatchedFiles((change: DidChangeWatchedFilesParams) =>
             this.extension_state.onDidChangeWatchedFiles(change));
+
+        connection.onDidCloseTextDocument((params: DidCloseTextDocumentParams) =>
+            this.onDidCloseTextDocument(params));
 
         // onDidChangeWorkspaceFolders is NOT registered here — its getter
         // throws "Client doesn't support sending workspace folder change
@@ -626,18 +631,87 @@ export class ConnectionEventHandler {
         return workspace.requester.sendSemanticTokens(params.textDocument.uri, token);
     }
 
-    onInlayHint(params: InlayHintParams, token?: CancellationToken): Promise<InlayHint[]> {
+    // Every hint fetched for a document, accumulated across the ranges the
+    // editor has asked about. Inlay hints occupy horizontal space, so a set
+    // that appears and disappears reflows the lines it sits on; while the
+    // analyser is busy catching up on edits, the previous hints are a better
+    // answer than an empty one, and VS Code keeps the rendered hints until a
+    // response arrives, so answering from here re-affirms what is on screen.
+    //
+    // Accumulated rather than replaced because a fetch answers one range: a
+    // viewport that has moved since the last fetch would otherwise find the
+    // cache scoped to the range before it and go empty exactly where the
+    // fallback is meant to hold the previous hints steady. A later fetch of a
+    // range replaces that range's entries, so a hint the analyser has dropped
+    // does not survive a re-fetch covering it.
+    // Evicted on didClose so the map stays bounded by currently-open documents.
+    private last_inlay_hints = new Map<string, InlayHint[]>();
+
+    async onInlayHint(params: InlayHintParams, token?: CancellationToken): Promise<InlayHint[]> {
         const workspace = this.workspaceForUri(params.textDocument.uri);
 
         if (!workspace) {
             return Promise.resolve([]);
         }
 
-        // Flush queued edits so the analyser's inlay data reflects the
-        // current document text before we ask for hints.
-        workspace.edit_queue.sendQueued();
+        // Inlay hints are the least latency-sensitive query the analyser
+        // serves, so wait for the edit queue to reach a lull rather than
+        // forcing a flush ahead of the ask — a forced flush pre-empted the
+        // queue's own debounce, so inlay polling drove compiles while
+        // typing. Bounded: if the lull does not arrive because a long
+        // compile is running, answer from the cache rather than holding.
+        const flushed = await workspace.edit_queue.whenFlushed();
 
-        return workspace.requester.sendInlayHints(params.textDocument.uri, token);
+        if (!flushed || token?.isCancellationRequested) {
+            return this.cachedInlayHints(params.textDocument.uri, params.range);
+        }
+
+        const hints =
+            await workspace.requester.sendInlayHints(params.textDocument.uri, params.range, token);
+
+        // A request withdrawn while the analyser was still coming up, or one
+        // that timed out waiting for it, resolves to the empty fallback
+        // rather than to an answer about the document. Remembering that would
+        // overwrite real hints with nothing and leave the next fallback for
+        // this range empty, which is the reflow the cache exists to prevent.
+        if (token?.isCancellationRequested) {
+            return this.cachedInlayHints(params.textDocument.uri, params.range);
+        }
+
+        this.rememberInlayHints(params.textDocument.uri, params.range, hints);
+
+        return hints;
+    }
+
+    // Fold a freshly-fetched range into the document's hints: drop what the
+    // cache held for that range, keep everything outside it, and add what
+    // came back.
+    private rememberInlayHints(uri: string, range: Range, hints: InlayHint[]) {
+        const outside = (this.last_inlay_hints.get(uri) ?? [])
+            .filter(h => !ConnectionEventHandler.withinRange(h, range));
+
+        this.last_inlay_hints.set(uri, [...outside, ...hints]);
+    }
+
+    // The document's accumulated hints narrowed to the requested range.
+    private cachedInlayHints(uri: string, range: Range): InlayHint[] {
+        return (this.last_inlay_hints.get(uri) ?? [])
+            .filter(h => ConnectionEventHandler.withinRange(h, range));
+    }
+
+    // Start-inclusive, end-exclusive, the same convention the analyser
+    // filters ranges by.
+    private static withinRange(hint: InlayHint, range: Range): boolean {
+        return (hint.position.line > range.start.line
+                || (hint.position.line == range.start.line
+                    && hint.position.character >= range.start.character))
+            && (hint.position.line < range.end.line
+                || (hint.position.line == range.end.line
+                    && hint.position.character < range.end.character));
+    }
+
+    onDidCloseTextDocument(params: DidCloseTextDocumentParams) {
+        this.last_inlay_hints.delete(params.textDocument.uri);
     }
 
     onDocumentRangeFormatting(params: DocumentRangeFormattingParams): Promise<TextEdit[]> {

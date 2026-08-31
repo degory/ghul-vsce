@@ -432,6 +432,9 @@ export class WorkspaceContext {
                 this.connection.workspace.getConfiguration([
                     { scopeUri, section: 'ghul.incrementalAnalysis' },
                     { scopeUri, section: 'ghul.plaintextHover' },
+                    { scopeUri, section: 'ghul.inlayHints.narrowing' },
+                    { scopeUri, section: 'ghul.inlayHints.definitionVirtuality' },
+                    { scopeUri, section: 'ghul.inlayHints.terminators' },
                 ]),
                 new Promise<null>(resolve => {
                     setTimeout(() => resolve(null), CONFIGURATION_TIMEOUT_MS).unref?.();
@@ -444,11 +447,20 @@ export class WorkspaceContext {
                 return {};
             }
 
-            const [incremental_analysis, want_plaintext_hover] = answered;
+            const [
+                incremental_analysis,
+                want_plaintext_hover,
+                inlay_narrowing,
+                inlay_definition_virtuality,
+                inlay_terminators,
+            ] = answered;
 
             return {
                 incremental_analysis: asOptionalBoolean(incremental_analysis),
                 want_plaintext_hover: asOptionalBoolean(want_plaintext_hover),
+                inlay_narrowing: asOptionalBoolean(inlay_narrowing),
+                inlay_definition_virtuality: asOptionalBoolean(inlay_definition_virtuality),
+                inlay_terminators: asOptionalBoolean(inlay_terminators),
             };
         } catch (e) {
             log(`could not read editor settings: ${e}`);

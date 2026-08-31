@@ -590,9 +590,14 @@ export class EditQueue {
     // So wait for the round trip to land, flush, and only then let the query
     // go. Bounded, because a query that never arrives is worse than one
     // answered against text that is behind.
-    whenFlushed(): Promise<void> {
+    //
+    // Resolves true when the queue reached a lull, false when the bound ran
+    // out first — a caller holding state that goes stale across edits (the
+    // inlay-hint cache) answers from that state rather than querying text it
+    // knows is behind.
+    whenFlushed(): Promise<boolean> {
         if (this.pending_changes.size == 0) {
-            return Promise.resolve();
+            return Promise.resolve(true);
         }
 
         this.sendQueued("flush ahead of a query");
@@ -600,22 +605,22 @@ export class EditQueue {
         // Flushed synchronously: the edit is already written ahead of the
         // query, and the analyser serves requests in the order it reads them.
         if (this.pending_changes.size == 0) {
-            return Promise.resolve();
+            return Promise.resolve(true);
         }
 
-        return new Promise<void>(resolve => {
+        return new Promise<boolean>(resolve => {
             const timer = setTimeout(() => {
                 this.flushed_waiters = this.flushed_waiters.filter(w => w !== waiter);
 
                 log("query proceeding without waiting further for the analyser to catch up");
 
-                resolve();
+                resolve(false);
             }, EditQueue.FLUSH_WAIT_TIMEOUT);
 
             const waiter = () => {
                 clearTimeout(timer);
 
-                resolve();
+                resolve(true);
             };
 
             this.flushed_waiters.push(waiter);
@@ -652,7 +657,7 @@ export class EditQueue {
         // incrementally only when it names exactly one file, so an empty one
         // is declined and answered with a rebuild of the whole project.
         //
-        // Semantic tokens and inlay hints flush before every request, and the
+        // Semantic tokens flush before every request, and the
         // editor asks for those continuously while typing and scrolling — so
         // an idle queue turned each of them into a whole-project rebuild.
         if (this.pending_changes.size == 0) {
