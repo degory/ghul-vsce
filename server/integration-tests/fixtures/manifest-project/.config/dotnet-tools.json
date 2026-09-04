@@ -3,7 +3,7 @@
   "isRoot": true,
   "tools": {
     "ghul.compiler": {
-      "version": "49.5.2",
+      "version": "49.6.2",
       "commands": [
         "ghul-compiler"
       ],
