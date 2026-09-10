@@ -26,3 +26,5 @@
 *.png binary
 *.exe binary
 *.dll binary
+# ghul is not a language Linguist knows; hide the misleading language bar
+* -linguist-detectable
