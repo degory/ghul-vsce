@@ -1,0 +1,51 @@
+name: Code review
+
+# Independent of the CI workflow's trigger, which does not fire on these
+# events. Taking a pull request out of draft, or editing its description,
+# starts or restarts the review without starting, cancelling or invalidating
+# any CI job. A review can also be dispatched manually for one pull request
+# (from its head branch, so the review reads that branch's tree): the run
+# ignores the content-fingerprint and dependency-bot short-circuits and
+# reviews the PR in full. The job's concurrency group cancels a review still
+# running when a new one starts.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+  workflow_dispatch:
+    inputs:
+      pull-request-number:
+        description: "Number of the pull request to review. Dispatch from the pull request's head branch, so the review reads that branch's tree. The run ignores the content-fingerprint and dependency-bot short-circuits and reviews the PR in full."
+        required: true
+        type: string
+
+jobs:
+  code_review:
+    name: Code review
+    if: ${{ github.event_name == 'workflow_dispatch' || ((github.event.action != 'edited' || github.event.changes.body != null) && github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository) }}
+    permissions:
+      contents: read
+      pull-requests: write
+    concurrency:
+      group: claude-review-${{ github.event.pull_request.number || inputs.pull-request-number }}
+      cancel-in-progress: true
+    uses: degory/ghul-code-review/.github/workflows/review.yml@v10
+    with:
+      pull-request-number: ${{ inputs.pull-request-number }}
+      idle-timeout-seconds: ${{ fromJSON(vars.CLAUDE_REVIEW_IDLE_TIMEOUT_SECONDS || '90') }}
+      max-attempts: ${{ fromJSON(vars.CLAUDE_REVIEW_MAX_ATTEMPTS || '3') }}
+      gh-app-id: ${{ vars.GHUL_REVIEWER_APP_ID }}
+      prompt: |
+        Review pull request #${{ inputs.pull-request-number || github.event.pull_request.number }} on ${{ github.repository }}.
+
+        You run in parallel with CI. Whether the TypeScript compiles, the unit tests pass, and the beta package builds is gated by CI before merge — that's not your job. Trust the diff as written.
+
+        Read this file first:
+        1. .github/claude-review.md — what this repo is, and what to watch for in it
+    secrets:
+      claude-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      qwen-auth-token: ${{ secrets.QWEN_API_KEY }}
+      openrouter-auth-token: ${{ secrets.OPENROUTER_API_KEY }}
+      zai-auth-token: ${{ secrets.ZAI_API_KEY }}
+      gh-app-private-key: ${{ secrets.GHUL_REVIEWER_PRIVATE_KEY }}
+
