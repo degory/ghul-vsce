@@ -99,7 +99,7 @@ export class Requester {
 
                 this.response_handler.expectAddReferences()
                     .then(message => { if (message) log(`could not add references again: ${message}`); })
-                    .catch(() => {});
+                    .catch(reason => log(`adding references again failed: ${reason}`));
             }
         });
     }
