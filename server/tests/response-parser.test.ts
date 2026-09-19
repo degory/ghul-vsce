@@ -26,6 +26,7 @@ class RecordingHandler {
     handleDocumentRangeFormatting(message: any) { this.calls.push({ method: 'handleDocumentRangeFormatting', message }); }
     handleSemanticTokens(message: any) { this.calls.push({ method: 'handleSemanticTokens', message }); }
     handleCodeActions(message: any) { this.calls.push({ method: 'handleCodeActions', message }); }
+    handleAddReferences(message: any) { this.calls.push({ method: 'handleAddReferences', message }); }
     handleRestart() { this.calls.push({ method: 'handleRestart' }); }
     handleHeapCheckDone() { this.calls.push({ method: 'handleHeapCheckDone' }); }
     handleUnexpected() { this.calls.push({ method: 'handleUnexpected' }); }
@@ -53,6 +54,14 @@ describe('ResponseParser', () => {
         parser.handleChunk(line(message));
 
         expect(recorder.calls).toEqual([{ method: 'handleCodeActions', message }]);
+    });
+
+    it('routes an add_references frame to handleAddReferences', () => {
+        const message = { kind: 'add_references', message: null as string | null };
+
+        parser.handleChunk(line(message));
+
+        expect(recorder.calls).toEqual([{ method: 'handleAddReferences', message }]);
     });
 
     it('buffers until the line is terminated by a newline', () => {

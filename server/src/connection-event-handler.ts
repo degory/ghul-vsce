@@ -71,6 +71,12 @@ export const WATCHED_FILE_GLOBS = [
     '**/.block-compiler',
 ];
 
+// `uri` names a document in the workspace whose analyser takes the assemblies.
+interface AddReferencesParams {
+    uri: string;
+    paths: string[];
+}
+
 export class ConnectionEventHandler {
     extension_state: ExtensionState;
     connection: Connection;
@@ -171,6 +177,26 @@ export class ConnectionEventHandler {
         connection.onCodeAction(
             (params: CodeActionParams): Promise<(Command | CodeAction)[]> =>
                 this.onCodeAction(params));
+
+        // Not part of LSP: an interactive session's host adds each cell it has
+        // compiled to the reference set of the workspace holding its input.
+        connection.onRequest('ghul/addReferences',
+            (params: AddReferencesParams): Promise<{ message: string | null }> =>
+                this.onAddReferences(params));
+    }
+
+    async onAddReferences(params: AddReferencesParams): Promise<{ message: string | null }> {
+        const workspace = params?.uri ? this.workspaceForUri(params.uri) : null;
+
+        if (!workspace) {
+            return { message: "no workspace holds that document" };
+        }
+
+        if (!Array.isArray(params.paths) || !params.paths.every(path => typeof path === "string")) {
+            return { message: "paths must be a list of strings" };
+        }
+
+        return { message: await workspace.requester.sendAddReferences(params.paths) };
     }
 
     private compiler_quick_fix_provider: CompilerQuickFixProvider = new CompilerQuickFixProvider();

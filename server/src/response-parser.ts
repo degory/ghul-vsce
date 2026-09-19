@@ -139,6 +139,10 @@ export class ResponseParser {
             this.response_handler.handleInlayHints(message);
             break;
 
+        case "add_references":
+            this.response_handler.handleAddReferences(message);
+            break;
+
         case "stats":
             this.response_handler.handleStats(message);
             break;
