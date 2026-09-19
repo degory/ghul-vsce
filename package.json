@@ -101,6 +101,11 @@
       }
     },
     "configurationDefaults": {
+      "jupyter.completionTriggerCharacters": {
+        "ghul": [
+          "."
+        ]
+      },
       "editor.tokenColorCustomizations": {
         "textMateRules": [
           {
