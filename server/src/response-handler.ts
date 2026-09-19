@@ -188,6 +188,11 @@ interface InlayHintsResponse {
     hints: InlayHintDto[];
 }
 
+interface AddReferencesResponse {
+    kind: "add_references";
+    message: string | null;
+}
+
 interface StatsResponse {
     kind: "stats";
     entries: StatEntry[];
@@ -542,6 +547,11 @@ export class ResponseHandler {
     _semantic_tokens_promise_queue: PromiseQueue<SemanticTokens>;
     _inlay_hints_promise_queue: PromiseQueue<InlayHint[]>;
     _code_actions_promise_queue: PromiseQueue<DiagnosticDto[]>;
+    _add_references_promise_queue: PromiseQueue<string | null>;
+
+    // Whether the running compiler answers `add_references`. One that does not
+    // answers with an error frame, which would leave the request unanswered.
+    add_references_supported: boolean = false;
 
     // Whether the running compiler answers the `code_actions` request.
     // Sent on every request would wedge the queue against a compiler that
@@ -584,6 +594,7 @@ export class ResponseHandler {
         this._semantic_tokens_promise_queue = new PromiseQueue<SemanticTokens>("SEMANTICTOKENS");
         this._inlay_hints_promise_queue = new PromiseQueue<InlayHint[]>("INLAYHINTS");
         this._code_actions_promise_queue = new PromiseQueue<DiagnosticDto[]>("CODEACTIONS");
+        this._add_references_promise_queue = new PromiseQueue<string | null>("ADDREFERENCES");
     }
 
     onConfigAvailable(_workspace: string, config: GhulConfig) {
@@ -607,6 +618,7 @@ export class ResponseHandler {
         this._semantic_tokens_promise_queue.resolveAll({ data: [] });
         this._inlay_hints_promise_queue.resolveAll([]);
         this._code_actions_promise_queue.resolveAll([]);
+        this._add_references_promise_queue.resolveAll("the analyser stopped before answering");
         this._formatting_ranges = [];
     }
 
@@ -626,6 +638,7 @@ export class ResponseHandler {
         this._semantic_tokens_promise_queue.rejectAll(message);
         this._inlay_hints_promise_queue.rejectAll(message);
         this._code_actions_promise_queue.rejectAll(message);
+        this._add_references_promise_queue.rejectAll(message);
         this._formatting_ranges = [];
     }
 
@@ -687,6 +700,8 @@ export class ResponseHandler {
         this.edit_deltas_supported = capabilities.includes("edit-deltas");
 
         this.compile_abort_supported = capabilities.includes("compile-abort");
+
+        this.add_references_supported = capabilities.includes("add-references");
 
         this.server_manager.startListening();
     }
@@ -763,6 +778,16 @@ export class ResponseHandler {
     // restarted on every request the client tries.
     handleError(response: ErrorResponse) {
         log(`analyser error: ${response.error_kind}: ${response.message}`);
+    }
+
+    expectAddReferences(): Promise<string | null> {
+        return this._add_references_promise_queue.enqueue();
+    }
+
+    handleAddReferences(response: AddReferencesResponse) {
+        let {resolve} = this._add_references_promise_queue.dequeueAlways();
+
+        resolve(response.message ?? null);
     }
 
     expectCodeActions(): Promise<DiagnosticDto[]> {

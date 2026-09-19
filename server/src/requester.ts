@@ -52,6 +52,11 @@ export class Requester {
         }
     }
 
+    // Every assembly added to the reference set, so that a fresh analyser -
+    // after a crash, a recycle or an idle exit - can be given them again. It
+    // starts from the workspace's own references and would otherwise lose them.
+    private added_references: string[] = [];
+
     private _analysed: boolean;
     private analysed_waiters: (() => void)[] = [];
 
@@ -86,6 +91,16 @@ export class Requester {
         server_event_emitter.onRunning((child: ChildProcess) => {
             log(`ghūl language extension v${version}: initialized`);
             this.stream = child.stdin;
+        });
+
+        server_event_emitter.onListening(() => {
+            if (this.added_references.length > 0 && this.response_handler.add_references_supported) {
+                this.send({ command: "add_references", paths: this.added_references });
+
+                this.response_handler.expectAddReferences()
+                    .then(message => { if (message) log(`could not add references again: ${message}`); })
+                    .catch(() => {});
+            }
         });
     }
 
@@ -506,6 +521,32 @@ export class Requester {
     // one. Deliberately does not start the watchdog: a request this trivial
     // going unanswered says nothing about the analyser's health that the
     // compile before it has not already said.
+    // Adds assemblies, by path, to the analyser's reference set: the earlier
+    // cells of an interactive session, which exist only once the session has
+    // compiled them. Answers why they could not be added, or null. The next
+    // build after an addition is a whole-project rebuild.
+    sendAddReferences(paths: string[]): Promise<string | null> {
+        if (!this.response_handler.add_references_supported) {
+            return Promise.resolve("the analyser cannot add references");
+        }
+
+        return this.whenAnalysed(() => {
+            this.send({ command: "add_references", paths });
+
+            return this.response_handler.expectAddReferences().then(message => {
+                if (message == null) {
+                    for (const path of paths) {
+                        if (!this.added_references.includes(path)) {
+                            this.added_references.push(path);
+                        }
+                    }
+                }
+
+                return message;
+            });
+        }, "the analyser did not become ready");
+    }
+
     sendStatsRequest() {
         this.send({ command: "stats" });
     }

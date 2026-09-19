@@ -54,6 +54,7 @@ function makeMockConnection(): Connection {
         conn[h] = jest.fn();
     }
     conn.onInitialized = jest.fn();
+    conn.onRequest = jest.fn();
     conn.languages = {
         semanticTokens: { on: jest.fn() },
         inlayHint: { on: jest.fn() },
@@ -90,6 +91,7 @@ function makeMockRequester(): Requester {
         sendDocumentFormatting: jest.fn().mockResolvedValue([]),
         sendDocumentRangeFormatting: jest.fn().mockResolvedValue([]),
         sendInlayHints: jest.fn().mockResolvedValue([]),
+        sendAddReferences: jest.fn().mockResolvedValue(null),
     } as unknown as Requester;
 }
 
@@ -153,6 +155,10 @@ describe('ConnectionEventHandler', () => {
     describe('constructor', () => {
         it.each(hooks)('registers a handler for connection.%s', hook => {
             expect((connection as any)[hook]).toHaveBeenCalled();
+        });
+
+        it('registers the ghul/addReferences request', () => {
+            expect((connection as any).onRequest).toHaveBeenCalledWith('ghul/addReferences', expect.any(Function));
         });
 
         it('registers a semantic tokens handler', () => {
@@ -854,5 +860,62 @@ describe('ConnectionEventHandler', () => {
                 { textDocument: { uri }, range: range(0, 10) } as any))
                 .toEqual([]);
         });
+    });
+});
+
+describe('ConnectionEventHandler.onAddReferences', () => {
+    let requester: Requester;
+    let handler: ConnectionEventHandler;
+    let getWorkspaceForUri: jest.Mock;
+
+    beforeEach(() => {
+        requester = makeMockRequester();
+        getWorkspaceForUri = jest.fn().mockReturnValue(makeMockWorkspace(requester, makeMockEditQueue()));
+
+        const extensionState = {
+            getWorkspaceForUri,
+            defaultWorkspace: jest.fn(),
+            registerWorkspace: jest.fn().mockReturnValue({ initializeDetached: jest.fn() }),
+            unregisterWorkspace: jest.fn(),
+            setClientSupportsConfiguration: jest.fn(),
+            setClientSupportsRefresh: jest.fn(),
+            allWorkspaces: jest.fn().mockReturnValue([]),
+            onDidChangeWatchedFiles: jest.fn(),
+        } as unknown as ExtensionState;
+
+        handler = new ConnectionEventHandler(
+            extensionState, makeMockConnection(), { get: jest.fn() } as unknown as TextDocuments<TextDocument>);
+    });
+
+    it('passes the paths to the workspace holding the document', async () => {
+        const result = await handler.onAddReferences({ uri: 'file:///w/input.ghul', paths: ['/cells/a.dll'] });
+
+        expect(getWorkspaceForUri).toHaveBeenCalledWith('file:///w/input.ghul');
+        expect(requester.sendAddReferences).toHaveBeenCalledWith(['/cells/a.dll']);
+        expect(result).toEqual({ message: null });
+    });
+
+    it('answers with the analyser\'s reason when it refuses', async () => {
+        (requester.sendAddReferences as jest.Mock).mockResolvedValue('cell1 is already referenced');
+
+        const result = await handler.onAddReferences({ uri: 'file:///w/input.ghul', paths: ['/cells/a.dll'] });
+
+        expect(result).toEqual({ message: 'cell1 is already referenced' });
+    });
+
+    it('refuses a document no workspace holds', async () => {
+        getWorkspaceForUri.mockReturnValue(null);
+
+        const result = await handler.onAddReferences({ uri: 'file:///elsewhere/x.ghul', paths: ['/cells/a.dll'] });
+
+        expect(result.message).toBeTruthy();
+        expect(requester.sendAddReferences).not.toHaveBeenCalled();
+    });
+
+    it('refuses paths that are not a list of strings', async () => {
+        const result = await handler.onAddReferences({ uri: 'file:///w/input.ghul', paths: [42 as unknown as string] });
+
+        expect(result.message).toBeTruthy();
+        expect(requester.sendAddReferences).not.toHaveBeenCalled();
     });
 });

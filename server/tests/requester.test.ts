@@ -35,7 +35,11 @@ class RecordingResponseHandler {
     expectSemanticTokens() { this.expectations.push('semantic_tokens'); return Promise.resolve({ data: [] }); }
     expectCodeActions() { this.expectations.push('code_actions'); return Promise.resolve([]); }
 
+    add_references_reply: string | null = null;
+    expectAddReferences() { this.expectations.push('add_references'); return Promise.resolve(this.add_references_reply); }
+
     code_actions_supported: boolean = true;
+    add_references_supported: boolean = true;
 }
 
 function makeRunningChild(stream: CapturingStream): ChildProcess {
@@ -118,6 +122,39 @@ describe('Requester', () => {
         expect(fixes).toEqual([]);
         expect(stream.written).toEqual([]);
         expect(response.expectations).toEqual([]);
+    });
+
+    it('sendAddReferences writes the paths and answers with the analyser\'s reply', async () => {
+        expect(await requester.sendAddReferences(['/cells/a.dll'])).toBeNull();
+
+        expect(parseOnlyRequest(stream)).toEqual({ command: 'add_references', paths: ['/cells/a.dll'] });
+    });
+
+    it('sendAddReferences sends nothing to a compiler that does not advertise the capability', async () => {
+        response.add_references_supported = false;
+
+        expect(await requester.sendAddReferences(['/cells/a.dll'])).toBeTruthy();
+        expect(stream.written).toEqual([]);
+    });
+
+    it('gives a fresh analyser every reference added to the one before it', async () => {
+        await requester.sendAddReferences(['/cells/a.dll']);
+        await requester.sendAddReferences(['/cells/b.dll', '/cells/a.dll']);
+
+        stream.written = [];
+        events.listening();
+
+        expect(parseOnlyRequest(stream)).toEqual({ command: 'add_references', paths: ['/cells/a.dll', '/cells/b.dll'] });
+    });
+
+    it('does not remember references the analyser refused', async () => {
+        response.add_references_reply = 'a different cell1 is already referenced';
+        await requester.sendAddReferences(['/cells/a.dll']);
+
+        stream.written = [];
+        events.listening();
+
+        expect(stream.written).toEqual([]);
     });
 
     it('starts un-analysed: a fresh Requester holds queries until a compile completes', () => {
