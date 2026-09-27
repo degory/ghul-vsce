@@ -1,6 +1,7 @@
 import {
     Connection,
     CompletionItem,
+    CompletionItemTag,
     CompletionItemKind,
     Definition,
     InsertTextFormat,
@@ -115,6 +116,9 @@ interface CompletionItemDto {
     // The declaration's `///` doc comment, Markdown; absent from an
     // analyser that predates doc comments.
     doc?: string | null;
+    // True when the declaration carries System.Obsolete; absent from an
+    // analyser that predates deprecation.
+    deprecated?: boolean;
     insert_text?: string;
 }
 
@@ -174,6 +178,11 @@ interface HoverResponse {
     // The declaration's `///` doc comment, Markdown; absent from an
     // analyser that predates doc comments.
     doc?: string | null;
+    // Set when the declaration carries System.Obsolete; absent from an
+    // analyser that predates deprecation.
+    deprecated?: boolean;
+    deprecation_message?: string | null;
+    deprecation_is_error?: boolean;
 }
 
 interface SemanticTokensResponse {
@@ -832,6 +841,10 @@ export class ResponseHandler {
                 let plain = response.kind_label
                     ? `${signature} // ${response.kind_label}`
                     : signature;
+                const deprecation = deprecationLine(response);
+                if (deprecation) {
+                    plain = `${plain}\n\n${deprecation}`;
+                }
                 if (response.doc) {
                     plain = `${plain}\n\n${response.doc}`;
                 }
@@ -848,6 +861,10 @@ export class ResponseHandler {
             if (response.kind_label) {
                 parts.push("");
                 parts.push(`_${response.kind_label}_`);
+            }
+            const deprecation = deprecationLine(response);
+            if (deprecation) {
+                parts.push("", `**${deprecation}**`);
             }
             if (response.doc) {
                 parts.push("", "---", "", response.doc);
@@ -926,6 +943,10 @@ export class ResponseHandler {
                         kind: MarkupKind.Markdown,
                         value: documentation.join("\n\n")
                     };
+                }
+
+                if (item.deprecated) {
+                    completion.tags = [CompletionItemTag.Deprecated];
                 }
 
                 if (item.insert_text) {
@@ -1358,4 +1379,17 @@ export class ResponseHandler {
 
         return locations;
     }
+}
+
+// The line hover shows under the signature for a deprecated declaration.
+function deprecationLine(response: HoverResponse): string | null {
+    if (!response.deprecated) {
+        return null;
+    }
+
+    const heading = response.deprecation_is_error ? "Deprecated (error)" : "Deprecated";
+
+    return response.deprecation_message
+        ? `${heading}: ${response.deprecation_message}`
+        : heading;
 }

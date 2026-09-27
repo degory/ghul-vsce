@@ -465,6 +465,46 @@ describe('ResponseHandler', () => {
         });
     });
 
+    it('handleHover shows a deprecation under the signature', async () => {
+        const p = responseHandler.expectHover();
+
+        responseHandler.handleHover({
+            kind: 'hover',
+            signature: 'double(x: int) -> int',
+            kind_label: 'method',
+            deprecated: true,
+            deprecation_message: 'use twice instead',
+            deprecation_is_error: false,
+        } as any);
+
+        await expect(p).resolves.toEqual({
+            contents: {
+                kind: 'markdown',
+                value: '```ghul\ndouble(x: int) -> int\n```\n\n_method_\n\n**Deprecated: use twice instead**',
+            },
+        });
+    });
+
+    it('handleHover marks a deprecation that is an error', async () => {
+        const p = responseHandler.expectHover();
+
+        responseHandler.handleHover({
+            kind: 'hover',
+            signature: 'triple(x: int) -> int',
+            kind_label: null,
+            deprecated: true,
+            deprecation_message: null,
+            deprecation_is_error: true,
+        } as any);
+
+        await expect(p).resolves.toEqual({
+            contents: {
+                kind: 'markdown',
+                value: '```ghul\ntriple(x: int) -> int\n```\n\n**Deprecated (error)**',
+            },
+        });
+    });
+
     it('should enqueue and resolve definition promise on expectDefinition and handleDefinition', async () => {
         const definitionPromise = responseHandler.expectDefinition();
 
@@ -569,6 +609,23 @@ describe('ResponseHandler', () => {
                 detail: 'size: int',
                 documentation: { kind: 'markdown', value: 'How big it is.' },
             },
+        ]);
+    });
+
+    it('handleCompletion tags a deprecated item', async () => {
+        const completionPromise = responseHandler.expectCompletion();
+
+        responseHandler.handleCompletion({
+            kind: 'completion',
+            items: [
+                { name: 'double', kind: 2, description: 'double(x: int) -> int', deprecated: true },
+                { name: 'twice', kind: 2, description: 'twice(x: int) -> int', deprecated: false },
+            ],
+        } as any);
+
+        expect(await completionPromise).toEqual([
+            { label: 'double', kind: 2, detail: 'double(x: int) -> int', tags: [1] },
+            { label: 'twice', kind: 2, detail: 'twice(x: int) -> int' },
         ]);
     });
 
