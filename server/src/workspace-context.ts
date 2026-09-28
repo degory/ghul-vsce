@@ -517,6 +517,20 @@ export class WorkspaceContext {
         return this.document_change_tracker?.globs ?? [];
     }
 
+    // Whether this project's own sources include the file, which is what
+    // decides that it belongs here rather than to whichever folder happens to
+    // contain it. A project whose globs are not resolved yet, or whose
+    // resolution failed, claims what sits under its folder as it always did:
+    // an empty set of globs means the question cannot be answered, not that
+    // the answer is no.
+    claimsSourceFile(uri: string): boolean {
+        if (this.sourceGlobs().length == 0) {
+            return true;
+        }
+
+        return this.document_change_tracker?.tryGetValidSourceFile(uri) != null;
+    }
+
     // Absolute path to the response file the build writes this workspace's
     // resolved options and references to.
     responseFilePath(): string {
