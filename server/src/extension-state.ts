@@ -186,10 +186,14 @@ export class ExtensionState {
         return iter.done ? null : iter.value;
     }
 
-    // Find the workspace that owns this document URI by longest matching
-    // workspace_root prefix on the parsed fsPath. Returns null if no
-    // workspace claims the file — caller should drop the request rather
-    // than route arbitrarily.
+    // Find the workspace that owns this document URI: of the workspaces whose
+    // root contains the file, the innermost one whose project's sources
+    // include it. The containing folder alone is not enough — a project folder
+    // routinely holds .ghul files the project does not compile, a nested test
+    // project being the usual case, and analysing those against the enclosing
+    // project reports errors about a compilation they are not part of.
+    // Returns null if no workspace claims the file — caller should drop the
+    // request rather than route arbitrarily.
     public getWorkspaceForUri(uri: string): WorkspaceContext | null {
         let fs_path: string;
 
@@ -206,8 +210,7 @@ export class ExtensionState {
 
         const fs_path_normalised = fs_path.replace(/\\/g, '/');
 
-        let best: WorkspaceContext | null = null;
-        let best_length = -1;
+        const containing: WorkspaceContext[] = [];
 
         for (const context of this.workspaces.values()) {
             const root_normalised = context.workspace_root.replace(/\\/g, '/');
@@ -216,14 +219,21 @@ export class ExtensionState {
                 fs_path_normalised === root_normalised ||
                 fs_path_normalised.startsWith(root_normalised + '/')
             ) {
-                if (root_normalised.length > best_length) {
-                    best = context;
-                    best_length = root_normalised.length;
-                }
+                containing.push(context);
             }
         }
 
-        return best;
+        containing.sort(
+            (a, b) => b.workspace_root.length - a.workspace_root.length
+        );
+
+        for (const context of containing) {
+            if (context.claimsSourceFile(uri)) {
+                return context;
+            }
+        }
+
+        return null;
     }
 
     // Single demux for watched-file events: the LSP Connection only allows one
