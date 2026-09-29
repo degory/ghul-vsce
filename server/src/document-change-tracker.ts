@@ -10,6 +10,23 @@ import { EditQueue } from "./edit-queue";
 import { log } from "console";
 import { minimatch } from 'minimatch';
 import { readFileSync } from "fs";
+import { posix } from "path";
+
+// A project's glob made absolute under the workspace root, in the form the
+// tracker matches file paths against. minimatch reads a `.` segment as a
+// literal path segment, so the join is normalised: `./**/*.ghul`, the default
+// for a project with no .ghulproj, would otherwise match no file at all. A glob
+// that is already absolute is kept as it is.
+export function rootedGlob(workspace_root: string, glob: string): string {
+    const root = workspace_root.replace(/\\/g, "/");
+    const pattern = glob.replace(/\\/g, "/");
+
+    if (pattern.startsWith("/") || /^[A-Za-z]:\//.test(pattern)) {
+        return posix.normalize(pattern);
+    }
+
+    return posix.normalize(`${root}/${pattern}`);
+}
 
 // Minimal contract DocumentChangeTracker needs from its owning workspace.
 // Declared structurally to avoid an import cycle with WorkspaceContext.
