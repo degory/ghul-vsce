@@ -19,7 +19,7 @@ import { Requester } from './requester';
 import { EditQueue } from './edit-queue';
 import { ResponseParser } from './response-parser';
 import { ServerManager } from './server-manager';
-import { DocumentChangeTracker } from './document-change-tracker';
+import { DocumentChangeTracker, rootedGlob } from './document-change-tracker';
 import { GhulAnalyser } from './ghul-analyser';
 import { Watchdog } from './watchdog';
 import { Activity, ActivityProgress, ROUTINE_ANALYSIS_MESSAGE, SLOW_ACTIVITY_DELAY_MS } from './activity-progress';
@@ -382,8 +382,6 @@ export class WorkspaceContext {
             );
         }
 
-        const workspace_root_munged = this.workspace_root.replace(/\\/g, '/');
-
         // Whatever the outgoing tracker had pending is answered by this run,
         // which has just re-read everything it would have re-read.
         this.document_change_tracker?.dispose();
@@ -391,10 +389,10 @@ export class WorkspaceContext {
         this.document_change_tracker = new DocumentChangeTracker(
             this,
             this.edit_queue,
-            this.config.source.map(glob => `${workspace_root_munged}/${glob}`),
+            this.config.source.map(glob => rootedGlob(this.workspace_root, glob)),
             this.documents,
             this.config.missing_assemblies,
-            (this.config.exclude ?? []).map(glob => `${workspace_root_munged}/${glob}`)
+            (this.config.exclude ?? []).map(glob => rootedGlob(this.workspace_root, glob))
         );
 
         this.watchMissingAssemblies();

@@ -1,7 +1,7 @@
 import { DidChangeWatchedFilesParams, DidCloseTextDocumentParams, FileChangeType, TextDocuments } from 'vscode-languageserver';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
-import { DocumentChangeTracker, ReinitializableWorkspace } from '../src/document-change-tracker';
+import { DocumentChangeTracker, ReinitializableWorkspace, rootedGlob } from '../src/document-change-tracker';
 import { EditQueue } from '../src/edit-queue';
 import { URI } from 'vscode-uri';
 
@@ -278,5 +278,41 @@ describe('DocumentChangeTracker', () => {
 
             expect(workspace.reinitialize).not.toHaveBeenCalled();
         });
+    });
+});
+// A project with no .ghulproj takes its sources from ghul.json, whose default
+// glob is `./**/*.ghul`. Made absolute without normalising, that glob has a
+// literal `.` segment and matches no file, so every document in such a project
+// was refused by the router and never analysed.
+describe('rootedGlob', () => {
+    it('drops a leading ./ when rooting a glob', () => {
+        expect(rootedGlob('/w/project', './**/*.ghul')).toBe('/w/project/**/*.ghul');
+    });
+
+    it('roots a plain relative glob', () => {
+        expect(rootedGlob('/w/project', 'src/**/*.ghul')).toBe('/w/project/src/**/*.ghul');
+    });
+
+    it('keeps an absolute glob as it is', () => {
+        expect(rootedGlob('/w/project', '/elsewhere/**/*.ghul')).toBe('/elsewhere/**/*.ghul');
+    });
+
+    it('roots under a Windows path with forward slashes', () => {
+        expect(rootedGlob('C:\\w\\project', '.\\**\\*.ghul')).toBe('C:/w/project/**/*.ghul');
+    });
+
+    it('lets a tracker built from the ghul.json default claim the project\'s files', () => {
+        const tracker = new DocumentChangeTracker(
+            new RecordingWorkspace(),
+            { queueEdit3: jest.fn() } as unknown as EditQueue,
+            [rootedGlob('/w/project', './**/*.ghul')],
+            { all: (): TextDocument[] => [] } as unknown as TextDocuments<TextDocument>,
+            [],
+            [rootedGlob('/w/project', './bin/**')]
+        );
+
+        expect(tracker.tryGetValidSourceFile(URI.file('/w/project/src/main.ghul').toString())).toBe('/w/project/src/main.ghul');
+        expect(tracker.tryGetValidSourceFile(URI.file('/w/project/bin/copied.ghul').toString())).toBeNull();
+        expect(tracker.tryGetValidSourceFile(URI.file('/w/other/main.ghul').toString())).toBeNull();
     });
 });

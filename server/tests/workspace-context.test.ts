@@ -317,8 +317,8 @@ describe('WorkspaceContext.initialize', () => {
         await context.initialize();
 
         expect(context.document_change_tracker.globs).toEqual([
-            `${WORKSPACE_ROOT}/./src/**/*.ghul`,
-            `${WORKSPACE_ROOT}/./lib/**/*.ghul`,
+            `${WORKSPACE_ROOT}/src/**/*.ghul`,
+            `${WORKSPACE_ROOT}/lib/**/*.ghul`,
         ]);
     });
 
