@@ -1,0 +1,4 @@
+{
+    "name": "cli-manifest-project",
+    "sources": ["src/**/*.ghul"]
+}

@@ -213,11 +213,16 @@ function readSourceGlobs(source_globs_file: string, problems: string[]): string[
 	}
 }
 
+// manifest_compiler is set for a ghul-project.json project: the command
+// ghul named, or null when it named none, whose problem has been reported.
+// Either way such a project takes its compiler from ghul rather than from a
+// .NET tool manifest.
 export function getGhulConfig(
 	workspace: string,
 	settings: EditorSettings = {},
 	response_file: string | null = null,
-	source_globs_file: string | null = null
+	source_globs_file: string | null = null,
+	manifest_compiler?: string[] | null
 ): GhulConfig {
 	let problems: string[] = [];
 
@@ -432,7 +437,9 @@ export function getGhulConfig(
 		log("ignoring multiple .ghulproj files:" + projects.join(','));
 	}
 
-	if (!compiler) {
+	if (!compiler && manifest_compiler !== undefined) {
+		compiler = manifest_compiler ?? undefined;
+	} else if (!compiler) {
 		if (existsSync(workspace + "/.config/dotnet-tools.json")) {
 			try {
 				let buffer = ('' + readFileSync(workspace + "/.config/dotnet-tools.json", "utf-8")).replace(/^\uFEFF/, '');
@@ -476,7 +483,7 @@ export function getGhulConfig(
 		}
 	}
 
-	if (!compiler) {
+	if (!compiler && manifest_compiler === undefined) {
 		let problem = "no usable ghūl compiler found: install the ghul.compiler tool or set 'compiler' in ghul.json";
 		log(problem);
 		problems.push(problem);

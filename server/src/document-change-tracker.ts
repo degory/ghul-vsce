@@ -6,6 +6,7 @@ import type { debounce as Debounced } from "throttle-debounce";
 
 import { normalizeFileUri } from "./normalize-file-uri";
 import { EditQueue } from "./edit-queue";
+import { LOCKFILE, MANIFEST } from "./manifest-project";
 
 import { log } from "console";
 import { minimatch } from 'minimatch';
@@ -86,7 +87,9 @@ export class DocumentChangeTracker {
             if (
                 c.uri.endsWith(".ghulproj") ||
                 c.uri.endsWith("Directory.Build.props") ||
-                c.uri.endsWith("dotnet-tools.json")
+                c.uri.endsWith("dotnet-tools.json") ||
+                c.uri.endsWith(MANIFEST) ||
+                c.uri.endsWith(LOCKFILE)
             ) {
                 log("project file changed: " + c.uri);
 

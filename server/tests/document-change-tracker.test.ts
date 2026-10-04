@@ -206,6 +206,8 @@ describe('DocumentChangeTracker', () => {
             ['file:///workspace/test.ghulproj'],
             ['file:///workspace/Directory.Build.props'],
             ['file:///workspace/.config/dotnet-tools.json'],
+            ['file:///workspace/ghul-project.json'],
+            ['file:///workspace/ghul-project.lock.json'],
         ])('returns after seeing a project-relevant change for %s (does not queue)', uri => {
             const params = createDidChangeWatchedFilesParams(uri, FileChangeType.Changed);
 
