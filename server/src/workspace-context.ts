@@ -30,6 +30,7 @@ import { restoreDotNetTools } from './restore-dotnet-tools';
 import { generateAssembliesJson } from './generate-assemblies-json';
 import { generateGhulOptionsJson } from './generate-ghul-options-json';
 import { generateResponseFile } from './generate-response-file';
+import { generateManifestResponseFile, isManifestProject, manifestCompiler, MANIFEST } from './manifest-project';
 import { TempDirectory } from './temp-directory';
 
 // How long to wait for the client to answer for its settings before falling
@@ -313,51 +314,43 @@ export class WorkspaceContext {
     private async runInitialize(): Promise<void> {
         let problems: string[] = [];
 
-        // The build writes the response file; getGhulConfig reads it to build
+        // The response file is written first; getGhulConfig reads it to build
         // the analyser's -a flags. Must run in this order — on a fresh
         // checkout there is no such file yet, so a reversed order leaves the
         // analyser with no -a flags and it falls back to a five-assembly
         // default.
-        this.progress.report(Activity.Setup, "restoring .NET tools");
-
-        let tools_problem = await restoreDotNetTools(this.workspace_root);
-        if (tools_problem) {
-            problems.push(tools_problem);
-        }
-
-        this.progress.report(Activity.Setup, "building project references", { done_message: "project references built" });
-
         let response_file: string | null = this.responseFilePath();
         let source_globs_file = this.temp_directory.path('source-globs.txt');
-        let response_file_problem = await generateResponseFile(this.workspace_root, response_file, source_globs_file);
 
-        if (!existsSync(response_file)) {
-            // Most often this means the project is pinned to a ghul.runtime
-            // older than 14.3.0, which has no GenerateGhulResponseFile target
-            // — ordinary rather than broken, and the overwhelmingly common
-            // case, so it must not warn. Nothing here can tell that apart
-            // from the target failing on a project that does have it, so the
-            // fallback runs either way and reports for itself. Anything
-            // generateResponseFile complained about is in the log whichever
-            // it was, so a failure that the fallback then papers over is
-            // still there to be found.
-            response_file = null;
+        // A ghul-project.json project is resolved by the ghul tool, which
+        // writes the same two files a .ghulproj build does and names the
+        // compiler, so none of the .NET steps apply to it.
+        let manifest_compiler: string[] | null | undefined = undefined;
 
-            let assemblies_problem = await generateAssembliesJson(this.workspace_root);
-            if (assemblies_problem) {
-                problems.push(assemblies_problem);
+        if (isManifestProject(this.workspace_root)) {
+            this.progress.report(Activity.Setup, "resolving compiler options", { done_message: "compiler options resolved" });
+
+            let manifest_problem = await generateManifestResponseFile(this.workspace_root, response_file, source_globs_file);
+            if (manifest_problem) {
+                problems.push(manifest_problem);
+                response_file = null;
             }
 
-            // Best-effort and never contributes a problem — a project on a
-            // runtime older still has no GenerateGhulOptionsJson target
-            // either, and getGhulConfig falls back to hand-parsing the
-            // .ghulproj.
-            await generateGhulOptionsJson(this.workspace_root);
-        } else if (response_file_problem) {
-            problems.push(response_file_problem);
+            let found = manifestCompiler(this.workspace_root);
+            if (found.problem) {
+                problems.push(found.problem);
+            }
+
+            manifest_compiler = found.compiler ?? null;
+        } else {
+            response_file = await this.resolveGhulprojOptions(problems, response_file, source_globs_file);
         }
 
-        this.config = getGhulConfig(this.workspace_root, await this.readEditorSettings(), response_file, source_globs_file);
+        let settings = await this.readEditorSettings();
+
+        this.config = manifest_compiler === undefined
+            ? getGhulConfig(this.workspace_root, settings, response_file, source_globs_file)
+            : getGhulConfig(this.workspace_root, settings, response_file, source_globs_file, manifest_compiler);
         problems.push(...(this.config.problems ?? []));
 
         // The step above builds the referenced projects, so anything still
@@ -403,6 +396,51 @@ export class WorkspaceContext {
         this.config_event_emitter.configAvailable(this.workspace_root, this.config);
 
         this.progress.end(Activity.Setup);
+    }
+
+    // A .ghulproj project: restore the .NET tools, then have the build write
+    // the response file and source globs. Answers the response file to read,
+    // or null when the build wrote none.
+    private async resolveGhulprojOptions(problems: string[], response_file: string, source_globs_file: string): Promise<string | null> {
+        this.progress.report(Activity.Setup, "restoring .NET tools");
+
+        let tools_problem = await restoreDotNetTools(this.workspace_root);
+        if (tools_problem) {
+            problems.push(tools_problem);
+        }
+
+        this.progress.report(Activity.Setup, "building project references", { done_message: "project references built" });
+
+        let response_file_problem = await generateResponseFile(this.workspace_root, response_file, source_globs_file);
+        let written: string | null = response_file;
+
+        if (!existsSync(response_file)) {
+            // Most often this means the project is pinned to a ghul.runtime
+            // older than 14.3.0, which has no GenerateGhulResponseFile target
+            // — ordinary rather than broken, and the overwhelmingly common
+            // case, so it must not warn. Nothing here can tell that apart
+            // from the target failing on a project that does have it, so the
+            // fallback runs either way and reports for itself. Anything
+            // generateResponseFile complained about is in the log whichever
+            // it was, so a failure that the fallback then papers over is
+            // still there to be found.
+            written = null;
+
+            let assemblies_problem = await generateAssembliesJson(this.workspace_root);
+            if (assemblies_problem) {
+                problems.push(assemblies_problem);
+            }
+
+            // Best-effort and never contributes a problem — a project on a
+            // runtime older still has no GenerateGhulOptionsJson target
+            // either, and getGhulConfig falls back to hand-parsing the
+            // .ghulproj.
+            await generateGhulOptionsJson(this.workspace_root);
+        } else if (response_file_problem) {
+            problems.push(response_file_problem);
+        }
+
+        return written;
     }
 
     // The editor's settings for this folder, with its User / Workspace /
@@ -552,7 +590,8 @@ export class WorkspaceContext {
         this.temp_directory.dispose();
     }
 
-    // True when the folder contains at least one .ghulproj or a ghul.json.
+    // True when the folder contains at least one .ghulproj, a ghul.json or a
+    // ghul-project.json manifest.
     // Multi-root setups commonly mix ghūl folders with unrelated ones (docs,
     // sibling JS projects, …); we only spin up a compiler for the folders
     // that actually have a ghūl project, otherwise every non-ghūl folder
@@ -573,6 +612,6 @@ export class WorkspaceContext {
             return false;
         }
 
-        return entries.some(e => e.endsWith('.ghulproj') || e === 'ghul.json');
+        return entries.some(e => e.endsWith('.ghulproj') || e === 'ghul.json' || e === MANIFEST);
     }
 }

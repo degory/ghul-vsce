@@ -68,6 +68,8 @@ export const WATCHED_FILE_GLOBS = [
     '**/Directory.Build.props',
     '**/Directory.Packages.props',
     '**/dotnet-tools.json',
+    '**/ghul-project.json',
+    '**/ghul-project.lock.json',
     '**/.block-compiler',
 ];
 

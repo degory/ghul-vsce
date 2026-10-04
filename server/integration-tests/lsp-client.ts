@@ -40,11 +40,40 @@ export class LspClient {
     private reported = new Set<string>();
     private logWaiters: { matches: (message: string) => boolean, resolve: () => void }[] = [];
 
-    constructor(serverPath: string, cwd: string) {
+    // The diagnostics most recently published for each document, by URI.
+    readonly diagnostics = new Map<string, any[]>();
+    private diagnosticsWaiters: { uri: string, matches: (diagnostics: any[]) => boolean, resolve: () => void }[] = [];
+
+    constructor(serverPath: string, cwd: string, env?: NodeJS.ProcessEnv) {
         this.root = cwd;
-        this.child = spawn('node', [serverPath, '--stdio'], { cwd });
+        this.child = spawn('node', [serverPath, '--stdio'], { cwd, env: env ?? process.env });
         this.child.stdout.on('data', chunk => this.onData(chunk));
         this.child.stderr.on('data', chunk => this.stderr.push(chunk.toString('utf8')));
+    }
+
+    // Resolves once the diagnostics published for `uri` satisfy `matches`,
+    // taking those already published into account.
+    waitForDiagnostics(uri: string, matches: (diagnostics: any[]) => boolean, timeout_ms: number): Promise<void> {
+        if (matches(this.diagnostics.get(uri) ?? [])) {
+            return Promise.resolve();
+        }
+
+        return new Promise((resolve, reject) => {
+            const waiter = { uri, matches, resolve: () => { clearTimeout(timer); resolve(); } };
+
+            const timer = setTimeout(() => {
+                this.diagnosticsWaiters = this.diagnosticsWaiters.filter(w => w != waiter);
+
+                reject(new Error(
+                    `the diagnostics wanted for ${uri} were not published within ${timeout_ms}ms; ` +
+                    `last published: ${JSON.stringify(this.diagnostics.get(uri) ?? null)}\n` +
+                    `logs:\n${this.logMessages.join('\n')}\n` +
+                    `stderr:\n${this.stderr.join('')}`
+                ));
+            }, timeout_ms);
+
+            this.diagnosticsWaiters.push(waiter);
+        });
     }
 
     // Resolves once the server has logged something `matches` accepts, taking
@@ -165,6 +194,15 @@ export class LspClient {
 
         if (message.method === '$/progress') {
             this.progressNotifications.push(message.params);
+        } else if (message.method === 'textDocument/publishDiagnostics') {
+            const { uri, diagnostics } = message.params;
+
+            this.diagnostics.set(uri, diagnostics);
+
+            for (const waiter of this.diagnosticsWaiters.filter(w => w.uri === uri && w.matches(diagnostics))) {
+                this.diagnosticsWaiters = this.diagnosticsWaiters.filter(w => w != waiter);
+                waiter.resolve();
+            }
         } else if (message.method === 'window/logMessage') {
             this.logMessages.push(message.params.message);
 

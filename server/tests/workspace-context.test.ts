@@ -693,6 +693,14 @@ describe('WorkspaceContext.looksLikeGhulWorkspace', () => {
         expect(WorkspaceContext.looksLikeGhulWorkspace(tmpDir)).toBe(true);
     });
 
+    it('returns true when the folder contains a ghul-project.json manifest', async () => {
+        const { writeFileSync } = jest.requireActual('fs');
+        const path = jest.requireActual('path');
+        writeFileSync(path.join(tmpDir, 'ghul-project.json'), '{ "name": "app" }');
+
+        expect(WorkspaceContext.looksLikeGhulWorkspace(tmpDir)).toBe(true);
+    });
+
     it('returns false when the only .ghul files are sources (no project file)', async () => {
         // A folder of loose .ghul scripts isn't a project we can analyse;
         // without a .ghulproj or ghul.json there's no compiler config to load.
